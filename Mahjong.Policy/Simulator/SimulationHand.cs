@@ -68,14 +68,18 @@ internal sealed class SimulationHand
         {
             Hand = sortedHand,
             OurMelds = Melds[observerSeat].ToArray(),
-            OurSeat = observerSeat,
+            // Seats and scores above are rotated into the observer's view.
+            // Keep all perspective fields in that same coordinate system;
+            // leaking the absolute seat here makes policies read an
+            // opponent's score/wind for observers 1-3.
+            OurSeat = 0,
             RoundWind = Round,
             Honba = Honba,
             RiichiSticks = RiichiSticks,
             Scores = scoresRelative,
             DoraIndicators = new[] { DoraIndicator },
             WallRemaining = Wall.Count,
-            DealerSeat = Dealer,
+            DealerSeat = (Dealer - observerSeat + 4) % 4,
             Seats = seatsRelative,
             Legal = new LegalActions(legal, [], [], [], []),
         };

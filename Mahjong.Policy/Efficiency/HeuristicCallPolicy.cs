@@ -123,7 +123,7 @@ public sealed class HeuristicCallPolicy : ICallPolicy
 
     /// <summary>
     /// Sum reachable han across yaku families plus dora retained on the post-call concealed hand.
-    /// Treats families as independent so MinHan=2 rulesets (Doman) reject lone 1-han yakuhai paths.
+    /// Treats families as independent so rulesets with a raised minimum can reject thin yaku paths.
     /// </summary>
     private static int EstimateReachableHan(int[] counts, int meldsAfter, StateSnapshot state, MeldCandidate thisCall, IDoraRule doraRule)
     {

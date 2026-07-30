@@ -77,6 +77,22 @@ public class HandArrayDecoderTests
     }
 
     [Fact]
+    public void ReadHandDetailed_preserves_red_identity_per_tile()
+    {
+        var raw = new int[14]
+        {
+            76041 + 34, 76041 + 4, 76041 + 35,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        };
+
+        var decoded = HandArrayDecoder.ReadHandDetailed(raw, EmjTextureBase);
+
+        Assert.Equal(new[] { true, false, true }, decoded.IsRed);
+        Assert.Equal(2, decoded.RedCount);
+        Assert.Equal(decoded.Tiles.Count, decoded.IsRed.Count);
+    }
+
+    [Fact]
     public void ReadHand_skips_out_of_range_raw_values()
     {
         // 999999 well past any valid tile alias; should be ignored, not added.

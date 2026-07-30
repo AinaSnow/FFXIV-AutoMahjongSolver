@@ -56,7 +56,7 @@ Tick **Enabled**, click **+**, then **Save and Close**. Open `/xlplugins` → **
 | `/mjauto` | Toggle the main window |
 | `/mjauto pass <N>` | Click button index `<N>` on a call prompt (0 = leftmost) |
 | `/mjauto capture <label>` | Capture the next dispatch payload to disk (debugging) |
-| `/mjauto variant dump` | Dump client variant info (JP / OC verification) |
+| `/mjauto variant dump [addonName]` | Dump client variant info (JP / OC verification); the optional name can target an addon not known by existing profiles. |
 
 ## Client compatibility
 
@@ -64,15 +64,15 @@ The mahjong addon ships under different names and memory layouts per region. EU 
 
 | Feature | EU (`Emj`) | NA (`EmjL`) | JP | OC |
 |---|---|---|---|---|
-| Window detection | Yes | Yes | Untested | Untested |
-| Hand / score reading | Yes | Needs re-verification ([#30](https://github.com/XeldarAlz/FFXIV-DomanMahjongSolver/issues/30)) | Untested | Untested |
+| Window detection | Yes | Yes | Profile added from live dump | Untested |
+| Hand / score reading | Yes | Needs re-verification ([#30](https://github.com/XeldarAlz/FFXIV-DomanMahjongSolver/issues/30)) | Structurally matched; live verification pending | Untested |
 | Discard (state-30 in-hand) | Yes | Probably yes | Untested | Untested |
 | Discard (state-6 self-declare popup) | Yes | Probably yes | Untested | Untested |
 | Post-call discard popup | Yes | Probably yes | Untested | Untested |
 | Pon / Chi / Kan acceptance | Yes | Likely yes ([#30](https://github.com/XeldarAlz/FFXIV-DomanMahjongSolver/issues/30)) | Untested | Untested |
 | Riichi / Tsumo / Ron commit | Yes (v0.1.0.11) | Untested | Untested | Untested |
 
-If you're on JP or OC: seat at a Doman table, run `/mjauto variant dump`, and attach the file to a new issue.
+For JP verification, seat at a Doman table and run `/mjauto variant dump`; if the addon is not detected, use `/mjauto addons Emj` and then `/mjauto variant dump <addonName>`. The JP profile is based on a Japanese `EmjL` capture whose structure and `76041` tile base match `Emj`.
 
 ## Troubleshooting
 

@@ -4,13 +4,13 @@ namespace Mahjong.Policy.Efficiency;
 
 /// <summary>
 /// Continuous [0, 1] yaku-completion estimate normalised to <see cref="TargetHan"/>. Targets
-/// mangan-floor so the scorer keeps differentiating value beyond Doman's 2-han minimum.
+/// mangan-floor so the scorer keeps differentiating value after a hand becomes legal.
 /// Two soft 0.5-cert routes beat one 1.0-cert route, biasing toward yaku-stacked hands.
 /// </summary>
 public static class YakuPotential
 {
     /// <summary>
-    /// Saturation point in han. Was 2.0 (Doman min). Raising it to 4.0 means a fat 4-han
+    /// Saturation point in han. A value of 4.0 means a fat 4-han
     /// hand reads as 1.0 and a thin 2-han hand reads as 0.5, so the scorer no longer
     /// plateaus the moment legality is reached. DiscardScorer reads this to size the
     /// yakuless-tenpai penalty.

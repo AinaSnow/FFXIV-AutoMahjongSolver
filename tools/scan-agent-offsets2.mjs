@@ -39,23 +39,26 @@ async function loadAll(d) {
 }
 
 const allRecords = await loadAll(dir);
-const v2 = allRecords.filter((r) => r.v === 2 && typeof r.agent_b64 === "string");
-for (const r of v2) {
+const records = allRecords.filter((r) => r.v >= 3 && typeof r.agent_b64 === "string");
+for (const r of records) {
   r.agent = Buffer.from(r.agent_b64, "base64");
   if (typeof r.addon_b64 === "string") r.addon = Buffer.from(r.addon_b64, "base64");
 }
-v2.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
-console.log(`v=2 records: ${v2.length}`);
-if (v2.length === 0) process.exit(0);
+records.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+console.log(`v>=3 AgentEmj records: ${records.length}`);
+if (records.length === 0) {
+  console.log("No usable records. v2 captured the wrong AgentId and is intentionally ignored.");
+  process.exit(0);
+}
 
-const agentLen = v2[0].agent.length;
+const agentLen = records[0].agent.length;
 const wallEstimate = (buf) => {
   if (!buf || buf.length < 0x0E00) return -1;
   let t = 0;
   for (const o of TOTAL_DC_OFFSETS) t += buf[o];
   return 70 - t;
 };
-const withAddon = v2.filter((r) => r.addon).map((r) => ({ ...r, wall: wallEstimate(r.addon) }));
+const withAddon = records.filter((r) => r.addon).map((r) => ({ ...r, wall: wallEstimate(r.addon) }));
 
 // Find hand boundaries (wall jump up) AND keep a sample index a few ticks past.
 const boundaries = [];
@@ -121,26 +124,26 @@ for (const c of byteCandidates.slice(0, 15)) {
 // records until the next boundary, then reset to 0.
 console.log("\n## OurRiichi candidates (stay-set-after-flip pattern)");
 const flipBytes = new Map(); // offset -> { flips, persistedHands }
-const idxByReason = (reason) => v2.map((r, i) => ({ ...r, idx: i })).filter((r) => r.reason === reason);
+const idxByReason = (reason) => records.map((r, i) => ({ ...r, idx: i })).filter((r) => r.reason === reason);
 const inputPosts = idxByReason("input-post");
 
 for (const post of inputPosts) {
-  const postIdx = v2.indexOf(post);
+  const postIdx = post.idx;
   if (postIdx < 1) continue;
-  const prev = v2.slice(0, postIdx).reverse().find((r) => r.reason === "input-pre");
+  const prev = records.slice(0, postIdx).reverse().find((r) => r.reason === "input-pre");
   if (!prev) continue;
   if (prev.agent.length !== post.agent.length) continue;
 
-  // Find next boundary index (in withAddon ordering — but we're using v2 ordering here,
+  // Find next boundary index (in withAddon ordering — but we're using record ordering here,
   // so approximate: find next state-change with wall jump up). For simplicity, scan
   // forward up to 200 records and look for the value staying 1.
   for (let off = 0; off < post.agent.length; off++) {
     if (prev.agent[off] === 0 && post.agent[off] === 1) {
       // Check persistence: how many records from postIdx forward have value 1 at this offset?
       let persisted = 0;
-      const lookahead = Math.min(postIdx + 200, v2.length);
+      const lookahead = Math.min(postIdx + 200, records.length);
       for (let j = postIdx + 1; j < lookahead; j++) {
-        if (v2[j].agent && v2[j].agent[off] === 1) persisted++;
+        if (records[j].agent && records[j].agent[off] === 1) persisted++;
         else break;
       }
       if (persisted >= 20) {

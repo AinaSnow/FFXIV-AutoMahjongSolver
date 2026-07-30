@@ -17,7 +17,10 @@
   "nodeIds": {
     "callModalHost": 104,
     "callModalShell": 3,
-    "meldContainer": 61
+    "meldContainer": 61,
+    "nextButton": 97,
+    "nextButtonCollision": 4,
+    "nextButtonEventParam": 7
   },
   "atkValues": {
     "stateCode": 0,
@@ -33,7 +36,9 @@
     "callPrompt": 15,
     "callPromptList": 28,
     "selfDeclareList": 6,
-    "postDrawIdle": 5
+    "postDrawIdle": 5,
+    "chiVariantSelect": 25,
+    "handResult": 29
   },
   "limits": {
     "handSize": 14,

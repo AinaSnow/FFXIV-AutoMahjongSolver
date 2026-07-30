@@ -21,8 +21,15 @@ public sealed class InputDispatcher
 {
     // Fallback values match data/layouts/{emj,emj_l}.json. Used when the layout accessor isn't wired (tests) or hasn't resolved yet (no addon attached).
     private const int DefaultSelfDeclareListCode = 6;
+    private const int DefaultCallPromptCode = 15;
     private const int DefaultOurTurnDiscardCode = 30;
     private const int DefaultHandArrayStartOffset = 0x0DB8;
+    private const uint DefaultCallModalHostNodeId = 104;
+    private const uint DefaultCallModalShellNodeId = 3;
+    private const uint DefaultNextButtonNodeId = 97;
+    private const uint DefaultNextButtonCollisionNodeId = 4;
+    private const int DefaultNextButtonEventParam = 7;
+    private const int DefaultButtonLabelScanLimit = 20;
 
     private readonly MahjongAddon addon;
     private readonly Func<LayoutProfile?>? layoutAccessor;
@@ -36,10 +43,26 @@ public sealed class InputDispatcher
 
     private int SelfDeclareListCode =>
         layoutAccessor?.Invoke()?.StateCodes.SelfDeclareList ?? DefaultSelfDeclareListCode;
+    private int CallPromptCode =>
+        layoutAccessor?.Invoke()?.StateCodes.CallPrompt ?? DefaultCallPromptCode;
     private int OurTurnDiscardCode =>
         layoutAccessor?.Invoke()?.StateCodes.OurTurnDiscard ?? DefaultOurTurnDiscardCode;
     private int HandArrayStartOffset =>
         layoutAccessor?.Invoke()?.Offsets.HandArrayStart ?? DefaultHandArrayStartOffset;
+    private uint CallModalHostNodeId =>
+        layoutAccessor?.Invoke()?.NodeIds.CallModalHost ?? DefaultCallModalHostNodeId;
+    private uint CallModalShellNodeId =>
+        layoutAccessor?.Invoke()?.NodeIds.CallModalShell ?? DefaultCallModalShellNodeId;
+    private uint NextButtonNodeId =>
+        layoutAccessor?.Invoke()?.NodeIds.NextButton ?? DefaultNextButtonNodeId;
+    private uint NextButtonCollisionNodeId =>
+        layoutAccessor?.Invoke()?.NodeIds.NextButtonCollision ?? DefaultNextButtonCollisionNodeId;
+    private int NextButtonEventParam =>
+        layoutAccessor?.Invoke()?.NodeIds.NextButtonEventParam ?? DefaultNextButtonEventParam;
+    private int ButtonLabelScanLimit =>
+        layoutAccessor?.Invoke()?.AtkValues.ButtonLabelScanLimit ?? DefaultButtonLabelScanLimit;
+    private LayoutActionLabels ActionLabels =>
+        layoutAccessor?.Invoke()?.ActionLabels ?? LayoutActionLabels.Default;
 
     public enum DispatchResult
     {
@@ -211,15 +234,15 @@ public sealed class InputDispatcher
     }
 
     /// <summary>
-    /// True when the call-modal host (node 104) is visible and its inner
-    /// shell (node 3) is an AtkComponentList. Distinguishes the list-widget
+    /// True when the profile-configured call-modal host is visible and its inner
+    /// shell is an AtkComponentList. Distinguishes the list-widget
     /// popups (state-6 SelfDeclareList, state-28 CallPromptList) from the
     /// in-hand discard surface (state-30, no modal node) and from classic
     /// button-row popups (state-15 with string labels).
     /// </summary>
-    private static unsafe bool IsListWidgetPopupActive(AtkUnitBase* unit)
+    private unsafe bool IsListWidgetPopupActive(AtkUnitBase* unit)
     {
-        var host = unit->GetNodeById(104);
+        var host = unit->GetNodeById(CallModalHostNodeId);
         if (host == null || (int)host->Type < 1000)
             return false;
         if (!host->IsVisible())
@@ -227,7 +250,7 @@ public sealed class InputDispatcher
         var hostComp = ((AtkComponentNode*)host)->Component;
         if (hostComp == null)
             return false;
-        var shell = hostComp->GetNodeById(3);
+        var shell = hostComp->GetNodeById(CallModalShellNodeId);
         return shell != null && (int)shell->Type == 1030;
     }
 
@@ -256,13 +279,15 @@ public sealed class InputDispatcher
         if (!unit->IsVisible)
             return DispatchResult.AddonNotVisible;
 
-        // Both state-15 classic popups (pon/chi/kan/ron + pass button row) and
+        // Both classic popups (pon/chi/kan/ron + pass button row) and
         // state-6/28 list-widget popups (standalone Riichi/Pass) share the same
         // AtkComponentList shell type (1030), so the shell-type check alone
         // can't tell them apart. The reliable discriminator is parent AtkValues:
-        // state-15 prompts put the button labels ("Pon", "Chi", "Pass", ...) as
-        // plain Strings at low indices; state-6/28 prompts put only Ints/Bools
-        // there with labels living inside the list items' text nodes.
+        // older profiles may put button labels ("Pon", "Chi", "Pass", ...) as
+        // plain Strings at low indices. Localized clients do not consistently
+        // expose those strings in the scan window, so the profile's CallPrompt
+        // state is the primary discriminator; labels remain a fallback for
+        // unknown/transient states.
         //
         // Dispatch accordingly:
         //  - Classic button-row: FireCallback([11, opt]) — what the game's own
@@ -277,7 +302,7 @@ public sealed class InputDispatcher
         // (pon/chi/ron) because SelectItem doesn't fire the addon-level opcode-11
         // callback the button-row handler expects. Distinguishing the two cases
         // restores state-15 behavior while keeping the state-6/28 fix.
-        if (HasClassicButtonLabels(unit))
+        if (ReadStateCode(unit) == CallPromptCode || HasClassicButtonLabels(unit))
         {
             var values = stackalloc AtkValue[2];
             values[0].SetInt(11);
@@ -299,40 +324,33 @@ public sealed class InputDispatcher
     }
 
     /// <summary>
-    /// True when parent AtkValues carry a bare button-label string like
-    /// "Pon"/"Chi"/"Kan"/"Ron"/"Riichi"/"Tsumo"/"Pass" in the first ~20 slots —
+    /// True when parent AtkValues carry a recognized action-label alias in the
+    /// profile's scan window —
     /// the signature of a state-15 classic button-row popup. State-6/28
     /// list-widget popups carry only Ints/Bools there (labels live inside
     /// list-item children), so a false from this check routes dispatch to the
     /// SelectItem path.
     /// </summary>
-    private static unsafe bool HasClassicButtonLabels(AtkUnitBase* unit)
+    private unsafe bool HasClassicButtonLabels(AtkUnitBase* unit)
     {
         var atkValues = unit->AtkValues;
         if (atkValues == null)
             return false;
-        int scanEnd = Math.Min((int)unit->AtkValuesCount, 20);
+        int scanEnd = Math.Min((int)unit->AtkValuesCount, ButtonLabelScanLimit);
+        var labels = ActionLabels;
         for (int i = 0; i < scanEnd; i++)
         {
             var v = atkValues[i];
             if (v.Type != FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.String &&
-                v.Type != FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.String8 &&
+                v.Type != FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.ConstString &&
                 v.Type != FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.ManagedString)
                 continue;
             if (v.String.Value == null)
                 continue;
             var s = v.String.ToString();
-            switch (s)
-            {
-                case "Pon":
-                case "Chi":
-                case "Kan":
-                case "Ron":
-                case "Riichi":
-                case "Tsumo":
-                case "Pass":
-                    return true;
-            }
+            if (LayoutActionLabelMatcher.IsAcceptAction(s, labels)
+                || LayoutActionLabelMatcher.IsPass(s, labels))
+                return true;
         }
         return false;
     }
@@ -343,15 +361,15 @@ public sealed class InputDispatcher
     /// code path a mouse-up runs into. Returns true when handled, false when
     /// the shell isn't a list and the caller should fall back.
     /// </summary>
-    private static unsafe bool TryDispatchListItemClick(AtkUnitBase* unit, int option)
+    private unsafe bool TryDispatchListItemClick(AtkUnitBase* unit, int option)
     {
-        var host = unit->GetNodeById(104);
+        var host = unit->GetNodeById(CallModalHostNodeId);
         if (host == null || (int)host->Type < 1000)
             return false;
         var hostComp = ((AtkComponentNode*)host)->Component;
         if (hostComp == null)
             return false;
-        var shell = hostComp->GetNodeById(3);
+        var shell = hostComp->GetNodeById(CallModalShellNodeId);
         if (shell == null || (int)shell->Type != 1030)
             return false;
         var shellComp = ((AtkComponentNode*)shell)->Component;
@@ -443,25 +461,21 @@ public sealed class InputDispatcher
         return DispatchResult.Ok;
     }
 
-    /// <summary>Dismisses the post-hand agari/draw result modal (state-29 "Next"). Routes through ReceiveEvent(ButtonClick) rather than FireCallback — the captured `[14]` was the addon's notification *after* the click, not the trigger; firing it directly landed the addon in stuck state-32 (2026-05-26).</summary>
+    /// <summary>Dismisses the post-hand agari/draw result modal. Routes through ReceiveEvent(ButtonClick) rather than FireCallback — the captured `[14]` was the addon's notification *after* the click, not the trigger; firing it directly landed the addon in stuck state-32 (2026-05-26).</summary>
     public unsafe DispatchResult DispatchHandResultNext()
     {
-        const uint nextButtonNodeId = 97;
-        const uint nextButtonCollisionId = 4;
-        const int nextButtonEventParam = 7;
-
         if (!addon.TryGet(out var unit, out _))
             return DispatchResult.AddonNotFound;
         if (!unit->IsVisible)
             return DispatchResult.AddonNotVisible;
 
-        var btnNode = unit->GetNodeById(nextButtonNodeId);
+        var btnNode = unit->GetNodeById(NextButtonNodeId);
         if (btnNode == null || (int)btnNode->Type < 1000)
             return DispatchResult.HookFailed;
         var compNode = (AtkComponentNode*)btnNode;
         if (compNode->Component == null)
             return DispatchResult.HookFailed;
-        var collision = compNode->Component->UldManager.SearchNodeById(nextButtonCollisionId);
+        var collision = compNode->Component->UldManager.SearchNodeById(NextButtonCollisionNodeId);
         if (collision == null)
             return DispatchResult.HookFailed;
 
@@ -471,7 +485,7 @@ public sealed class InputDispatcher
             Node = collision,
             Target = (AtkEventTarget*)collision,
         };
-        unit->ReceiveEvent(AtkEventType.ButtonClick, nextButtonEventParam, &atkEvent);
+        unit->ReceiveEvent(AtkEventType.ButtonClick, NextButtonEventParam, &atkEvent);
         return DispatchResult.Ok;
     }
 }

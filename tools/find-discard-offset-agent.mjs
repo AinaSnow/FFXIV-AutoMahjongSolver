@@ -1,13 +1,13 @@
 // Empirical discovery of the per-seat discard-array offsets inside the
 // AgentEmj buffer. Same +1-count-transition methodology as
 // find-discard-offset.mjs, but scans `agent_b64` (added in
-// MemoryDumpRecorder schema v2) and makes no per-seat-block assumption —
+// MemoryDumpRecorder schema v3+) and makes no per-seat-block assumption —
 // the agent layout is unknown, so we sweep the full buffer for each
 // seat's transition and look for the byte/word position that mutates in
 // lockstep with each seat's count increment.
 //
 // Usage:
-//   node tools/find-discard-offset-agent.mjs <memdump-dir>
+//   node tools/find-discard-offset-agent.mjs <memdump-dir> [--agent-id 328|329|330] [--stdout-only]
 //
 // Per seat, the analyzer:
 //   1. Collects every clean +1 transition.
@@ -25,17 +25,23 @@
 //   5. Emits a Markdown report + JSON patch (in the same shape as
 //      find-discard-offset.mjs's report).
 //
-// Schema gate: skips records lacking `agent_b64` so it's safe to run
-// against mixed v1/v2 corpora — pre-v2 records are filtered out, post-v2
-// records carry the field.
+// Schema gate: accepts only v3+ records. v2 had an agent_b64 field but
+// captured numeric AgentId 5 instead of AgentId.Emj and must not be analyzed.
 
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 
 const memdumpDir = process.argv[2];
+const stdoutOnly = process.argv.includes("--stdout-only");
+const agentIdArg = process.argv.indexOf("--agent-id");
+const targetAgentId = agentIdArg >= 0 ? Number(process.argv[agentIdArg + 1]) : 328;
 if (!memdumpDir) {
-  console.error("Usage: node tools/find-discard-offset-agent.mjs <memdump-dir>");
+  console.error("Usage: node tools/find-discard-offset-agent.mjs <memdump-dir> [--agent-id 328|329|330] [--stdout-only]");
+  process.exit(2);
+}
+if (![328, 329, 330].includes(targetAgentId)) {
+  console.error("--agent-id must be 328, 329, or 330");
   process.exit(2);
 }
 
@@ -64,7 +70,7 @@ async function loadAll(d) {
     for (const e of await readdir(cur, { withFileTypes: true })) {
       const p = join(cur, e.name);
       if (e.isDirectory()) stack.push(p);
-      else if (e.isFile() && e.name.endsWith(".gz"))
+      else if (e.isFile() && (e.name.endsWith(".gz") || e.name.endsWith(".ndjson")))
         for (const r of await readNdjson(p)) all.push(r);
     }
   }
@@ -72,6 +78,7 @@ async function loadAll(d) {
 }
 
 console.log(`[find-discard-offset-agent] scanning ${memdumpDir}`);
+console.log(`[find-discard-offset-agent] target agent id ${targetAgentId}`);
 const records = await loadAll(memdumpDir);
 console.log(`[find-discard-offset-agent] ${records.length} records loaded`);
 
@@ -82,19 +89,26 @@ for (const r of records) {
     try { r.__addon = Buffer.from(r.addon_b64, "base64"); }
     catch { r.__addon = null; }
   }
-  if (typeof r.agent_b64 === "string") {
-    try { r.__agent = Buffer.from(r.agent_b64, "base64"); }
+  const selectedB64 = targetAgentId === r.agent_id
+    ? r.agent_b64
+    : r.agent_candidates?.find((candidate) => candidate.id === targetAgentId)?.b64;
+  if (typeof selectedB64 === "string") {
+    try {
+      r.__agentB64 = selectedB64;
+      r.__agent = Buffer.from(selectedB64, "base64");
+    }
     catch { r.__agent = null; }
   }
 }
 const usable = records
-  .filter((r) => r.__addon && r.__addon.length >= 0x107E
+  .filter((r) => r.v >= 3
+    && r.__addon && r.__addon.length >= 0x107E
     && r.__agent && r.__agent.length > 0
     && typeof r.seq === "number")
   .sort((a, b) => a.seq - b.seq);
 console.log(`[find-discard-offset-agent] ${usable.length} usable (have addon ≥ 0x107E + agent_b64 + seq)`);
 if (usable.length < 2) {
-  console.error("[find-discard-offset-agent] need ≥2 records — collect more memdumps after deploying v2 schema");
+  console.error("[find-discard-offset-agent] need ≥2 v3+ records — v2 captured the wrong AgentId");
   process.exit(1);
 }
 
@@ -143,6 +157,22 @@ for (let i = 1; i < usable.length; i++) {
 }
 const NOISE_THRESHOLD = 0.35;
 const isNoisy = (off) => pairs > 0 && bgChanges[off] / pairs >= NOISE_THRESHOLD;
+const changedOffsets = [];
+for (let off = 0; off < agentLen; off++) {
+  if (bgChanges[off] > 0)
+    changedOffsets.push({ off, changes: bgChanges[off] });
+}
+changedOffsets.sort((a, b) => b.changes - a.changes || a.off - b.off);
+console.log(
+  `[find-discard-offset-agent] ${new Set(usable.map((r) => r.__agentB64)).size} unique agent buffers; ` +
+  `${changedOffsets.length}/${agentLen} byte offsets ever changed`);
+if (changedOffsets.length > 0) {
+  console.log(
+    `[find-discard-offset-agent] most active agent offsets: ` +
+    changedOffsets.slice(0, 20)
+      .map((x) => `0x${x.off.toString(16).padStart(4, "0")}=${x.changes}`)
+      .join(" "));
+}
 
 // Per-seat, per-transition deltaOffsets in the agent buffer.
 const perSeat = SEAT_COUNT_BYTES.map(() => ({ transitions: [] }));
@@ -241,7 +271,7 @@ md.push(`# Discard-Array Offset Discovery — AGENT scan`);
 md.push(``);
 md.push(`Generated ${new Date().toISOString()} from \`${memdumpDir}\``);
 md.push(``);
-md.push(`- Source field: \`agent_b64\` (MemoryDumpRecorder v2)`);
+md.push(`- Source agent id: \`${targetAgentId}\` (MemoryDumpRecorder v3+/v4)`);
 md.push(`- Agent buffer length: ${agentLen} bytes`);
 md.push(`- Records loaded: ${records.length}, usable (have agent + addon + seq): ${usable.length}`);
 md.push(`- Adjacent pairs: ${pairs}, clean +1 transitions: ${transitions.length}`);
@@ -288,14 +318,16 @@ for (let s = 0; s < 4; s++) {
 
 const outMd = join(memdumpDir, "_discard-offset-agent-fit.md");
 const outJson = join(memdumpDir, "_discard-offset-agent-fit.json");
-await writeFile(outMd, md.join("\n"), "utf8");
-await writeFile(outJson, JSON.stringify({
-  memdumpDir, source: "agent_b64",
-  records: records.length, usable: usable.length, pairs,
-  cleanTransitions: transitions.length, verdicts,
-}, null, 2), "utf8");
-console.log(`[find-discard-offset-agent] wrote ${outMd}`);
-console.log(`[find-discard-offset-agent] wrote ${outJson}`);
+if (!stdoutOnly) {
+  await writeFile(outMd, md.join("\n"), "utf8");
+  await writeFile(outJson, JSON.stringify({
+    memdumpDir, sourceAgentId: targetAgentId,
+    records: records.length, usable: usable.length, pairs,
+    cleanTransitions: transitions.length, verdicts,
+  }, null, 2), "utf8");
+  console.log(`[find-discard-offset-agent] wrote ${outMd}`);
+  console.log(`[find-discard-offset-agent] wrote ${outJson}`);
+}
 console.log("");
 console.log("=== Summary ===");
 for (const v of verdicts) {

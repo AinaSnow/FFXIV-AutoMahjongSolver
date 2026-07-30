@@ -79,7 +79,7 @@ public class ReplayFixtureTests
             ValueType.Int => AtkValueRecord.OfInt(v.Int ?? 0),
             ValueType.UInt => new AtkValueRecord(type, 0, v.UInt ?? 0u, null),
             ValueType.Bool => new AtkValueRecord(type, 0, (v.Bool ?? false) ? 1u : 0u, null),
-            ValueType.String or ValueType.String8 or ValueType.ManagedString =>
+            ValueType.String or ValueType.ConstString or ValueType.ManagedString =>
                 new AtkValueRecord(type, 0, 0, v.String),
             _ => AtkValueRecord.Empty,
         };

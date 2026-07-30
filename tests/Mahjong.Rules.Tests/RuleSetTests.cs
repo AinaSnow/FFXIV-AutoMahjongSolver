@@ -24,9 +24,16 @@ public class RuleSetTests
     }
 
     [Fact]
-    public void Doman_min_han_is_two()
+    public void Doman_min_han_is_one()
     {
-        Assert.Equal(2, new DomanRuleSet().MinHan);
+        Assert.Equal(1, new DomanRuleSet().MinHan);
+    }
+
+    [Fact]
+    public void Both_rulesets_allow_red_dora()
+    {
+        Assert.True(new RiichiRuleSet().AllowsRedDora);
+        Assert.True(new DomanRuleSet().AllowsRedDora);
     }
 
     [Fact]

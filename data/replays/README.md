@@ -25,10 +25,9 @@ behavior is the new baseline, and regenerate the snapshot if so.
 
 ## Why riichi rules, not Doman rules
 
-Tenhou games are played under standard Japanese riichi rules. Replaying them
-under `DomanRuleSet` would silently corrupt accuracy — for instance, if Doman
-enforces a 2-han minimum (`docs/ruleset.md` Q1), Tenhou-recorded 1-han wins
-would be rejected as no-yaku, and tuner deltas would chase noise.
+Tenhou games are played under standard Japanese riichi rules. Replays should
+retain the source platform's rules instead of assuming every overlapping
+Doman rule will remain identical.
 
 The harness wires `RiichiRuleSet` automatically. Do not pass a Doman policy
 into the replay test loop.

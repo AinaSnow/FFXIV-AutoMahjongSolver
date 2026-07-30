@@ -24,6 +24,7 @@ public sealed class MjAutoCommand : IDisposable
     private readonly IFramework framework;
     private readonly IDalamudPluginInterface pluginInterface;
     private readonly ISigScanner sigScanner;
+    private readonly IClientState clientState;
     private readonly MahjongAddon addon;
 
     private bool autoSnapOn;
@@ -46,6 +47,7 @@ public sealed class MjAutoCommand : IDisposable
         IFramework framework,
         IDalamudPluginInterface pluginInterface,
         ISigScanner sigScanner,
+        IClientState clientState,
         MahjongAddon addon)
     {
         ArgumentNullException.ThrowIfNull(plugin);
@@ -54,6 +56,7 @@ public sealed class MjAutoCommand : IDisposable
         ArgumentNullException.ThrowIfNull(framework);
         ArgumentNullException.ThrowIfNull(pluginInterface);
         ArgumentNullException.ThrowIfNull(sigScanner);
+        ArgumentNullException.ThrowIfNull(clientState);
         ArgumentNullException.ThrowIfNull(addon);
         this.plugin = plugin;
         this.chatGui = chatGui;
@@ -61,6 +64,7 @@ public sealed class MjAutoCommand : IDisposable
         this.framework = framework;
         this.pluginInterface = pluginInterface;
         this.sigScanner = sigScanner;
+        this.clientState = clientState;
         this.addon = addon;
         commandManager.AddHandler(Primary, new CommandInfo(OnCommand)
         {
@@ -221,7 +225,7 @@ public sealed class MjAutoCommand : IDisposable
         chatGui.Print("  /mjauto autosnap <on|off> — auto-snap on state changes");
 
         chatGui.Print("Reverse-engineering dumps:");
-        chatGui.Print("  /mjauto variant dump — layout dump for new client variants");
+        chatGui.Print("  /mjauto variant dump [addonName] — layout dump for new client variants");
         chatGui.Print("  /mjauto walknodes — dump the AtkUld node tree");
         chatGui.Print("  /mjauto findtiles — scan addon/agent memory for tile-encoded values");
         chatGui.Print("  /mjauto poolslots — diff visible discard-pool slots for tile fields");
@@ -356,14 +360,15 @@ public sealed class MjAutoCommand : IDisposable
     {
         var parts = arg.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
         var sub = parts.Length > 0 ? parts[0].ToLowerInvariant() : string.Empty;
+        var requestedAddonName = parts.Length > 1 ? parts[1].Trim() : null;
 
         switch (sub)
         {
             case "dump":
-                DumpVariant();
+                DumpVariant(requestedAddonName);
                 break;
             case "":
-                chatGui.Print("[MjAuto] Usage: /mjauto variant dump");
+                chatGui.Print("[MjAuto] Usage: /mjauto variant dump [addonName]");
                 break;
             default:
                 chatGui.PrintError(
@@ -372,25 +377,41 @@ public sealed class MjAutoCommand : IDisposable
         }
     }
 
-    internal unsafe void DumpVariant()
+    internal unsafe void DumpVariant(string? requestedAddonName = null)
     {
         framework.RunOnFrameworkThread(() =>
         {
-            if (!addon.TryGet(out var unit, out var resolvedName))
+            AtkUnitBase* unit;
+            string resolvedName;
+            if (!string.IsNullOrWhiteSpace(requestedAddonName))
+            {
+                resolvedName = requestedAddonName.Trim();
+                if (!addon.TryGetByName(resolvedName, out unit))
+                {
+                    chatGui.PrintError(
+                        $"[MjAuto] Addon '{resolvedName}' not found. Seat at a table, use " +
+                        "`/mjauto addons Emj` to find its name, then retry.");
+                    return;
+                }
+            }
+            else if (!addon.TryGet(out unit, out resolvedName))
             {
                 chatGui.PrintError(
-                    "[MjAuto] Mahjong addon not found — seat at a table first, then retry.");
+                    "[MjAuto] Mahjong addon not found. Seat at a table and retry, or pass the " +
+                    "addon name explicitly: `/mjauto variant dump <addonName>`.");
                 return;
             }
 
             var sb = new System.Text.StringBuilder();
             var now = DateTime.UtcNow;
+            var clientLanguage = clientState.ClientLanguage.ToString();
             nint addonAddr = (nint)unit;
 
             sb.AppendLine($"# Emj variant dump — utc={now:o}");
+            sb.AppendLine($"# Client language: {clientLanguage}");
             sb.AppendLine(
                 $"# Resolved addon name: \"{resolvedName}\"  " +
-                $"(candidates: {string.Join(", ", MahjongAddon.CandidateNames)})");
+                $"(candidates: {string.Join(", ", addon.KnownAddonNames)})");
             sb.AppendLine($"# Addon pointer: 0x{addonAddr:X}  visible={unit->IsVisible}");
             if (unit->RootNode != null)
                 sb.AppendLine(
@@ -521,12 +542,26 @@ public sealed class MjAutoCommand : IDisposable
 
             var dir = pluginInterface.GetPluginConfigDirectory();
             System.IO.Directory.CreateDirectory(dir);
-            var path = System.IO.Path.Combine(dir, "emj-variant-dump.txt");
+            var timestamp = now.ToString(
+                "yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture);
+            var fileName =
+                $"emj-variant-dump-{SanitizeFilePart(clientLanguage)}-" +
+                $"{SanitizeFilePart(resolvedName)}-{timestamp}.txt";
+            var path = System.IO.Path.Combine(dir, fileName);
             System.IO.File.WriteAllText(path, sb.ToString());
             chatGui.Print(
                 $"[MjAuto] variant dump → {path}. " +
                 $"Open a new issue at {IssuesUrl} and attach this file when reporting a new client variant.");
         });
+    }
+
+    internal static string SanitizeFilePart(string value)
+    {
+        var invalid = System.IO.Path.GetInvalidFileNameChars();
+        var sanitized = new string(value
+            .Select(ch => invalid.Contains(ch) || char.IsWhiteSpace(ch) ? '-' : ch)
+            .ToArray());
+        return string.IsNullOrWhiteSpace(sanitized) ? "unknown" : sanitized;
     }
 
     private static unsafe string FormatAtkValue(AtkValue v)
@@ -540,7 +575,7 @@ public sealed class MjAutoCommand : IDisposable
             case ValueType.Bool:
                 return $"{v.Type,-14} Bool={v.Byte != 0}";
             case ValueType.String:
-            case ValueType.String8:
+            case ValueType.ConstString:
             case ValueType.ManagedString:
                 if (v.String.Value == null)
                     return $"{v.Type,-14} (null)";
@@ -820,7 +855,7 @@ public sealed class MjAutoCommand : IDisposable
                         sb.Append($"Bool={v.Byte != 0}");
                         break;
                     case FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.String:
-                    case FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.String8:
+                    case FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.ConstString:
                     case FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.ManagedString:
                         var s = v.String.Value != null
                             ? v.String.ToString() : "(null)";
@@ -1678,7 +1713,7 @@ public sealed class MjAutoCommand : IDisposable
                     display = $"Bool={v.Byte != 0}";
                     break;
                 case FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.String:
-                case FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.String8:
+                case FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.ConstString:
                 case FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.ManagedString:
                     display = $"String=\"{(v.String.Value != null ? v.String.ToString() : "(null)")}\"";
                     break;

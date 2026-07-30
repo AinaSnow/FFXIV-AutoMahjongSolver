@@ -54,7 +54,7 @@ public sealed class RiichiRuleSet : IRuleSet
     public IDoraRule DoraRule { get; } = new StandardDoraRule();
     public IFuRule FuRule { get; } = new StandardFuRule();
 
-    public bool AllowsRedDora => false;
+    public bool AllowsRedDora => true;
     public bool AllowsKuitan => true;
     public int MinHan => 1;
     public int KazoeThreshold => ScoringConstants.KazoeYakumanHan;

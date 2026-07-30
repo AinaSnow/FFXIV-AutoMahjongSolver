@@ -12,7 +12,7 @@ namespace Mahjong.Plugin.Dalamud.Telemetry;
 /// <summary>
 /// Emits per-turn diagnostic findings to answer three loss-mode hypotheses:
 /// (1) was the policy's recommendation actually played, (2) how often do we sit
-/// in yakuless tenpai under Doman's 2-han minimum, (3) what reasons does the
+/// in yakuless tenpai under the active ruleset's yaku floor, (3) what reasons does the
 /// call policy report. Closes each hand with a roll-up so 10-game patterns
 /// show up without re-grepping every decision line.
 /// </summary>

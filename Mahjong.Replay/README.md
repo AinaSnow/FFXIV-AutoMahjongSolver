@@ -14,11 +14,9 @@ Tenhou log parser + per-seat replay engine + golden-file regression harness.
 
 ## Riichi rules, not Doman
 
-Tenhou games are played under standard Japanese riichi rules. Replaying a
-Tenhou log under `DomanRuleSet` would silently corrupt accuracy — for
-instance, a Doman 2-han minimum (per `docs/ruleset.md` Q1) would reject
-Tenhou 1-han wins as no-yaku and tuner deltas would chase noise. The
-harness wires `RiichiRuleSet` automatically.
+Tenhou games are played under standard Japanese riichi rules. The harness
+wires `RiichiRuleSet` automatically so replays retain the source platform's
+rules even where the current Doman and riichi implementations overlap.
 
 ## Golden-file regression flow
 

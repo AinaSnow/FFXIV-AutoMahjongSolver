@@ -15,17 +15,23 @@ internal sealed class VariantSelector
     private readonly IReadOnlyList<IEmjVariant> variants;
     private readonly IPluginLog log;
     private readonly IFindingsLog? findings;
+    private readonly string? clientLanguage;
     private IEmjVariant? cached;
     private bool loggedUnmatched;
     private DateTime? firstMissAt;
 
-    public VariantSelector(IReadOnlyList<IEmjVariant> variants, IPluginLog log, IFindingsLog? findings = null)
+    public VariantSelector(
+        IReadOnlyList<IEmjVariant> variants,
+        IPluginLog log,
+        IFindingsLog? findings = null,
+        string? clientLanguage = null)
     {
         ArgumentNullException.ThrowIfNull(variants);
         ArgumentNullException.ThrowIfNull(log);
         this.variants = variants;
         this.log = log;
         this.findings = findings;
+        this.clientLanguage = clientLanguage;
     }
 
     public IReadOnlyList<IEmjVariant> Variants => variants;
@@ -35,6 +41,7 @@ internal sealed class VariantSelector
         // Discard cached match if either the probe or the name tiebreaker no longer agrees.
         if (cached is not null
             && cached.Probe(unit)
+            && SupportsClientLanguage(cached)
             && cached.PreferredAddonName == resolvedAddonName)
         {
             firstMissAt = null;
@@ -43,14 +50,23 @@ internal sealed class VariantSelector
 
         var probeResults = new List<(string Name, string Preferred, bool Matched)>(variants.Count);
         IEmjVariant? winner = null;
+        int winnerScore = -1;
         foreach (var v in variants)
         {
-            bool matched = v.Probe(unit);
+            bool matched = v.Probe(unit) && SupportsClientLanguage(v);
             probeResults.Add((v.Name, v.PreferredAddonName, matched));
             if (!matched)
                 continue;
-            if (winner is null || v.PreferredAddonName == resolvedAddonName)
+
+            int score = v.PreferredAddonName == resolvedAddonName ? 2 : 0;
+            if (v.Profile.ClientLanguages is { Length: > 0 }
+                && !string.IsNullOrWhiteSpace(clientLanguage))
+                score++;
+            if (score > winnerScore)
+            {
                 winner = v;
+                winnerScore = score;
+            }
         }
 
         if (winner is not null)
@@ -81,6 +97,15 @@ internal sealed class VariantSelector
         }
         cached = null;
         return null;
+    }
+
+    private bool SupportsClientLanguage(IEmjVariant variant)
+    {
+        var supported = variant.Profile.ClientLanguages;
+        if (supported is null || supported.Length == 0 || string.IsNullOrWhiteSpace(clientLanguage))
+            return true;
+        return supported.Any(language =>
+            string.Equals(language, clientLanguage, StringComparison.OrdinalIgnoreCase));
     }
 
     private void EmitVariantChange(

@@ -14,11 +14,14 @@ public sealed record SeatView(
     int RiichiDiscardIndex,
     bool Ippatsu,
     bool IsTenpaiCalled,
-    int DiscardCount = 0)
+    int DiscardCount = 0,
+    IReadOnlyList<bool>? DiscardIsRed = null)
 {
     public IReadOnlyList<Tile> Discards { get; init; } = [.. Discards];
     public IReadOnlyList<bool> DiscardIsTedashi { get; init; } = [.. DiscardIsTedashi];
     public IReadOnlyList<Meld> Melds { get; init; } = [.. Melds];
+    public IReadOnlyList<bool> DiscardIsRed { get; init; } =
+        DiscardIsRed is null ? new bool[Discards.Count] : [.. DiscardIsRed];
 }
 
 /// <summary>
@@ -30,11 +33,15 @@ public sealed record SeatView(
 /// unconfirmed seat wind biases the policy toward keeping useless winds.
 /// </param>
 /// <param name="AkaDora">
-/// Red-5 count in the closed hand. Side-channel so Tile stays 1-byte; Scorer adds to dora.
+/// Known red-5 count across our closed hand and melds. Scorer adds it to dora.
 /// </param>
 /// <param name="AddonStateCode">
 /// Raw addon state code (-1 = unknown). Disambiguates dispatch contexts the Legal enum can't —
 /// e.g. state-6 self-declare popup vs. state-30 classic discard, both Legal=Discard.
+/// </param>
+/// <param name="HandIsRed">
+/// Per-tile red-five identity aligned with <paramref name="Hand"/>. An all-false default does
+/// not imply the identity was observed; check <paramref name="Observations"/> first.
 /// </param>
 public sealed record StateSnapshot(
     IReadOnlyList<Tile> Hand,
@@ -57,11 +64,15 @@ public sealed record StateSnapshot(
     int SchemaVersion,
     bool SeatInfoKnown = false,
     int AkaDora = 0,
-    int AddonStateCode = -1)
+    int AddonStateCode = -1,
+    IReadOnlyList<bool>? HandIsRed = null,
+    SnapshotObservationFlags Observations = SnapshotObservationFlags.None)
 {
-    public const int CurrentSchemaVersion = 4;
+    public const int CurrentSchemaVersion = 5;
 
     public IReadOnlyList<Tile> Hand { get; init; } = [.. Hand];
+    public IReadOnlyList<bool> HandIsRed { get; init; } =
+        HandIsRed is null ? new bool[Hand.Count] : [.. HandIsRed];
     public IReadOnlyList<Meld> OurMelds { get; init; } = [.. OurMelds];
     public IReadOnlyList<int> Scores { get; init; } = [.. Scores];
     public IReadOnlyList<Tile> DoraIndicators { get; init; } = [.. DoraIndicators];

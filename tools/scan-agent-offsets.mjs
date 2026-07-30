@@ -1,4 +1,4 @@
-// Scan AgentEmj bytes (memdump v=2 schema's `agent_b64`) for offsets that
+// Scan AgentEmj bytes (memdump v3+ schema's `agent_b64`) for offsets that
 // rotate {0,1,2,3} across hand boundaries — DealerSeat candidate — and for
 // byte offsets that flip 0→1 around the riichi-declaration moment — OurRiichi.
 //
@@ -48,20 +48,20 @@ async function loadAll(d) {
 const allRecords = await loadAll(dir);
 console.log(`loaded ${allRecords.length} memdump records`);
 
-const v2 = allRecords.filter((r) => r.v === 2 && typeof r.agent_b64 === "string" && r.agent_b64.length > 0);
-console.log(`v=2 with agent_b64: ${v2.length}`);
-if (v2.length === 0) {
-  console.log("No v=2 agent_b64 records — scanner can't run. Need a corpus from an install on a recent plugin build.");
+const records = allRecords.filter((r) => r.v >= 3 && typeof r.agent_b64 === "string" && r.agent_b64.length > 0);
+console.log(`v>=3 with AgentEmj agent_b64: ${records.length}`);
+if (records.length === 0) {
+  console.log("No v>=3 AgentEmj records — scanner can't run. v2 captured the wrong AgentId and is intentionally ignored.");
   process.exit(0);
 }
 
 // Materialize agent bytes
-for (const r of v2) {
+for (const r of records) {
   r.agent = Buffer.from(r.agent_b64, "base64");
   if (typeof r.addon_b64 === "string") r.addon = Buffer.from(r.addon_b64, "base64");
 }
-v2.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
-const agentLen = v2[0].agent.length;
+records.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+const agentLen = records[0].agent.length;
 console.log(`agent buf length: ${agentLen} (0x${agentLen.toString(16)})`);
 
 // Compute hand boundaries using addon wall (sum of discard-count bytes).
@@ -71,7 +71,7 @@ function wallEstimate(addonBuf) {
   for (const off of TOTAL_DC_OFFSETS) total += addonBuf[off];
   return 70 - total;
 }
-const withWall = v2.filter((r) => r.addon).map((r) => ({ ...r, wall: wallEstimate(r.addon) }));
+const withWall = records.filter((r) => r.addon).map((r) => ({ ...r, wall: wallEstimate(r.addon) }));
 const boundaries = [];
 for (let i = 1; i < withWall.length; i++) {
   if (withWall[i].wall - withWall[i - 1].wall >= 10) boundaries.push(i);
@@ -123,8 +123,8 @@ if (boundaries.length >= 2) {
 // Riichi declaration: find input-pre/input-post pairs near each other and
 // see if any byte in agent_b64 flipped 0→1.
 console.log("\n## OurRiichi candidates (bytes that flipped 0→1 across input-pre / input-post pair)");
-const pre = v2.filter((r) => r.reason === "input-pre");
-const post = v2.filter((r) => r.reason === "input-post");
+const pre = records.filter((r) => r.reason === "input-pre");
+const post = records.filter((r) => r.reason === "input-post");
 console.log(`  pre=${pre.length}  post=${post.length}`);
 
 const flipCounts = new Map();

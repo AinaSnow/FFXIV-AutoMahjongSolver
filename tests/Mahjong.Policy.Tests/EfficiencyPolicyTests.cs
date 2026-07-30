@@ -18,14 +18,25 @@ public class EfficiencyPolicyTests
     }
 
     [Fact]
-    public void Tsumo_declined_when_doman_min_han_not_met()
+    public void Tsumo_accepted_under_doman_one_han_floor()
     {
-        // Issue #51: yakuless complete shape under Doman MinHan=2.
+        // Closed tsumo supplies the one yaku required by Doman's current MinHan=1 rule.
         var doman = new EfficiencyPolicy(new DomanRuleSet());
         var s = Snapshots.Closed14("22666p123345s222z", ActionFlags.Tsumo | ActionFlags.Discard);
         var choice = doman.Choose(s);
-        Assert.NotEqual(ActionKind.Tsumo, choice.Kind);
-        Assert.Equal(ActionKind.Discard, choice.Kind);
+        Assert.Equal(ActionKind.Tsumo, choice.Kind);
+    }
+
+    [Fact]
+    public void Tsumo_transition_with_thirteen_tiles_is_ignored()
+    {
+        var complete = Snapshots.Closed14("123m456p789s11123p", ActionFlags.Tsumo | ActionFlags.Discard);
+        var transition = complete with { Hand = complete.Hand.Take(13).ToArray() };
+
+        var choice = Policy.Choose(transition);
+
+        Assert.Equal(ActionKind.Pass, choice.Kind);
+        Assert.DoesNotContain("decomposer requires", choice.Reasoning, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -67,6 +78,30 @@ public class EfficiencyPolicyTests
         for (int i = 1; i < scored.Length; i++)
             Assert.True(scored[i - 1].Score >= scored[i].Score,
                 $"scored array not sorted: [{i - 1}]={scored[i - 1].Score} < [{i}]={scored[i].Score}");
+    }
+
+    [Fact]
+    public void Discard_scorer_removes_visible_tiles_from_ukeire()
+    {
+        var baseState = Snapshots.Closed14("123m456p789s11z22z3z");
+        var baseScore = DiscardScorer.Score(baseState)
+            .Single(x => x.Discard.Id == 29);
+
+        var seats = baseState.Seats.ToArray();
+        seats[1] = seats[1] with
+        {
+            Discards = [Tiles.Parse("1z")[0], Tiles.Parse("1z")[0]],
+            DiscardIsTedashi = [true, true],
+            DiscardCount = 2,
+        };
+        var blockedState = baseState with { Seats = seats };
+        var blockedScore = DiscardScorer.Score(blockedState)
+            .Single(x => x.Discard.Id == 29);
+
+        Assert.True(
+            blockedScore.UkeireWeighted < baseScore.UkeireWeighted,
+            $"visible 1z copies should reduce ukeire: base={baseScore.UkeireWeighted}, " +
+            $"blocked={blockedScore.UkeireWeighted}");
     }
 
     [Fact]

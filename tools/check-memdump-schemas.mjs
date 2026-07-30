@@ -1,6 +1,6 @@
 // Walk all downloaded memdumps and report schema-version distribution
-// per install. Lets us know which installs are already on v=2 with
-// agent_b64, without needing fresh B2 pulls.
+// per install. Lets us know which installs are already on v3+ with a
+// verified AgentEmj agent_b64, without needing fresh B2 pulls.
 
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";

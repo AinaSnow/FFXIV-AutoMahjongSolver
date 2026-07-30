@@ -15,7 +15,7 @@ namespace Mahjong.Plugin.Dalamud.Logging;
 
 public sealed class GameLogger : IDisposable
 {
-    public const int SchemaVersion = 3;
+    public const int SchemaVersion = 4;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -228,6 +228,8 @@ public sealed class GameLogger : IDisposable
             Dealer: snap.DealerSeat,
             Honba: snap.Honba,
             RiichiSticks: snap.RiichiSticks,
+            SeatInfoKnown: snap.SeatInfoKnown,
+            Observations: (int)snap.Observations,
             Scores: startScores);
         WriteLine(JsonSerializer.Serialize(start, JsonOpts));
     }
@@ -322,8 +324,12 @@ public sealed class GameLogger : IDisposable
         h.Add(snap.DealerSeat);
         h.Add(snap.Honba);
         h.Add(snap.RiichiSticks);
-        foreach (var t in snap.Hand)
-            h.Add(t.Id);
+        h.Add((int)snap.Observations);
+        for (int i = 0; i < snap.Hand.Count; i++)
+        {
+            h.Add(snap.Hand[i].Id);
+            h.Add(i < snap.HandIsRed.Count && snap.HandIsRed[i]);
+        }
         foreach (var m in snap.OurMelds)
         {
             h.Add((int)m.Kind);
@@ -337,8 +343,12 @@ public sealed class GameLogger : IDisposable
         foreach (var s in snap.Seats)
         {
             h.Add(s.DiscardCount);
-            foreach (var t in s.Discards)
-                h.Add(t.Id);
+            for (int i = 0; i < s.Discards.Count; i++)
+            {
+                h.Add(s.Discards[i].Id);
+                h.Add(i < s.DiscardIsRed.Count && s.DiscardIsRed[i]);
+                h.Add(i < s.DiscardIsTedashi.Count && s.DiscardIsTedashi[i]);
+            }
             foreach (var m in s.Melds)
             {
                 h.Add((int)m.Kind);
@@ -376,7 +386,9 @@ public sealed class GameLogger : IDisposable
         StateCode: snap.AddonStateCode,
         Wall: snap.WallRemaining,
         Turn: snap.TurnIndex,
+        Observations: (int)snap.Observations,
         Hand: snap.Hand.Select(t => (int)t.Id).ToArray(),
+        HandRed: snap.HandIsRed.ToArray(),
         OurMelds: snap.OurMelds.Select(ToMeldDto).ToArray(),
         Dora: snap.DoraIndicators.Select(t => (int)t.Id).ToArray(),
         OurRiichi: snap.OurRiichi,
@@ -388,6 +400,8 @@ public sealed class GameLogger : IDisposable
     private static SeatDto ToSeatDto(SeatView s) => new(
         Dc: s.DiscardCount,
         D: s.Discards.Select(t => (int)t.Id).ToArray(),
+        Dr: s.DiscardIsRed.ToArray(),
+        Dt: s.DiscardIsTedashi.ToArray(),
         M: s.Melds.Select(ToMeldDto).ToArray(),
         R: s.Riichi,
         Ri: s.RiichiDiscardIndex,
@@ -411,6 +425,8 @@ public sealed class GameLogger : IDisposable
         [property: JsonPropertyName("dealer")] int Dealer,
         [property: JsonPropertyName("honba")] int Honba,
         [property: JsonPropertyName("riichi_sticks")] int RiichiSticks,
+        [property: JsonPropertyName("seat_info_known")] bool SeatInfoKnown,
+        [property: JsonPropertyName("obs")] int Observations,
         [property: JsonPropertyName("scores")] int[] Scores);
 
     private sealed record HandEndEvent(
@@ -428,7 +444,9 @@ public sealed class GameLogger : IDisposable
         [property: JsonPropertyName("state_code")] int StateCode,
         [property: JsonPropertyName("wall")] int Wall,
         [property: JsonPropertyName("turn")] int Turn,
+        [property: JsonPropertyName("obs")] int Observations,
         [property: JsonPropertyName("hand")] int[] Hand,
+        [property: JsonPropertyName("hand_red")] bool[] HandRed,
         [property: JsonPropertyName("our_melds")] MeldDto[] OurMelds,
         [property: JsonPropertyName("dora")] int[] Dora,
         [property: JsonPropertyName("our_riichi")] bool OurRiichi,
@@ -469,6 +487,8 @@ public sealed class GameLogger : IDisposable
     private sealed record SeatDto(
         [property: JsonPropertyName("dc")] int Dc,
         [property: JsonPropertyName("d")] int[] D,
+        [property: JsonPropertyName("dr")] bool[] Dr,
+        [property: JsonPropertyName("dt")] bool[] Dt,
         [property: JsonPropertyName("m")] MeldDto[] M,
         [property: JsonPropertyName("r")] bool R,
         [property: JsonPropertyName("ri")] int Ri,

@@ -96,6 +96,30 @@ public class HandSimulatorTests
     }
 
     [Fact]
+    public void Simulator_rotates_perspective_fields_with_seats()
+    {
+        var recorders = new[]
+        {
+            new SnapshotRecorderPolicy(),
+            new SnapshotRecorderPolicy(),
+            new SnapshotRecorderPolicy(),
+            new SnapshotRecorderPolicy(),
+        };
+        var policies = recorders.Cast<IPolicy>().ToArray();
+
+        var sim = new HandSimulator(new SeededRandomSource(42), new RiichiRuleSet());
+        sim.Simulate(policies, dealer: 0);
+
+        for (int observer = 0; observer < recorders.Length; observer++)
+        {
+            Assert.NotEmpty(recorders[observer].Snapshots);
+            Assert.All(recorders[observer].Snapshots,
+                snapshot => Assert.Equal(0, snapshot.OurSeat));
+            Assert.Equal((4 - observer) % 4, recorders[observer].Snapshots[0].DealerSeat);
+        }
+    }
+
+    [Fact]
     public void Furiten_detector_flags_when_a_wait_is_in_own_discards()
     {
         // 13-tile hand: 123m 456m 123p 456p 9p — tanki on 9p.
@@ -141,5 +165,16 @@ public class HandSimulatorTests
             totalDealIns += d;
         Assert.True(totalRons >= 0);
         Assert.Equal(totalRons, totalDealIns);
+    }
+
+    private sealed class SnapshotRecorderPolicy : IPolicy
+    {
+        public List<StateSnapshot> Snapshots { get; } = [];
+
+        public ActionChoice Choose(StateSnapshot state)
+        {
+            Snapshots.Add(state);
+            return ActionChoice.Pass("test recorder");
+        }
     }
 }

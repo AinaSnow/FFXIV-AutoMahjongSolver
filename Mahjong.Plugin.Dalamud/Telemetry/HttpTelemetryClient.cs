@@ -8,6 +8,13 @@ using Dalamud.Plugin.Services;
 
 namespace Mahjong.Plugin.Dalamud.Telemetry;
 
+public enum TelemetryUploadResult
+{
+    Uploaded,
+    Failed,
+    RateLimited,
+}
+
 public sealed class HttpTelemetryClient
 {
     private readonly HttpClient http;
@@ -24,7 +31,7 @@ public sealed class HttpTelemetryClient
         this.log = log;
     }
 
-    public async Task<bool> UploadAsync(
+    public async Task<TelemetryUploadResult> UploadAsync(
         string endpoint, string stream, string payloadPath, CancellationToken ct)
     {
         try
@@ -50,22 +57,25 @@ public sealed class HttpTelemetryClient
 
             using var resp = await http.SendAsync(msg, ct).ConfigureAwait(false);
             if (resp.IsSuccessStatusCode)
-                return true;
+                return TelemetryUploadResult.Uploaded;
+
+            if (resp.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                return TelemetryUploadResult.RateLimited;
 
             log.Warning(
                 $"[Telemetry] upload failed: stream={stream} file={Path.GetFileName(payloadPath)} " +
                 $"status={(int)resp.StatusCode}");
-            return false;
+            return TelemetryUploadResult.Failed;
         }
         catch (OperationCanceledException)
         {
             log.Debug($"[Telemetry] upload canceled: {Path.GetFileName(payloadPath)}");
-            return false;
+            return TelemetryUploadResult.Failed;
         }
         catch (Exception ex)
         {
             log.Warning($"[Telemetry] upload exception: {ex.GetType().Name}: {ex.Message}");
-            return false;
+            return TelemetryUploadResult.Failed;
         }
     }
 

@@ -29,7 +29,7 @@ The end goal is full intelligent automation across **all clients** (EU, NA, JP, 
 ## In progress
 
 - NA / `EmjL` parity re-verification against v0.1.0.11: the chi-accept fixes should apply identically to both variants but no NA tester has confirmed since the rework ([#30](https://github.com/XeldarAlz/FFXIV-DomanMahjongSolver/issues/30))
-- `OurSeat` / `OurRiichi` / `DealerSeat` addon offsets: cross-install scan of the `agent_b64` v=2 memdumps produced candidate offsets at `+0x009e`/`+0x00a6`/`+0x00ae`; needs in-game validation against a controlled multi-hand session
+- `OurSeat` / `OurRiichi` / `DealerSeat` AgentEmj offsets: capture was corrected in memdump schema v3 after the recorder's stale numeric AgentId `5` was found to target the wrong agent; needs a fresh controlled multi-hand v3 session
 - Two stuck-state RE captures: post-MinKan transient and post-2nd-consecutive-pon (see [`dispatch-protocol.md`](dispatch-protocol.md))
 
 ## Planned

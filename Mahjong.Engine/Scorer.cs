@@ -117,7 +117,8 @@ public sealed class Scorer
                 count += counts[rules.DoraRule.Next(indicator).Id];
         }
 
-        count += ctx.AkaDora;
+        if (rules.AllowsRedDora)
+            count += ctx.AkaDora;
 
         return count;
     }

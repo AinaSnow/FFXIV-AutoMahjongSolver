@@ -25,7 +25,8 @@
 // 2026-05-19: inspection of 11591 records from install 461e8ece confirmed
 // addon_b64 carries only the count byte change between adjacent +1
 // transitions — the actual tile array lives in `agent_b64` (added in
-// MemoryDumpRecorder schema v2). For post-v2 corpus, run
+// MemoryDumpRecorder schema v3+). Schema v2 carried this field but captured
+// the wrong AgentId and is invalid. For v3+ corpus, run
 // tools/find-discard-offset-agent.mjs instead; this one stays
 // addon-targeted as the historical baseline.
 //

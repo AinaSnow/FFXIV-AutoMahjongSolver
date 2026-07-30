@@ -20,7 +20,7 @@ internal sealed class AddonTab
             var obs = ctx.Plugin.AddonReader.Poll();
             if (!obs.Present)
             {
-                var candidates = string.Join("\" or \"", MahjongAddon.CandidateNames);
+                var candidates = string.Join("\" or \"", ctx.Addon.KnownAddonNames);
                 Theme.Subtle($"Addon \"{candidates}\" not found. Open a Doman Mahjong match in-game.");
                 if (obs.LastLifecycleEvent is not null)
                 {

@@ -3,10 +3,11 @@ namespace Mahjong.Core.Tests;
 public class DefensiveCopyTests
 {
     [Fact]
-    public void SeatView_copies_discards_melds_and_tedashi_flags()
+    public void SeatView_copies_discards_melds_and_per_discard_flags()
     {
         var discards = new List<Tile> { Tile.FromId(0) };
         var tedashi = new List<bool> { true };
+        var red = new List<bool> { false };
         var melds = new List<Meld> { Meld.AnKan(Tile.FromId(1)) };
 
         var view = new SeatView(
@@ -16,14 +17,17 @@ public class DefensiveCopyTests
             Riichi: false,
             RiichiDiscardIndex: -1,
             Ippatsu: false,
-            IsTenpaiCalled: false);
+            IsTenpaiCalled: false,
+            DiscardIsRed: red);
 
         discards.Clear();
         tedashi.Clear();
+        red.Clear();
         melds.Clear();
 
         Assert.Single(view.Discards);
         Assert.Single(view.DiscardIsTedashi);
+        Assert.Single(view.DiscardIsRed);
         Assert.Single(view.Melds);
     }
 
@@ -31,6 +35,7 @@ public class DefensiveCopyTests
     public void StateSnapshot_copies_every_list_input()
     {
         var hand = new List<Tile> { Tile.FromId(0) };
+        var handIsRed = new List<bool> { false };
         var melds = new List<Meld> { Meld.AnKan(Tile.FromId(0)) };
         var scores = new List<int> { 25000, 25000, 25000, 25000 };
         var dora = new List<Tile> { Tile.FromId(2) };
@@ -55,9 +60,11 @@ public class DefensiveCopyTests
             DealerSeat: 0,
             Seats: seats,
             Legal: LegalActions.None,
-            SchemaVersion: StateSnapshot.CurrentSchemaVersion);
+            SchemaVersion: StateSnapshot.CurrentSchemaVersion,
+            HandIsRed: handIsRed);
 
         hand.Clear();
+        handIsRed.Clear();
         melds.Clear();
         scores.Clear();
         dora.Clear();
@@ -65,6 +72,7 @@ public class DefensiveCopyTests
         seats.Clear();
 
         Assert.Single(snap.Hand);
+        Assert.Single(snap.HandIsRed);
         Assert.Single(snap.OurMelds);
         Assert.Equal(4, snap.Scores.Count);
         Assert.Single(snap.DoraIndicators);

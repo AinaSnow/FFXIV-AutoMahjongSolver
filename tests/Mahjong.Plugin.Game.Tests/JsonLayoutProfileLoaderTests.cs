@@ -74,6 +74,37 @@ public class JsonLayoutProfileLoaderTests
     }
 
     [Fact]
+    public void Parse_applies_backward_compatible_dispatch_defaults()
+    {
+        var profile = JsonLayoutProfileLoader.Parse(EmjJson);
+
+        Assert.Equal(97u, profile.NodeIds.NextButton);
+        Assert.Equal(4u, profile.NodeIds.NextButtonCollision);
+        Assert.Equal(7, profile.NodeIds.NextButtonEventParam);
+        Assert.Equal(25, profile.StateCodes.ChiVariantSelect);
+        Assert.Equal(29, profile.StateCodes.HandResult);
+        Assert.Null(profile.ClientLanguages);
+        Assert.Null(profile.ActionLabels);
+    }
+
+    [Fact]
+    public void Parse_loads_client_languages_and_action_label_overrides()
+    {
+        var json = EmjJson.Replace(
+            "  \"limits\": {",
+            "  \"clientLanguages\": [\"Japanese\"],\n" +
+            "  \"actionLabels\": { \"pon\": [\"CustomPon\"] },\n" +
+            "  \"limits\": {");
+
+        var profile = JsonLayoutProfileLoader.Parse(json);
+
+        Assert.Equal(["Japanese"], profile.ClientLanguages!);
+        Assert.NotNull(profile.ActionLabels);
+        Assert.Equal(["CustomPon"], profile.ActionLabels!.Pon);
+        Assert.Contains("チー", profile.ActionLabels.Chi);
+    }
+
+    [Fact]
     public void Parse_rejects_invalid_json_with_clear_error()
     {
         Assert.ThrowsAny<Exception>(() => JsonLayoutProfileLoader.Parse("{ not json"));
@@ -143,6 +174,23 @@ public class JsonLayoutProfileLoaderTests
         var profile = JsonLayoutProfileLoader.Load(path);
         Assert.Equal("Emj", profile.Name);
         Assert.Equal(76041, profile.TileTextureBase);
+    }
+
+    [Fact]
+    public void Real_jp_layout_matches_the_captured_japanese_client_fingerprint()
+    {
+        var path = ResolveRepoFile("data", "layouts", "jp.json");
+        if (path is null)
+            return;
+
+        var profile = JsonLayoutProfileLoader.Load(path);
+        Assert.Equal("EmjJP", profile.Name);
+        Assert.Equal("EmjL", profile.AddonName);
+        Assert.Equal(["Japanese"], profile.ClientLanguages!);
+        Assert.Equal(76041, profile.TileTextureBase);
+        Assert.Equal(104u, profile.NodeIds.CallModalHost);
+        Assert.Equal(3u, profile.NodeIds.CallModalShell);
+        Assert.Equal(["キャンセル", "パス"], profile.ActionLabels!.Pass);
     }
 
     private static string? ResolveRepoFile(params string[] relativeSegments)

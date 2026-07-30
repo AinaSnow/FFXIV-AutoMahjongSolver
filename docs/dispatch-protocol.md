@@ -166,7 +166,7 @@ The dispatcher is only half the protocol — the policy needs an accurate snapsh
 | `games` NDJSON | ✅ but missing `state_code` field — only `legal` enum is logged |
 | `inputs` NDJSON via FireCallback hook | ✅; gated on `EventLogger.Enabled` (off by default) |
 | Per-dispatch state breakdown in chat log | ✅ (added 2026-05-23T14:28 with `schedState`/`curState`/`path` annotations) |
-| `memdumps` schema v=2 with `agent_b64` | ✅ in code; no v=2 records in field corpus yet |
+| `memdumps` schema v=3 with verified `AgentId.Emj` `agent_b64` and `agent_id` | ✅ in code; fresh field capture pending |
 | Hand-end events | 🟡 fixed 2026-05-23 to write into new file; field validation pending |
 | Replay-dispatch tool | ⚫ Not built |
 | Structured per-dispatch event log | ⚫ Not built |
@@ -175,36 +175,23 @@ The dispatcher is only half the protocol — the policy needs an accurate snapsh
 
 ## Open RE items (blocked on data)
 
-These need v=2 memdumps from a multi-hand session with the captured plugin version to resolve:
+These need v3+ memdumps from a multi-hand session with the corrected AgentEmj capture to resolve. Schema v2 `agent_b64` is invalid because it captured numeric AgentId `5` instead of `AgentId.Emj` (`328` in the 2026-07-30 FFXIVClientStructs source).
 
 | Item | Detection method | Blocker |
 |---|---|---|
-| `DealerSeat` offset | Cross-reference `state-change` memdumps at hand-start moments; find byte that rotates `{0,1,2,3}` across hand boundaries | Need v=2 corpus (`agent_b64` likely contains it; not in v=1 addon dumps) |
-| `OurRiichi` offset | Byte-diff `input-pre`/`input-post` pair bracketing a riichi click | Need v=2 corpus with riichi events captured |
-| `OurIppatsu` offset | Same approach as OurRiichi | Need v=2 |
-| `Honba`, `RiichiSticks` offsets | Same | Need v=2 |
-| Opp `Seats[].Riichi` byte | State-change diff when opp declares riichi | Need v=2 |
+| `DealerSeat` offset | Cross-reference `state-change` memdumps at hand-start moments; find byte that rotates `{0,1,2,3}` across hand boundaries | Need fresh v3+ corpus (`agent_b64` likely contains it; not in addon dumps) |
+| `OurRiichi` offset | Byte-diff `input-pre`/`input-post` pair bracketing a riichi click | Need v3+ corpus with riichi events captured |
+| `OurIppatsu` offset | Same approach as OurRiichi | Need v3+ |
+| `Honba`, `RiichiSticks` offsets | Same | Need v3+ |
+| Opp `Seats[].Riichi` byte | State-change diff when opp declares riichi | Need v3+ |
 | Opp `Seats[].Melds` decoder | The addon-side meld struct hasn't been mapped | Need RE session against AgentEmj |
 | Tedashi vs tsumogiri bits | Per-discard flag — currently every opp discard is recorded as tedashi | Need RE on the discard array |
 
-### Agent_b64 scan results (2026-05-23, 9 v=2 installs sampled)
+### Agent_b64 capture correction (2026-07-30)
 
-Cross-install scan against agent_b64 (8192 bytes) found per-install variation at multiple offsets in {0..3} value range. Top byte candidates:
+The v2 recorder used `GetAgentByInternalId((AgentId)5)`. Current FFXIVClientStructs defines Mahjong as `AgentId.Emj = 328`, so every v2 `agent_b64` sample came from an unrelated agent. All earlier candidate offsets, including `+0x009e` / `+0x00a6` / `+0x00ae`, are invalidated.
 
-| Offset | Variation pattern across 9 installs | Notes |
-|---|---|---|
-| **+0x009e** | 0,0,2,3,3,3,0,0,2 | Covers {0,2,3}. Cluster with +0x00a6, +0x00ae — likely same struct. |
-| **+0x00a6** | 0,0,2,3,0,3,0,0,2 | Same cluster as +0x009e. |
-| **+0x00ae** | 0,0,2,3,0,3,0,0,3 | Same cluster. |
-| +0x0866 | 0,0,0,2,0,0,0,1,2 | Covers {0,1,2}. |
-| +0x0c0d | 2,2,1,2,1,2,2,0,2 | Covers {0,1,2}. |
-| +0x0cb8 | 0,1,0,0,0,0,2,0,1 | Covers {0,1,2}. |
-
-None showed all four values {0,1,2,3} — sample size of 9 installs is too small for clean rotation. The +0x009e/+0x00a6/+0x00ae triplet is the strongest candidate for some per-seat field (consecutive byte fields with correlated per-install values). Validation requires either:
-- Multi-hand within-install rotation pattern (blocked: corpus pre-v0.1.0.10 has many spurious hand-rolls polluting the boundary signal)
-- Live test: patch variant profile to read from +0x009e and observe if it matches the dealer seat in a controlled session
-
-Last B2 pull attempt (2026-05-23 15:00): May 22-23 memdumps still returned HTTP 403 (24h quota window not reset yet). May 20-21 v=2 corpus already analyzed — sufficient for cross-install but not for within-install boundary detection until the pre-v0.1.0.10 wall-jump pollution clears from future corpora.
+Schema v3 now calls `GetAgentByInternalId(AgentId.Emj)` and writes `agent_id` into each record. Agent scanners require `v >= 3`; the next step is a fresh multi-hand capture containing dealer rotations and riichi declarations.
 
 ---
 
@@ -273,7 +260,7 @@ Listed in priority order — each blocks the next.
 3. **Verify remaining 🟡 call protocols** survive a full match. Each one captured + cross-referenced against the dispatcher: multi-chi variant select, Riichi accept full cycle, Tsumo, AnKan/ShouMinKan button order at state-6, state-28 novice list prompt. (Ron auto-play routing fixed 2026-05-24 — live commit verification still pending but failure mode is no longer game-breaking.)
 4. **Land `dispatch_attempted` telemetry in v0.1.0.10** so post-deployment regressions are visible in the field corpus (already in code, awaiting field penetration as installs update).
 5. **Replay-dispatch tool** — given a captured atkvalues sequence, simulate the dispatcher's decision tree. Catch protocol regressions without a live session.
-6. **OurSeat / OurRiichi / Honba** from v=2 memdumps once available. Cross-install scan complete (candidates at +0x009e/+0x00a6/+0x00ae); needs in-game validation.
+6. **OurSeat / OurRiichi / Honba** from fresh v3+ AgentEmj memdumps. The prior v2 candidates are invalid because v2 captured the wrong agent.
 7. **Opp `Seats[].Riichi` + `Seats[].Melds`** for the opponent model. Major contributor to push/fold accuracy against novice tables.
 8. **Tedashi/tsumogiri tracking** for opp danger evaluation.
 9. **Tuner re-run** against novice-table replays (if a corpus exists) — current weights are Tenhou-trained against expert play, suspected reason for 0 wins observed in 5-hand session 2026-05-23T12:19..28.

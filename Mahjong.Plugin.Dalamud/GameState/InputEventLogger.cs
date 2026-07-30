@@ -94,7 +94,7 @@ public sealed class InputEventLogger : IDisposable
         logPath = Path.Combine(pluginConfigDir, "emj-events.log");
         capturePath = Path.Combine(pluginConfigDir, "emj-captures.log");
 
-        addonLifecycle.RegisterListener(AddonEvent.PostReceiveEvent, MahjongAddon.CandidateNames, OnReceiveEvent);
+        addonLifecycle.RegisterListener(AddonEvent.PostReceiveEvent, addon.KnownAddonNames, OnReceiveEvent);
 
         try
         {
@@ -159,7 +159,7 @@ public sealed class InputEventLogger : IDisposable
         string[]? captureAtkValues = null;
         int captureAtkCount = 0;
         if (PendingCaptureLabel is { } pending
-            && addon != null && MahjongAddon.IsMahjongAddon(addon->NameString))
+            && addon != null && this.addon.IsKnownAddon(addon->NameString))
         {
             captureLabel = pending;
             captureFireArgs = SnapshotValues(values, (int)valueCount, max: 32);
@@ -172,7 +172,7 @@ public sealed class InputEventLogger : IDisposable
 
         // Subscribers read addon state synchronously here so it still reflects pre-click memory.
         if (BeforeFireCallback is { } preObservers
-            && addon != null && MahjongAddon.IsMahjongAddon(addon->NameString))
+            && addon != null && this.addon.IsKnownAddon(addon->NameString))
         {
             try
             { preObservers(addon->NameString); }
@@ -184,7 +184,7 @@ public sealed class InputEventLogger : IDisposable
         bool result = fireCallbackHook!.Original(addon, valueCount, values, close);
 
         if (CallbackObserved is { } observers
-            && addon != null && MahjongAddon.IsMahjongAddon(addon->NameString))
+            && addon != null && this.addon.IsKnownAddon(addon->NameString))
         {
             try
             {
@@ -205,7 +205,7 @@ public sealed class InputEventLogger : IDisposable
 
         try
         {
-            if (Enabled && addon != null && MahjongAddon.IsMahjongAddon(addon->NameString))
+            if (Enabled && addon != null && this.addon.IsKnownAddon(addon->NameString))
             {
                 OpenLog();
                 var sb = new StringBuilder();
@@ -410,7 +410,7 @@ public sealed class InputEventLogger : IDisposable
             case FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.Bool:
                 return $"{v.Type,-14} Bool={v.Byte != 0}";
             case FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.String:
-            case FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.String8:
+            case FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.ConstString:
             case FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.ManagedString:
                 var s = v.String.Value != null
                     ? v.String.ToString()

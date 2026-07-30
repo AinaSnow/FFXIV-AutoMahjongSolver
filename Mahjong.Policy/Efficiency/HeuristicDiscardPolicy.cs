@@ -11,11 +11,13 @@ public sealed class HeuristicDiscardPolicy : IDiscardPolicy
     private readonly IWeightProvider weightProvider;
     private readonly IOpponentModel opponentModel;
     private readonly IPlacementPolicy placementPolicy;
+    private readonly int minHan;
 
     public HeuristicDiscardPolicy(
         IWeightProvider weightProvider,
         IOpponentModel opponentModel,
-        IPlacementPolicy placementPolicy)
+        IPlacementPolicy placementPolicy,
+        IRuleSet? ruleSet = null)
     {
         ArgumentNullException.ThrowIfNull(weightProvider);
         ArgumentNullException.ThrowIfNull(opponentModel);
@@ -23,6 +25,7 @@ public sealed class HeuristicDiscardPolicy : IDiscardPolicy
         this.weightProvider = weightProvider;
         this.opponentModel = opponentModel;
         this.placementPolicy = placementPolicy;
+        minHan = ruleSet?.MinHan ?? 1;
     }
 
     public ScoredDiscard[] Score(StateSnapshot state)
@@ -33,6 +36,7 @@ public sealed class HeuristicDiscardPolicy : IDiscardPolicy
             state,
             weights: bundle.Discard,
             placement: multipliers,
-            opponentModel: opponentModel);
+            opponentModel: opponentModel,
+            minHan: minHan);
     }
 }

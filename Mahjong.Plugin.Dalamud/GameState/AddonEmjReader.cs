@@ -46,7 +46,8 @@ public sealed class AddonEmjReader : IDisposable
         MeldTracker meldTracker,
         string pluginConfigDir,
         string layoutsDir,
-        IFindingsLog? findings = null)
+        IFindingsLog? findings = null,
+        string? clientLanguage = null)
     {
         ArgumentNullException.ThrowIfNull(addonLifecycle);
         ArgumentNullException.ThrowIfNull(log);
@@ -60,10 +61,12 @@ public sealed class AddonEmjReader : IDisposable
         this.meldTracker = meldTracker;
         this.findings = findings;
 
-        selector = new VariantSelector(LoadRegisteredVariants(log, pluginConfigDir, layoutsDir, findings), log, findings);
+        var variants = LoadRegisteredVariants(log, pluginConfigDir, layoutsDir, findings);
+        selector = new VariantSelector(variants, log, findings, clientLanguage);
+        addon.SetKnownAddonNames(variants.Select(v => v.PreferredAddonName));
 
-        // Some clients expose "Emj", others "EmjL" — register against every candidate name.
-        var names = MahjongAddon.CandidateNames;
+        // Register every addon name declared by a loaded profile. The fallback remains Emj/EmjL when profiles fail to load.
+        var names = addon.KnownAddonNames;
         addonLifecycle.RegisterListener(AddonEvent.PostSetup, names, OnPostSetup);
         addonLifecycle.RegisterListener(AddonEvent.PreFinalize, names, OnPreFinalize);
         addonLifecycle.RegisterListener(AddonEvent.PostRefresh, names, OnPostRefresh);
@@ -132,6 +135,7 @@ public sealed class AddonEmjReader : IDisposable
             });
         }
         emittedFirstLifecycle = false;
+        ActiveLayout = null;
 
         LastObservation = AddonEmjObservation.Empty with { LastLifecycleEvent = "PreFinalize" };
         ObservationChanged?.Invoke(LastObservation);
@@ -211,6 +215,7 @@ public sealed class AddonEmjReader : IDisposable
     {
         if (!addon.TryGet(out var unit, out var resolvedName))
         {
+            ActiveLayout = null;
             var missing = AddonEmjObservation.Empty with
             {
                 LastSeenUtcTicks = DateTime.UtcNow.Ticks,
@@ -297,7 +302,10 @@ public sealed class AddonEmjReader : IDisposable
     public unsafe StateSnapshot? TryBuildSnapshot()
     {
         if (!addon.TryGet(out var unit, out var resolvedName))
+        {
+            ActiveLayout = null;
             return null;
+        }
         if (!unit->IsVisible)
             return null;
 

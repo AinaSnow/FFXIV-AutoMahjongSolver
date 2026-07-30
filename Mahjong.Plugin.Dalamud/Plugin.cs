@@ -143,7 +143,8 @@ public sealed class Plugin : IDalamudPlugin
         var layoutsDir = Path.Combine(pluginAssemblyDir, "layouts");
 
         AddonReader = new AddonEmjReader(
-            AddonLifecycle, Log, mahjongAddon, MeldTracker, configDir, layoutsDir, FindingsLog);
+            AddonLifecycle, Log, mahjongAddon, MeldTracker, configDir, layoutsDir,
+            FindingsLog, ClientState.ClientLanguage.ToString());
         // Accessor closes over AddonReader so state codes and the hand-array offset follow the active variant. Constructed after AddonReader so the closure resolves to the live profile by the time DispatchDiscard runs.
         Dispatcher = new InputDispatcher(mahjongAddon, () => AddonReader.ActiveLayout);
         Aggregator = new StateAggregator(AddonReader, Framework, Policy);
@@ -173,7 +174,7 @@ public sealed class Plugin : IDalamudPlugin
         var http = new HttpTelemetryClient(telemetryHttp, envelope, Log);
         var endpointHolder = new EndpointHolder(
             new TelemetryEndpoint(EndpointResolver.EmbeddedFallbackUrl, true, null));
-        TelemetryUploader = new TelemetryUploader(http, endpointHolder, ConfigService, Log, configDir);
+        TelemetryUploader = new TelemetryUploader(http, endpointHolder, Log, configDir);
 
         // Async — startup must not block on a GitHub fetch; uploads use the embedded fallback until this completes.
         _ = ResolveEndpointAsync(telemetryHttp, endpointHolder);
@@ -198,7 +199,7 @@ public sealed class Plugin : IDalamudPlugin
         WindowSystem.AddWindow(DebugOverlay);
 
         command = new MjAutoCommand(
-            this, ChatGui, CommandManager, Framework, PluginInterface, SigScanner, mahjongAddon);
+            this, ChatGui, CommandManager, Framework, PluginInterface, SigScanner, ClientState, mahjongAddon);
 
         PluginInterface.UiBuilder.Draw += WindowSystem.Draw;
         PluginInterface.UiBuilder.OpenMainUi += ToggleMainWindow;

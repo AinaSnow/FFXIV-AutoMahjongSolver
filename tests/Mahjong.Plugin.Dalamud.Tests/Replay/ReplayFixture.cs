@@ -22,7 +22,7 @@ public sealed class ReplayFixture
 /// <summary>One AtkValue slot. Telemetry's JSON encoding represents the union by which field is populated.</summary>
 public sealed class ReplayAtkValue
 {
-    /// <summary>One of: Int, UInt, Bool, String, String8, ManagedString.</summary>
+    /// <summary>One of: Int, UInt, Bool, String, ConstString, ManagedString.</summary>
     public string Type { get; set; } = "Int";
     public int? Int { get; set; }
     public uint? UInt { get; set; }

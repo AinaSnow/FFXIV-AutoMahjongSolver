@@ -1,4 +1,4 @@
-// Cross-install scan. For each install with v=2 agent_b64 memdumps,
+// Cross-install scan. For each install with v3+ AgentEmj memdumps,
 // take ONE representative sample (mid-session memdump). Compare the
 // value at each agent offset across installs. The DealerSeat offset
 // should show {0,1,2,3} distribution since different installs are
@@ -35,16 +35,16 @@ for await (const f of walk(root)) {
   if (byInstall.has(install)) continue;
   try {
     const records = await readNdjson(f);
-    const v2 = records.filter((r) => r.v === 2 && typeof r.agent_b64 === "string" && r.reason === "state-change");
-    if (v2.length === 0) continue;
+    const agentRecords = records.filter((r) => r.v >= 3 && typeof r.agent_b64 === "string" && r.reason === "state-change");
+    if (agentRecords.length === 0) continue;
     // Pick the middle record
-    const sample = v2[Math.floor(v2.length / 2)];
+    const sample = agentRecords[Math.floor(agentRecords.length / 2)];
     byInstall.set(install, Buffer.from(sample.agent_b64, "base64"));
   } catch { /* skip */ }
 }
 
 const installs = [...byInstall.entries()];
-console.log(`installs with v=2 agent_b64 sample: ${installs.length}`);
+console.log(`installs with v>=3 AgentEmj sample: ${installs.length}`);
 if (installs.length < 4) {
   console.log("Need ≥4 installs to see variation. Skipping.");
   process.exit(0);

@@ -7,11 +7,12 @@ namespace Mahjong.Plugin.Dalamud.GameState;
 
 public sealed class MahjongAddon
 {
-    /// <summary>Probed in order — most clients use Emj, some NA/English non-Steam clients use EmjL.</summary>
+    /// <summary>Fallback names used before layout profiles have been loaded.</summary>
     public static readonly IReadOnlyList<string> CandidateNames = new[] { "Emj", "EmjL" };
 
     private readonly IGameGui gameGui;
     private readonly IPluginLog log;
+    private IReadOnlyList<string> knownAddonNames = CandidateNames;
     private string? lastResolved;
 
     public MahjongAddon(IGameGui gameGui, IPluginLog log)
@@ -20,6 +21,22 @@ public sealed class MahjongAddon
         ArgumentNullException.ThrowIfNull(log);
         this.gameGui = gameGui;
         this.log = log;
+    }
+
+    /// <summary>Names discovered from the loaded layout profiles, with the legacy fallback retained when none load.</summary>
+    public IReadOnlyList<string> KnownAddonNames => knownAddonNames;
+
+    public void SetKnownAddonNames(IEnumerable<string> names)
+    {
+        ArgumentNullException.ThrowIfNull(names);
+        var resolved = names
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        knownAddonNames = resolved.Length == 0 ? CandidateNames : resolved;
+
+        if (lastResolved is not null && !knownAddonNames.Contains(lastResolved, StringComparer.Ordinal))
+            lastResolved = null;
     }
 
     /// <summary>Callers must still check unit-&gt;IsVisible if they care about modal/in-match state.</summary>
@@ -36,7 +53,7 @@ public sealed class MahjongAddon
             }
         }
 
-        foreach (var candidate in CandidateNames)
+        foreach (var candidate in knownAddonNames)
         {
             var ptr = gameGui.GetAddonByName(candidate);
             if (ptr.Address == nint.Zero)
@@ -46,7 +63,7 @@ public sealed class MahjongAddon
             {
                 log.Info(
                     $"[MjAuto] Mahjong addon resolved as \"{candidate}\" " +
-                    $"(candidates: {string.Join(", ", CandidateNames)})");
+                    $"(candidates: {string.Join(", ", knownAddonNames)})");
                 lastResolved = candidate;
             }
             unit = (AtkUnitBase*)ptr.Address;
@@ -59,6 +76,20 @@ public sealed class MahjongAddon
         return false;
     }
 
+    /// <summary>Resolves an explicitly supplied addon name, including names not present in a layout profile yet.</summary>
+    public unsafe bool TryGetByName(string addonName, out AtkUnitBase* unit)
+    {
+        if (string.IsNullOrWhiteSpace(addonName))
+        {
+            unit = null;
+            return false;
+        }
+
+        var ptr = gameGui.GetAddonByName(addonName.Trim());
+        unit = (AtkUnitBase*)ptr.Address;
+        return unit != null;
+    }
+
     public static bool IsMahjongAddon(string addonName)
     {
         foreach (var c in CandidateNames)
@@ -66,4 +97,7 @@ public sealed class MahjongAddon
                 return true;
         return false;
     }
+
+    public bool IsKnownAddon(string addonName) =>
+        knownAddonNames.Contains(addonName, StringComparer.Ordinal);
 }

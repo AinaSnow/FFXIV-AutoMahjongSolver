@@ -16,8 +16,10 @@ namespace Mahjong.Plugin.Dalamud.Telemetry;
 
 public sealed class MemoryDumpRecorder : IDisposable
 {
-    // v2 adds agent_addr + agent_b64; v1 entries are missing-field-tolerant.
-    public const int SchemaVersion = 2;
+    // v2 added agent_addr + agent_b64 but accidentally captured numeric AgentId 5.
+    // v3 targets AgentId.Emj and records agent_id so consumers can verify the source.
+    // v4 adds the adjacent unknown Mahjong agents after Emj proved static in live matches.
+    public const int SchemaVersion = 4;
 
     // The state-change cadence shows AtkValuesCount in three buckets (50/73/109); only 109 carries gameplay signal.
     internal const int MinAtkValuesForStateChangeDump = 100;
@@ -28,9 +30,12 @@ public sealed class MemoryDumpRecorder : IDisposable
     private const int MaxAtkValues = 1024;
     private const long FileRolloverBytes = 1024 * 1024;
 
-    // Opponent discard arrays live in AgentEmj, not the AtkUnitBase range — the addon's per-seat block only mutates the count byte.
+    // The addon's per-seat block only exposes discard counts. Capture the known
+    // Emj agent plus its two adjacent unknown agents to locate the backing data.
     private const int AgentDumpBytes = 0x2000;
-    private const int AgentEmjId = 5;
+    internal const AgentId MahjongAgentId = AgentId.Emj;
+    internal static readonly IReadOnlyList<AgentId> MahjongCandidateAgentIds =
+        Array.AsReadOnly(new[] { AgentId.Unk329, AgentId.Unk330 });
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -142,16 +147,31 @@ public sealed class MemoryDumpRecorder : IDisposable
 
         byte[]? agentBytes = null;
         nint agentAddr = 0;
+        List<AgentDump>? agentCandidates = null;
         try
         {
             var module = AgentModule.Instance();
             if (module != null)
             {
-                var agent = module->GetAgentByInternalId((AgentId)AgentEmjId);
+                var agent = module->GetAgentByInternalId(MahjongAgentId);
                 if (agent != null)
                 {
                     agentAddr = (nint)agent;
                     agentBytes = SafeReadBytes(agentAddr, AgentDumpBytes);
+                }
+
+                agentCandidates = new List<AgentDump>(MahjongCandidateAgentIds.Count);
+                foreach (var candidateId in MahjongCandidateAgentIds)
+                {
+                    var candidate = module->GetAgentByInternalId(candidateId);
+                    var candidateAddr = (nint)candidate;
+                    var candidateBytes = candidate == null
+                        ? null
+                        : SafeReadBytes(candidateAddr, AgentDumpBytes);
+                    agentCandidates.Add(new AgentDump(
+                        InternalId: (int)candidateId,
+                        Address: candidateAddr.ToInt64(),
+                        BytesB64: candidateBytes is null ? null : Convert.ToBase64String(candidateBytes)));
                 }
             }
         }
@@ -161,7 +181,7 @@ public sealed class MemoryDumpRecorder : IDisposable
             errors.RecordException("MemoryDumpRecorder.AgentDump", ex);
         }
 
-        var hash = ComputeHash(addonBytes, rootBytes, atkBytes, pools, agentBytes);
+        var hash = ComputeHash(addonBytes, rootBytes, atkBytes, pools, agentBytes, agentCandidates);
 
         var layout = reader.ActiveLayout;
         var seatOffsets = layout is null ? null : new AddonSeatOffsets(
@@ -188,8 +208,10 @@ public sealed class MemoryDumpRecorder : IDisposable
             AtkValuesCount: atkCount,
             AtkValuesBytesB64: atkBytes is null ? null : Convert.ToBase64String(atkBytes),
             SeatPools: pools,
+            AgentInternalId: (int)MahjongAgentId,
             AgentAddress: agentAddr.ToInt64(),
             AgentBytesB64: agentBytes is null ? null : Convert.ToBase64String(agentBytes),
+            AgentCandidates: agentCandidates,
             Variant: layout?.Name,
             AddonSeatOffsets: seatOffsets,
             Hash: hash);
@@ -214,7 +236,7 @@ public sealed class MemoryDumpRecorder : IDisposable
 
     private static string ComputeHash(
         byte[]? addonBytes, byte[]? rootBytes, byte[]? atkBytes, List<SeatPoolDump>? pools,
-        byte[]? agentBytes)
+        byte[]? agentBytes, List<AgentDump>? agentCandidates)
     {
         using var sha = SHA256.Create();
         if (addonBytes is not null)
@@ -233,6 +255,16 @@ public sealed class MemoryDumpRecorder : IDisposable
         }
         if (agentBytes is not null)
             sha.TransformBlock(agentBytes, 0, agentBytes.Length, null, 0);
+        if (agentCandidates is not null)
+        {
+            foreach (var candidate in agentCandidates)
+            {
+                if (candidate.BytesB64 is null)
+                    continue;
+                var bytes = Convert.FromBase64String(candidate.BytesB64);
+                sha.TransformBlock(bytes, 0, bytes.Length, null, 0);
+            }
+        }
         sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
         return Convert.ToHexString(sha.Hash!).Substring(0, 16);
     }
@@ -281,8 +313,10 @@ public sealed class MemoryDumpRecorder : IDisposable
         [property: JsonPropertyName("atk_count")] int AtkValuesCount,
         [property: JsonPropertyName("atk_b64")] string? AtkValuesBytesB64,
         [property: JsonPropertyName("seat_pools")] List<SeatPoolDump>? SeatPools,
+        [property: JsonPropertyName("agent_id")] int AgentInternalId,
         [property: JsonPropertyName("agent_addr")] long AgentAddress,
         [property: JsonPropertyName("agent_b64")] string? AgentBytesB64,
+        [property: JsonPropertyName("agent_candidates")] List<AgentDump>? AgentCandidates,
         [property: JsonPropertyName("variant")] string? Variant,
         [property: JsonPropertyName("addon_seat_offsets")] AddonSeatOffsets? AddonSeatOffsets,
         [property: JsonPropertyName("hash")] string Hash);
@@ -290,6 +324,11 @@ public sealed class MemoryDumpRecorder : IDisposable
     private sealed record SeatPoolDump(
         [property: JsonPropertyName("addr")] long Address,
         [property: JsonPropertyName("b64")] string BytesB64);
+
+    private sealed record AgentDump(
+        [property: JsonPropertyName("id")] int InternalId,
+        [property: JsonPropertyName("addr")] long Address,
+        [property: JsonPropertyName("b64")] string? BytesB64);
 
     private sealed record AddonSeatOffsets(
         [property: JsonPropertyName("self_count_byte")] int SelfCount,

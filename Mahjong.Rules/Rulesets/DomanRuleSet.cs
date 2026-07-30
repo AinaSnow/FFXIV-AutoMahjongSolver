@@ -3,7 +3,7 @@ using Mahjong.Rules.Scoring;
 namespace Mahjong.Rules.Rulesets;
 
 /// <summary>
-/// FFXIV Doman: identical to <see cref="RiichiRuleSet"/> except <see cref="MinHan"/>=2.
+/// FFXIV Doman uses the stock riichi yaku floor and includes one red five per suit.
 /// </summary>
 public sealed class DomanRuleSet : IRuleSet
 {
@@ -16,9 +16,9 @@ public sealed class DomanRuleSet : IRuleSet
     public IDoraRule DoraRule => riichi.DoraRule;
     public IFuRule FuRule => riichi.FuRule;
 
-    public bool AllowsRedDora => false;
+    public bool AllowsRedDora => true;
     public bool AllowsKuitan => true;
-    public int MinHan => 2;
+    public int MinHan => 1;
     public int KazoeThreshold => ScoringConstants.KazoeYakumanHan;
     public int MaxYakuman => 2;
 }

@@ -1,13 +1,11 @@
 using System;
-using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.IO;
-using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Dalamud.Plugin.Services;
-using Mahjong.Plugin.Game;
 
 namespace Mahjong.Plugin.Dalamud.Telemetry;
 
@@ -22,34 +20,33 @@ public sealed class TelemetryUploader : IDisposable
 
     private readonly HttpTelemetryClient http;
     private readonly EndpointHolder endpoint;
-    private readonly IConfigService<Configuration> configService;
     private readonly IPluginLog log;
     private readonly string configDir;
     private readonly CancellationTokenSource cts = new();
     private readonly Channel<UploadJob> queue;
+    private readonly ConcurrentDictionary<string, byte> queuedPaths =
+        new(StringComparer.OrdinalIgnoreCase);
     private readonly Task workerTask;
+    private long rateLimitedUntilUtcTicks;
     private bool disposed;
 
     public TelemetryUploader(
         HttpTelemetryClient http,
         EndpointHolder endpoint,
-        IConfigService<Configuration> configService,
         IPluginLog log,
         string configDir)
     {
         ArgumentNullException.ThrowIfNull(http);
         ArgumentNullException.ThrowIfNull(endpoint);
-        ArgumentNullException.ThrowIfNull(configService);
         ArgumentNullException.ThrowIfNull(log);
         ArgumentException.ThrowIfNullOrEmpty(configDir);
 
         this.http = http;
         this.endpoint = endpoint;
-        this.configService = configService;
         this.log = log;
         this.configDir = configDir;
 
-        // Unbounded so an offline streak doesn't drop signal — files are on disk anyway.
+        // Files remain on disk for retry; queuedPaths prevents repeated scans from duplicating jobs in memory.
         queue = Channel.CreateUnbounded<UploadJob>(new UnboundedChannelOptions
         {
             SingleReader = true,
@@ -88,9 +85,14 @@ public sealed class TelemetryUploader : IDisposable
     {
         if (disposed)
             return;
+        if (DateTime.UtcNow.Ticks < Volatile.Read(ref rateLimitedUntilUtcTicks))
+            return;
         if (string.IsNullOrEmpty(stream) || string.IsNullOrEmpty(filePath))
             return;
-        queue.Writer.TryWrite(new UploadJob(stream, filePath));
+        if (!queuedPaths.TryAdd(filePath, 0))
+            return;
+        if (!queue.Writer.TryWrite(new UploadJob(stream, filePath)))
+            queuedPaths.TryRemove(filePath, out _);
     }
 
     public void Dispose()
@@ -140,7 +142,14 @@ public sealed class TelemetryUploader : IDisposable
                     break;
                 }
 
-                await ProcessJobAsync(job, ct).ConfigureAwait(false);
+                try
+                {
+                    await ProcessJobAsync(job, ct).ConfigureAwait(false);
+                }
+                finally
+                {
+                    queuedPaths.TryRemove(job.FilePath, out _);
+                }
             }
             catch (OperationCanceledException) { break; }
             catch (Exception ex)
@@ -161,6 +170,8 @@ public sealed class TelemetryUploader : IDisposable
         var url = endpoint.Current.UploadUrl;
         if (string.IsNullOrWhiteSpace(url) || !endpoint.Current.Enabled)
             return;
+        if (DateTime.UtcNow.Ticks < Volatile.Read(ref rateLimitedUntilUtcTicks))
+            return;
 
         // Exponential backoff with hard cap — scan re-enqueues on failure.
         var delays = new[] { 1, 2, 4, 8, 16 };
@@ -169,10 +180,19 @@ public sealed class TelemetryUploader : IDisposable
             if (ct.IsCancellationRequested)
                 return;
 
-            var ok = await http.UploadAsync(url, job.Stream, job.FilePath, ct).ConfigureAwait(false);
-            if (ok)
+            var result = await http.UploadAsync(url, job.Stream, job.FilePath, ct).ConfigureAwait(false);
+            if (result == TelemetryUploadResult.Uploaded)
             {
                 MarkShipped(job.FilePath);
+                return;
+            }
+
+            if (result == TelemetryUploadResult.RateLimited)
+            {
+                var until = NextUtcDay();
+                Volatile.Write(ref rateLimitedUntilUtcTicks, until.Ticks);
+                log.Info(
+                    $"[Telemetry] daily upload quota reached; deferring pending files until {until:O}");
                 return;
             }
 
@@ -197,7 +217,7 @@ public sealed class TelemetryUploader : IDisposable
                         continue;
                     if (IsShipped(path))
                         continue;
-                    queue.Writer.TryWrite(new UploadJob(stream, path));
+                    Enqueue(stream, path);
                 }
             }
             catch (Exception ex)
@@ -225,6 +245,12 @@ public sealed class TelemetryUploader : IDisposable
             { Directory.CreateDirectory(Path.Combine(configDir, s)); }
             catch { }
         }
+    }
+
+    private static DateTime NextUtcDay()
+    {
+        var now = DateTime.UtcNow;
+        return now.Date.AddDays(1);
     }
 
     private readonly record struct UploadJob(string Stream, string FilePath);

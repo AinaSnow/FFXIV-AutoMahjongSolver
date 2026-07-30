@@ -37,6 +37,7 @@ internal sealed class BaseEmjVariant : IEmjVariant
     public string Name => profile.Name;
     public string PreferredAddonName => profile.AddonName;
     public LayoutProfile Profile => profile;
+    private LayoutActionLabels ActionLabels => profile.ActionLabels ?? LayoutActionLabels.Default;
 
     private int lastLoggedCallPromptState = -1;
     private int lastLoggedMeldHandCount = -1;
@@ -101,8 +102,9 @@ internal sealed class BaseEmjVariant : IEmjVariant
         IReadOnlyList<string>? listWidgetLabels = null,
         bool enableDiagnosticLogging = false)
     {
-        int akaDora = 0;
-        var hand = ReadHand(memory, ref akaDora);
+        var decodedHand = ReadHand(memory);
+        var hand = decodedHand.Tiles;
+        int akaDora = decodedHand.RedCount;
 
         var scores = ReadScores(memory);
         if (!ScoresPlausible(scores))
@@ -114,7 +116,7 @@ internal sealed class BaseEmjVariant : IEmjVariant
         int stateCode = ReadStateCode(atkValues);
         int wallRemaining = ResolveWallRemaining(discardCounts);
 
-        var seats = BuildSeatViews(memory, discardCounts);
+        var (seats, seatObservations) = BuildSeatViews(memory, discardCounts);
         var legal = BuildLegalActions(stateCode, hand, atkValues, callModalVisible, listWidgetLabels);
 
         if (enableDiagnosticLogging)
@@ -131,25 +133,27 @@ internal sealed class BaseEmjVariant : IEmjVariant
         return StateSnapshot.Empty with
         {
             Hand = hand,
+            HandIsRed = decodedHand.IsRed,
             OurMelds = ourMelds,
             Scores = scores,
             Seats = seats,
             WallRemaining = wallRemaining,
             DoraIndicators = doraIndicators,
             Legal = legal,
-            // Solo Doman is tonpuusen — pin to East-seat East-round; seat wind ends up wrong for hands 2-4 but round wind stays correct.
+            // Placeholders until the per-hand seat/dealer offsets are validated.
             OurSeat = 0,
             RoundWind = 0,
-            SeatInfoKnown = true,
+            SeatInfoKnown = false,
             AkaDora = totalAkadora,
             AddonStateCode = stateCode,
+            Observations = SnapshotObservationFlags.HandRedIdentity | seatObservations,
         };
     }
 
     private static int ReadInt32(ReadOnlySpan<byte> memory, int offset) =>
         BinaryPrimitives.ReadInt32LittleEndian(memory.Slice(offset, 4));
 
-    private List<Tile> ReadHand(ReadOnlySpan<byte> memory, ref int akaDora)
+    private DecodedTiles ReadHand(ReadOnlySpan<byte> memory)
     {
         int len = profile.Limits.HandSize;
         Span<int> raw = stackalloc int[len];
@@ -159,9 +163,7 @@ internal sealed class BaseEmjVariant : IEmjVariant
         effectiveTextureBase = HandArrayDecoder.ResolveTextureBase(raw, profile.TileTextureBase, out bool shifted);
         if (shifted)
             WarnTextureBaseShift();
-        var (tiles, aka) = HandArrayDecoder.ReadHand(raw, effectiveTextureBase);
-        akaDora += aka;
-        return tiles;
+        return HandArrayDecoder.ReadHandDetailed(raw, effectiveTextureBase);
     }
 
     private void WarnTextureBaseShift()
@@ -240,9 +242,12 @@ internal sealed class BaseEmjVariant : IEmjVariant
         return derived >= 0 && derived <= profile.Limits.WallInitial ? derived : profile.Limits.WallInitial;
     }
 
-    private SeatView[] BuildSeatViews(ReadOnlySpan<byte> memory, int[] discardCounts)
+    private (SeatView[] Seats, SnapshotObservationFlags Observations) BuildSeatViews(
+        ReadOnlySpan<byte> memory,
+        int[] discardCounts)
     {
         var seats = new SeatView[4];
+        bool allDiscardDataObserved = true;
         int?[] discardArrayOffsets =
         [
             profile.Offsets.SelfDiscardArray,
@@ -252,38 +257,57 @@ internal sealed class BaseEmjVariant : IEmjVariant
         ];
         for (int i = 0; i < 4; i++)
         {
-            var discards = ReadDiscardArray(memory, discardArrayOffsets[i], discardCounts[i]);
+            var (decoded, complete) = ReadDiscardArray(
+                memory, discardArrayOffsets[i], discardCounts[i]);
+            allDiscardDataObserved &= complete;
             seats[i] = new SeatView(
-                Discards: discards,
-                DiscardIsTedashi: Enumerable.Repeat(true, discards.Count).ToList(),
+                Discards: decoded.Tiles,
+                DiscardIsTedashi: [],
                 Melds: [],
                 Riichi: false,
                 RiichiDiscardIndex: -1,
                 Ippatsu: false,
                 IsTenpaiCalled: false,
-                DiscardCount: discardCounts[i]);
+                DiscardCount: discardCounts[i],
+                DiscardIsRed: decoded.IsRed);
         }
-        return seats;
+
+        var observations = allDiscardDataObserved
+            ? SnapshotObservationFlags.PublicDiscardTiles |
+              SnapshotObservationFlags.PublicDiscardRedIdentity
+            : SnapshotObservationFlags.None;
+        return (seats, observations);
     }
 
-    /// <summary>Every discard is reported as tedashi — per-tile tedashi bits aren't mapped yet.</summary>
-    private IReadOnlyList<Tile> ReadDiscardArray(ReadOnlySpan<byte> memory, int? offset, int reportedCount)
+    private (DecodedTiles Tiles, bool Complete) ReadDiscardArray(
+        ReadOnlySpan<byte> memory,
+        int? offset,
+        int reportedCount)
     {
-        if (offset is not int off || reportedCount <= 0)
-            return [];
+        if (offset is not int off)
+            return (new DecodedTiles([], [], 0), false);
+        if (reportedCount <= 0)
+            return (new DecodedTiles([], [], 0), true);
+
         int len = Math.Min(reportedCount, profile.Offsets.DiscardArrayMaxLen);
         var tiles = new List<Tile>(len);
+        var isRedByTile = new List<bool>(len);
+        int redCount = 0;
         for (int i = 0; i < len; i++)
         {
             int raw = ReadInt32(memory, off + i * 4);
             if (raw == 0)
                 break;
-            int tileId = DecodeTileId(raw);
+            int tileId = HandArrayDecoder.DecodeTileId(
+                raw, effectiveTextureBase, out bool isRed);
             if (tileId < 0)
                 continue;
             tiles.Add(Tile.FromId(tileId));
+            isRedByTile.Add(isRed);
+            if (isRed)
+                redCount++;
         }
-        return tiles;
+        return (new DecodedTiles(tiles, isRedByTile, redCount), tiles.Count == len);
     }
 
     /// <summary>State-6 (SelfDeclareList) is dual-use: hand=14 is the self-declare popup, hand!=14 with %3==2 is the post-call discard-from-list popup — gate on hand=14 or stale "Pon" labels strand the loop.</summary>
@@ -342,7 +366,7 @@ internal sealed class BaseEmjVariant : IEmjVariant
         {
             var v = atkValues[i];
             string? s = null;
-            if ((v.Type == ValueType.String || v.Type == ValueType.String8 || v.Type == ValueType.ManagedString)
+            if ((v.Type == ValueType.String || v.Type == ValueType.ConstString || v.Type == ValueType.ManagedString)
                 && v.String.Value != null)
             {
                 s = v.String.ToString();
@@ -513,7 +537,7 @@ internal sealed class BaseEmjVariant : IEmjVariant
         return true;
     }
 
-    private static ButtonLabelScan ScanButtonLabels(IReadOnlyList<AtkValueRecord> atkValues, int scanLimit)
+    private ButtonLabelScan ScanButtonLabels(IReadOnlyList<AtkValueRecord> atkValues, int scanLimit)
     {
         var scan = new ButtonLabelScan();
         int end = Math.Min(atkValues.Count, scanLimit);
@@ -522,7 +546,7 @@ internal sealed class BaseEmjVariant : IEmjVariant
             var v = atkValues[i];
             if (!v.IsString || v.StringValue is null)
                 continue;
-            scan.RecordLabel(v.StringValue);
+            scan.RecordLabel(v.StringValue, ActionLabels);
         }
         return scan;
     }
@@ -540,29 +564,14 @@ internal sealed class BaseEmjVariant : IEmjVariant
             OffersPon || OffersChi || OffersKan ||
             OffersRon || OffersRiichi || OffersTsumo;
 
-        public void RecordLabel(string label)
+        public void RecordLabel(string label, LayoutActionLabels labels)
         {
-            switch (label)
-            {
-                case "Pon":
-                    OffersPon = true;
-                    break;
-                case "Chi":
-                    OffersChi = true;
-                    break;
-                case "Kan":
-                    OffersKan = true;
-                    break;
-                case "Ron":
-                    OffersRon = true;
-                    break;
-                case "Riichi":
-                    OffersRiichi = true;
-                    break;
-                case "Tsumo":
-                    OffersTsumo = true;
-                    break;
-            }
+            OffersPon |= LayoutActionLabelMatcher.IsPon(label, labels);
+            OffersChi |= LayoutActionLabelMatcher.IsChi(label, labels);
+            OffersKan |= LayoutActionLabelMatcher.IsKan(label, labels);
+            OffersRon |= LayoutActionLabelMatcher.IsRon(label, labels);
+            OffersRiichi |= LayoutActionLabelMatcher.IsRiichi(label, labels);
+            OffersTsumo |= LayoutActionLabelMatcher.IsTsumo(label, labels);
         }
     }
 
@@ -576,27 +585,18 @@ internal sealed class BaseEmjVariant : IEmjVariant
         ActionFlags flags = ActionFlags.Pass;
         foreach (var raw in listWidgetLabels)
         {
-            switch (raw.Trim())
-            {
-                case "Pon":
-                    flags |= ActionFlags.Pon;
-                    break;
-                case "Chi":
-                    flags |= ActionFlags.Chi;
-                    break;
-                case "Kan":
-                    flags |= ActionFlags.MinKan;
-                    break;
-                case "Ron":
-                    flags |= ActionFlags.Ron;
-                    break;
-                case "Riichi":
-                    flags |= ActionFlags.Riichi;
-                    break;
-                case "Tsumo":
-                    flags |= ActionFlags.Tsumo;
-                    break;
-            }
+            if (LayoutActionLabelMatcher.IsPon(raw, ActionLabels))
+                flags |= ActionFlags.Pon;
+            else if (LayoutActionLabelMatcher.IsChi(raw, ActionLabels))
+                flags |= ActionFlags.Chi;
+            else if (LayoutActionLabelMatcher.IsKan(raw, ActionLabels))
+                flags |= ActionFlags.MinKan;
+            else if (LayoutActionLabelMatcher.IsRon(raw, ActionLabels))
+                flags |= ActionFlags.Ron;
+            else if (LayoutActionLabelMatcher.IsRiichi(raw, ActionLabels))
+                flags |= ActionFlags.Riichi;
+            else if (LayoutActionLabelMatcher.IsTsumo(raw, ActionLabels))
+                flags |= ActionFlags.Tsumo;
         }
 
         var pons = new List<MeldCandidate>();
@@ -792,7 +792,7 @@ internal sealed class BaseEmjVariant : IEmjVariant
                 sb.Append($"Bool={v.UIntValue != 0}");
                 break;
             case ValueType.String:
-            case ValueType.String8:
+            case ValueType.ConstString:
             case ValueType.ManagedString:
                 sb.Append($"String=\"{v.StringValue ?? "(null)"}\"");
                 break;

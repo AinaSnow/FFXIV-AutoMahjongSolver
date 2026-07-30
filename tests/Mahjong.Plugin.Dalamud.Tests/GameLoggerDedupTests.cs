@@ -11,7 +11,11 @@ public class GameLoggerDedupTests
 {
     private static readonly int[] StartScores = [25000, 25000, 25000, 25000];
 
-    private static StateSnapshot SampleSnap(int wallRemaining, int handCount = 0, int[]? scores = null)
+    private static StateSnapshot SampleSnap(
+        int wallRemaining,
+        int handCount = 0,
+        int[]? scores = null,
+        bool firstTileRed = false)
     {
         var seats = new SeatView[4];
         for (int i = 0; i < 4; i++)
@@ -24,13 +28,20 @@ public class GameLoggerDedupTests
                 Ippatsu: false,
                 IsTenpaiCalled: false);
         var hand = new Tile[handCount];
+        var handIsRed = new bool[handCount];
         for (int i = 0; i < handCount; i++)
-            hand[i] = Tile.FromId(i % Tile.Count34);
+            hand[i] = Tile.FromId((i + 4) % Tile.Count34);
+        if (handCount > 0)
+            handIsRed[0] = firstTileRed;
         return StateSnapshot.Empty with
         {
             WallRemaining = wallRemaining,
             Seats = seats,
             Hand = hand,
+            HandIsRed = handIsRed,
+            Observations = handCount > 0
+                ? SnapshotObservationFlags.HandRedIdentity
+                : SnapshotObservationFlags.None,
             Scores = scores ?? StartScores,
         };
     }
@@ -68,6 +79,23 @@ public class GameLoggerDedupTests
         Assert.Single(files);
         var lines = File.ReadAllLines(files[0]);
         Assert.Equal(6, lines.Length);
+    }
+
+    [Fact]
+    public void Red_identity_change_emits_a_distinct_state_line()
+    {
+        using var tmp = new TempDir();
+        var config = new DalamudConfigService(_ => { }, new Configuration());
+        using var logger = new GameLogger(config, new StubPluginLog(), tmp.Path);
+
+        logger.OnStateChanged(SampleSnap(70, handCount: 1));
+        logger.OnStateChanged(SampleSnap(70, handCount: 1, firstTileRed: true));
+
+        var file = Assert.Single(Directory.GetFiles(logger.GamesDir, "game-*.ndjson"));
+        var lines = File.ReadAllLines(file);
+        Assert.Equal(3, lines.Length);
+        Assert.Contains("\"obs\":2", lines[^1]);
+        Assert.Contains("\"hand_red\":[true]", lines[^1]);
     }
 
     // Regression: MaybeRollHand must reject upward wall jumps at mid-hand counts so transient reads don't produce truncated files.

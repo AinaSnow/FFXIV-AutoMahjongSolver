@@ -117,15 +117,17 @@ public sealed class StateAggregator : IDisposable
     }
 
     /// <summary>Content fingerprint; record equality reference-checks list fields and reports false on every fresh snapshot.</summary>
-    private static int ComputeContentHash(StateSnapshot snap)
+    internal static int ComputeContentHash(StateSnapshot snap)
     {
         var h = new HashCode();
         h.Add(snap.WallRemaining);
         h.Add(snap.TurnIndex);
         h.Add((int)snap.Legal.Flags);
-        h.Add(snap.Legal.PonCandidates.Count);
-        h.Add(snap.Legal.ChiCandidates.Count);
-        h.Add(snap.Legal.KanCandidates.Count);
+        foreach (var tile in snap.Legal.DiscardableTiles)
+            h.Add(tile.Id);
+        AddCandidates(ref h, snap.Legal.PonCandidates);
+        AddCandidates(ref h, snap.Legal.ChiCandidates);
+        AddCandidates(ref h, snap.Legal.KanCandidates);
         h.Add(snap.OurRiichi);
         h.Add(snap.OurIppatsu);
         h.Add(snap.OurSeat);
@@ -135,8 +137,12 @@ public sealed class StateAggregator : IDisposable
         h.Add(snap.RiichiSticks);
         h.Add(snap.AkaDora);
         h.Add(snap.AddonStateCode);
-        foreach (var t in snap.Hand)
-            h.Add(t.Id);
+        h.Add((int)snap.Observations);
+        for (int i = 0; i < snap.Hand.Count; i++)
+        {
+            h.Add(snap.Hand[i].Id);
+            h.Add(i < snap.HandIsRed.Count && snap.HandIsRed[i]);
+        }
         foreach (var m in snap.OurMelds)
         {
             h.Add((int)m.Kind);
@@ -150,8 +156,12 @@ public sealed class StateAggregator : IDisposable
         foreach (var s in snap.Seats)
         {
             h.Add(s.DiscardCount);
-            foreach (var t in s.Discards)
-                h.Add(t.Id);
+            for (int i = 0; i < s.Discards.Count; i++)
+            {
+                h.Add(s.Discards[i].Id);
+                h.Add(i < s.DiscardIsRed.Count && s.DiscardIsRed[i]);
+                h.Add(i < s.DiscardIsTedashi.Count && s.DiscardIsTedashi[i]);
+            }
             foreach (var m in s.Melds)
             {
                 h.Add((int)m.Kind);
@@ -163,5 +173,19 @@ public sealed class StateAggregator : IDisposable
             h.Add(s.Ippatsu);
         }
         return h.ToHashCode();
+    }
+
+    private static void AddCandidates(ref HashCode hash, IReadOnlyList<MeldCandidate> candidates)
+    {
+        hash.Add(candidates.Count);
+        foreach (var candidate in candidates)
+        {
+            hash.Add((int)candidate.Kind);
+            hash.Add(candidate.ClaimedTile.Id);
+            hash.Add(candidate.FromSeat);
+            hash.Add(candidate.HandTiles.Length);
+            foreach (var tile in candidate.HandTiles)
+                hash.Add(tile.Id);
+        }
     }
 }

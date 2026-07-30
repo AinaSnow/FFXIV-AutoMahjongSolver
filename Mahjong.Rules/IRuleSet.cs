@@ -15,7 +15,7 @@ public interface IRuleSet
     /// <summary>True keeps the tanyao yaku on opened hands (riichi default).</summary>
     bool AllowsKuitan { get; }
 
-    /// <summary>Minimum han for a declarable win. Riichi: 1. Doman: 2.</summary>
+    /// <summary>Minimum han for a declarable win. Riichi and Doman: 1.</summary>
     int MinHan { get; }
 
     /// <summary>Han threshold at which a non-yakuman becomes counted yakuman (riichi: 13).</summary>

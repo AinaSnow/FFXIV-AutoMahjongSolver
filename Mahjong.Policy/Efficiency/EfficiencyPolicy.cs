@@ -185,8 +185,14 @@ public sealed class EfficiencyPolicy : IPolicy
         if (state.Hand.Count == 0)
             return null;
 
-        var winningTile = state.Hand[^1];
         var hand = Hand.FromTiles(state.Hand, state.OurMelds);
+        // Tsumo can remain flagged for one or two addon frames while the draw
+        // tile is still being published. Do not send that transition snapshot
+        // into the decomposer, which only accepts a complete 14-tile hand.
+        if (hand.TotalShantenTileCount != 14)
+            return null;
+
+        var winningTile = state.Hand[^1];
         var ctx = new WinContext(
             winningTile,
             WinKind.Tsumo,
@@ -215,7 +221,7 @@ public sealed class EfficiencyPolicy : IPolicy
         var placement = new PlacementAdjuster(bundle.Placement);
         return new EfficiencyPolicy(
             opponent,
-            new HeuristicDiscardPolicy(provider, opponent, placement),
+            new HeuristicDiscardPolicy(provider, opponent, placement, ruleSet),
             new HeuristicCallPolicy(ruleSet),
             new HeuristicRiichiPolicy(),
             new HeuristicPushFoldPolicy(),

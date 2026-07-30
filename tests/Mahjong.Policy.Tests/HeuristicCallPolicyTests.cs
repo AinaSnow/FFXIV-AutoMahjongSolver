@@ -115,10 +115,10 @@ public class HeuristicCallPolicyTests
     }
 
     [Fact]
-    public void Doman_declines_chi_with_lone_yakuhai_pair_below_min_han()
+    public void Doman_accepts_chi_with_lone_yakuhai_pair_at_min_han_one()
     {
         // Reproduces issue #50: post-Chi shape (7m 44p 789p 345s 55z + Chi 789p meld) has
-        // only 1 reachable han via the 55z dragon pair. Doman MinHan=2 must reject.
+        // one reachable han via the 55z dragon pair, which clears Doman's one-yaku floor.
         var policy = new HeuristicCallPolicy(new DomanRuleSet());
         var seats = new SeatView[]
         {
@@ -141,9 +141,9 @@ public class HeuristicCallPolicyTests
         };
 
         var d = policy.Evaluate(s);
-        Assert.False(d.Accept,
-            $"Doman should decline lone-yakuhai-pair Chi (got {d.Reason.Code}: {d.Reason.Display})");
-        Assert.Equal("no-shanten-gain-with-yaku", d.Reason.Code);
+        Assert.True(d.Accept,
+            $"Doman should accept lone-yakuhai-pair Chi (got {d.Reason.Code}: {d.Reason.Display})");
+        Assert.Equal(MeldKind.Chi, d.Value!.Value.Kind);
     }
 
     [Fact]
@@ -178,9 +178,9 @@ public class HeuristicCallPolicyTests
     }
 
     [Fact]
-    public void Doman_accepts_chi_when_two_yakuhai_pairs_total_two_han()
+    public void Doman_accepts_chi_when_multiple_yakuhai_routes_remain()
     {
-        // Two dragon pairs (55z + 66z) reach 2 han, satisfying Doman MinHan=2.
+        // Two dragon pairs (55z + 66z) leave multiple legal yaku routes after the call.
         var policy = new HeuristicCallPolicy(new DomanRuleSet());
         var seats = new SeatView[]
         {
@@ -204,7 +204,7 @@ public class HeuristicCallPolicyTests
 
         var d = policy.Evaluate(s);
         Assert.True(d.Accept,
-            $"Doman should accept Chi with two dragon pairs reaching 2 han (got {d.Reason.Code}: {d.Reason.Display})");
+            $"Doman should accept Chi with two dragon pairs (got {d.Reason.Code}: {d.Reason.Display})");
         Assert.Equal(MeldKind.Chi, d.Value!.Value.Kind);
     }
 

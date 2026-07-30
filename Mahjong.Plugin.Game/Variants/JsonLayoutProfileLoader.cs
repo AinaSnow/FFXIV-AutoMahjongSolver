@@ -41,7 +41,8 @@ public static class JsonLayoutProfileLoader
         if (!Directory.Exists(directoryPath))
             return [];
         var profiles = new List<LayoutProfile>();
-        foreach (var path in Directory.EnumerateFiles(directoryPath, "*.json"))
+        foreach (var path in Directory.EnumerateFiles(directoryPath, "*.json")
+                     .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
             profiles.Add(Load(path));
         return profiles;
     }

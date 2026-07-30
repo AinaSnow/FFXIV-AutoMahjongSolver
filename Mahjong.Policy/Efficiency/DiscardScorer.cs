@@ -9,7 +9,8 @@ public static class DiscardScorer
         DiscardWeights? weights = null,
         Wall? wall = null,
         PlacementMultipliers? placement = null,
-        IOpponentModel? opponentModel = null)
+        IOpponentModel? opponentModel = null,
+        int minHan = 1)
     {
         var w = weights ?? DiscardWeights.Default;
         var p = placement ?? PlacementMultipliers.Neutral;
@@ -19,7 +20,12 @@ public static class DiscardScorer
             throw new ArgumentException(
                 $"DiscardScorer requires a 14-tile hand (closed={hand.ClosedTileCount}, melds={hand.OpenMelds.Count})");
 
-        var ukeire = UkeireEnumerator.Enumerate(hand, wall);
+        // When no explicit wall model is supplied, derive one from every tile
+        // visible in the snapshot. Treating every useful kind as four live
+        // copies overstates ukeire after discards, calls, dora reveals, and
+        // the current hand are already known.
+        var effectiveWall = wall ?? BuildVisibleWall(state);
+        var ukeire = UkeireEnumerator.Enumerate(hand, effectiveWall);
         var result = new ScoredDiscard[ukeire.Length];
 
         for (int i = 0; i < ukeire.Length; i++)
@@ -31,12 +37,13 @@ public static class DiscardScorer
 
             double dealInCost = opponentModel?.ExpectedDealInCost(u.Discard.Id) ?? 0.0;
 
-            // Doman 2-han min: graduated penalty for tenpai below the legal floor. Full penalty
-            // at 0 han, linearly fading to zero at 2 projected han. Reads TargetHan instead of
-            // hard-coding the old 0.5 cutoff so the threshold tracks the yaku-projection scale.
+            // Graduated penalty for tenpai below the active ruleset's legal yaku floor.
+            // Reads TargetHan instead of hard-coding a projection cutoff so the threshold
+            // tracks the yaku-projection scale.
             double projectedHan = yakuPotential * YakuPotential.TargetHan;
-            double yakulessPenalty = u.ShantenAfter == 0 && projectedHan < 2.0
-                ? w.YakulessTenpaiPenalty * (2.0 - projectedHan) / 2.0
+            double requiredHan = Math.Max(1, minHan);
+            double yakulessPenalty = u.ShantenAfter == 0 && projectedHan < requiredHan
+                ? w.YakulessTenpaiPenalty * (requiredHan - projectedHan) / requiredHan
                 : 0.0;
 
             double score =
@@ -66,6 +73,47 @@ public static class DiscardScorer
         foreach (var t in state.Hand)
             counts[t.Id]++;
         return new Hand(counts, state.OurMelds);
+    }
+
+    private static Wall BuildVisibleWall(StateSnapshot state)
+    {
+        var seen = new int[Tile.Count34];
+
+        void Add(Tile tile) => seen[tile.Id]++;
+        void AddMelds(IReadOnlyList<Meld> melds)
+        {
+            foreach (var meld in melds)
+                foreach (var tile in meld.Tiles)
+                    Add(tile);
+        }
+
+        foreach (var tile in state.Hand)
+            Add(tile);
+        AddMelds(state.OurMelds);
+
+        for (int seatIndex = 0; seatIndex < state.Seats.Count; seatIndex++)
+        {
+            var seat = state.Seats[seatIndex];
+            foreach (var tile in seat.Discards)
+                Add(tile);
+
+            // OurMelds is the authoritative self-side meld list. Avoid
+            // counting the same melds twice when Seats[OurSeat] mirrors it.
+            if (seatIndex != state.OurSeat)
+                AddMelds(seat.Melds);
+        }
+
+        foreach (var indicator in state.DoraIndicators)
+            Add(indicator);
+
+        // A malformed or transitional snapshot can expose duplicate copies;
+        // clamp rather than making scoring fail while building the wall.
+        for (int id = 0; id < seen.Length; id++)
+            seen[id] = Math.Min(Tile.CopiesPerKind, seen[id]);
+
+        var wall = new Wall();
+        wall.ObserveCounts(seen);
+        return wall;
     }
 
     private static int CountDora(Hand hand, Tile removed, IReadOnlyList<Tile> indicators)

@@ -4,6 +4,11 @@ using Mahjong.Core;
 
 namespace Mahjong.Plugin.Dalamud.GameState.Variants;
 
+internal readonly record struct DecodedTiles(
+    List<Tile> Tiles,
+    List<bool> IsRed,
+    int RedCount);
+
 /// <summary>Pure helpers for decoding the addon hand-array. Scans the full array (post-call layouts park the claimed tile at slot 13 with [10..12] empty).</summary>
 internal static class HandArrayDecoder
 {
@@ -74,7 +79,14 @@ internal static class HandArrayDecoder
 
     public static (List<Tile> Tiles, int Akadora) ReadHand(ReadOnlySpan<int> rawSlots, int textureBase)
     {
+        var decoded = ReadHandDetailed(rawSlots, textureBase);
+        return (decoded.Tiles, decoded.RedCount);
+    }
+
+    public static DecodedTiles ReadHandDetailed(ReadOnlySpan<int> rawSlots, int textureBase)
+    {
         var tiles = new List<Tile>(rawSlots.Length);
+        var isRedByTile = new List<bool>(rawSlots.Length);
         int akadora = 0;
         for (int i = 0; i < rawSlots.Length; i++)
         {
@@ -82,10 +94,11 @@ internal static class HandArrayDecoder
             if (tileId < 0)
                 continue;
             tiles.Add(Tile.FromId(tileId));
+            isRedByTile.Add(isRed);
             if (isRed)
                 akadora++;
         }
-        return (tiles, akadora);
+        return new DecodedTiles(tiles, isRedByTile, akadora);
     }
 
     /// <summary>Addon slot whose raw decodes to <paramref name="targetTileId"/>. Prefers slot 13 (last-drawn), else lowest match. -1 if not found.</summary>

@@ -1,7 +1,8 @@
 {
-  "name": "EmjL",
+  "name": "EmjJP",
   "addonName": "EmjL",
-  "tileTextureBase": 76001,
+  "clientLanguages": ["Japanese"],
+  "tileTextureBase": 76041,
   "offsets": {
     "selfScore": "0x0500",
     "shimochaScore": "0x07E0",
@@ -46,5 +47,14 @@
     "scoreSanityMax": 200000,
     "discardCountSanityMax": 40,
     "maxAkadoraSlots": 3
+  },
+  "actionLabels": {
+    "pon": ["ポン", "ポン!"],
+    "chi": ["チー", "チー!"],
+    "kan": ["カン", "カン!"],
+    "ron": ["ロン", "ロン!!"],
+    "riichi": ["リーチ", "リーチ!!"],
+    "tsumo": ["ツモ", "ツモ!!"],
+    "pass": ["キャンセル", "パス"]
   }
 }

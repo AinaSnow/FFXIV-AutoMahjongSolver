@@ -13,9 +13,8 @@ namespace Mahjong.Plugin.Dalamud.Actions;
 
 public sealed class AutoPlayLoop : IDisposable
 {
-    private const int ChiVariantSelectStateCode = 25;
-    /// <summary>Agari / draw result modal between hands; carries Legal=None and a single "Next" button.</summary>
-    private const int HandResultStateCode = 29;
+    private const int DefaultChiVariantSelectStateCode = 25;
+    private const int DefaultHandResultStateCode = 29;
     private static readonly TimeSpan RetryCooldown = TimeSpan.FromSeconds(3.0);
     private static readonly TimeSpan DispatchTimeout = TimeSpan.FromSeconds(10.0);
 
@@ -23,7 +22,7 @@ public sealed class AutoPlayLoop : IDisposable
     private const int CallDecisionDelayMs = 700;
     private const int RiichiTsumogiriDelayMs = 700;
     private const int HandResultAdvanceDelayMs = 300;
-    /// <summary>State-29 must persist this long before we fire the Next click. Firing during the result-modal animation phase landed the addon in a stuck state-32 with no inputs accepted (2026-05-26).</summary>
+    /// <summary>The configured result state must persist this long before we fire the Next click. Firing during the result-modal animation phase landed the addon in a stuck state-32 with no inputs accepted (2026-05-26).</summary>
     private static readonly TimeSpan HandResultStabilityWindow = TimeSpan.FromSeconds(3.5);
 
     private const ActionFlags CallPromptFlags =
@@ -46,6 +45,13 @@ public sealed class AutoPlayLoop : IDisposable
     public int LastObservedState { get; private set; } = -1;
 
     public int LastObservedHandCount { get; private set; } = -1;
+
+    private int ChiVariantSelectStateCode =>
+        plugin.AddonReader.ActiveLayout?.StateCodes.ChiVariantSelect ?? DefaultChiVariantSelectStateCode;
+
+    /// <summary>Agari / draw result modal between hands; carries Legal=None and a single "Next" button.</summary>
+    private int HandResultStateCode =>
+        plugin.AddonReader.ActiveLayout?.StateCodes.HandResult ?? DefaultHandResultStateCode;
 
     public AutoPlayLoop(Plugin plugin, IFramework framework, IPluginLog log, MahjongAddon addon)
     {
@@ -96,7 +102,8 @@ public sealed class AutoPlayLoop : IDisposable
                 return;
         }
 
-        var snap = plugin.AddonReader.TryBuildSnapshot();
+        // StateAggregator subscribed first and has already produced the current frame's snapshot.
+        var snap = plugin.Aggregator.Latest;
 
         // Runs before the snapshot-null guard so the windowExpired path still emits commit=false on transient nulls.
         CheckPendingDispatchOutcome(snap);

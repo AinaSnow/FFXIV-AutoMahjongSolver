@@ -85,7 +85,8 @@ Total: **349 automated tests**, all green.
 
 ### A new client variant (JP, OC, ...)
 
-1. Capture in-game offsets from the new client (run `/mjauto variant dump`).
+1. Capture in-game offsets from each new client (run
+   `/mjauto variant dump [addonName]`).
 2. Drop a new file at `data/layouts/<variant>.json` — copy the closest
    existing profile and override divergent fields.
 3. The plugin auto-discovers it on next launch via

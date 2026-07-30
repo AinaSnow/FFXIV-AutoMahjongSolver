@@ -12,6 +12,7 @@ namespace Mahjong.Plugin.Dalamud.Tests.Replay;
 public class BuildSnapshotFromMemoryTests
 {
     private static readonly LayoutProfile EmjProfile = LoadProfile("emj.json");
+    private static readonly LayoutProfile JpProfile = LoadProfile("jp.json");
 
     private static LayoutProfile LoadProfile(string fileName) =>
         JsonLayoutProfileLoader.Load(Path.Combine(TestPaths.LayoutsDir, fileName));
@@ -115,6 +116,54 @@ public class BuildSnapshotFromMemoryTests
     }
 
     [Fact]
+    public void Japanese_pon_label_emits_pon_flag()
+    {
+        var memory = new AddonMemoryBuilder(JpProfile)
+            .WithScores(25000, 25000, 25000, 25000)
+            .WithHand("55m123p456s11234z")
+            .Build();
+
+        var atkValues = new AtkValueRecord[22];
+        atkValues[JpProfile.AtkValues.StateCode] = AtkValueRecord.OfInt(15);
+        atkValues[2] = AtkValueRecord.OfString("ポン!");
+        atkValues[3] = AtkValueRecord.OfString("キャンセル");
+        int claimed5mRaw = JpProfile.TileTextureBase + 4;
+        atkValues[16] = AtkValueRecord.OfInt(claimed5mRaw);
+        atkValues[17] = AtkValueRecord.OfInt(claimed5mRaw);
+
+        var (variant, ctx) = MakeVariant(JpProfile);
+        var snap = variant.BuildSnapshotFromMemory(
+            memory, atkValues, ctx, callModalVisible: true);
+
+        Assert.NotNull(snap);
+        Assert.True(snap!.Legal.Can(ActionFlags.Pon));
+        Assert.Single(snap.Legal.PonCandidates);
+    }
+
+    [Fact]
+    public void Japanese_list_widget_labels_emit_riichi_flag()
+    {
+        var memory = new AddonMemoryBuilder(JpProfile)
+            .WithScores(25000, 25000, 25000, 25000)
+            .WithHand("1234m456p789s1234z")
+            .Build();
+
+        var atkValues = new AtkValueRecord[2];
+        atkValues[JpProfile.AtkValues.StateCode] =
+            AtkValueRecord.OfInt(JpProfile.StateCodes.SelfDeclareList);
+
+        var (variant, ctx) = MakeVariant(JpProfile);
+        var snap = variant.BuildSnapshotFromMemory(
+            memory, atkValues, ctx, callModalVisible: true,
+            listWidgetLabels: ["リーチ!!", "キャンセル"]);
+
+        Assert.NotNull(snap);
+        Assert.True(snap!.Legal.Can(ActionFlags.Riichi));
+        Assert.True(snap.Legal.Can(ActionFlags.Pass));
+        Assert.True(snap.Legal.Can(ActionFlags.Discard));
+    }
+
+    [Fact]
     public void Akadora_red_5m_in_hand_increments_count()
     {
         var memory = new AddonMemoryBuilder(EmjProfile)
@@ -134,5 +183,10 @@ public class BuildSnapshotFromMemoryTests
         Assert.Equal(1, snap!.AkaDora);
         // Tile id 4 = 5m
         Assert.Equal(4, snap.Hand[0].Id);
+        Assert.True(snap.HandIsRed[0]);
+        Assert.Equal(snap.Hand.Count, snap.HandIsRed.Count);
+        Assert.True(snap.Observations.HasFlag(SnapshotObservationFlags.HandRedIdentity));
+        Assert.False(snap.SeatInfoKnown);
+        Assert.False(snap.Observations.HasFlag(SnapshotObservationFlags.SeatInfo));
     }
 }
