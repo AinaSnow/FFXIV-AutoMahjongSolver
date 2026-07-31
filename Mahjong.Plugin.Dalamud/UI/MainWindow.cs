@@ -273,18 +273,30 @@ public sealed class MainWindow : Window, IDisposable
                 return;
             }
 
-            ScoredDiscard[]? scored = plugin.Aggregator.LastScored;
-            ActionChoice? choice = plugin.Aggregator.LastChoice;
-            string? scorerError = plugin.Aggregator.LastScorerError;
+            bool usesMortal = plugin.MortalBridge.Enabled;
+            ScoredDiscard[]? scored = usesMortal ? null : plugin.Aggregator.LastScored;
+            ActionChoice? choice;
+            bool? choiceIsRed = null;
+            if (usesMortal)
+            {
+                choice = plugin.MortalBridge.TryGetRecommendation(snap, out var mortalChoice, out choiceIsRed)
+                    ? mortalChoice
+                    : null;
+            }
+            else
+            {
+                choice = plugin.Aggregator.LastChoice;
+            }
+            string? scorerError = usesMortal ? null : plugin.Aggregator.LastScorerError;
             int highlightSlot = -1;
             if (choice?.DiscardTile is { } t)
-                highlightSlot = InputDispatcher.FindSlotOfTile(t, snap.Hand);
+                highlightSlot = InputDispatcher.FindSlotOfTile(t, snap.Hand, snap.HandIsRed, choiceIsRed);
 
             DrawSeatRow(snap);
             ImGui.Dummy(new Vector2(0, 10));
             DrawHandRow(snap, highlightSlot);
             ImGui.Dummy(new Vector2(0, 10));
-            DrawSuggestion(snap, scored, choice, scorerError);
+            DrawSuggestion(snap, scored, choice, scorerError, usesMortal);
         }
     }
 
@@ -366,7 +378,8 @@ public sealed class MainWindow : Window, IDisposable
         StateSnapshot snap,
         ScoredDiscard[]? scored,
         ActionChoice? choice,
-        string? scorerError)
+        string? scorerError,
+        bool usesMortal)
     {
         var cfg = plugin.Configuration;
 
@@ -387,8 +400,12 @@ public sealed class MainWindow : Window, IDisposable
             return;
         }
 
-        if (scored is null || choice is null)
+        if (choice is null)
+        {
+            if (usesMortal)
+                Theme.Subtle("Waiting for Mortal's decision.");
             return;
+        }
 
         string verb = FriendlyActionVerb(choice.Kind);
 
@@ -418,7 +435,9 @@ public sealed class MainWindow : Window, IDisposable
         if (choice.DiscardTile is not null)
             ImGui.SetCursorPosY(startY + bigH + 4);
 
-        string why = ExplainChoice(choice, scored);
+        string why = usesMortal
+            ? "Selected by Mortal."
+            : ExplainChoice(choice, scored ?? []);
         if (!string.IsNullOrEmpty(why))
         {
             ImGui.PushStyleColor(ImGuiCol.Text, Theme.Body);
@@ -426,12 +445,12 @@ public sealed class MainWindow : Window, IDisposable
             ImGui.PopStyleColor();
         }
 
-        if (cfg.ShowInGameHighlight)
+        if (cfg.ShowInGameHighlight && cfg.SuggestionOnly)
         {
             Theme.Subtle("The tile is outlined in the mahjong window.");
         }
 
-        if (cfg.ShowSuggestionDetails)
+        if (cfg.ShowSuggestionDetails && scored is not null)
         {
             ImGui.Dummy(new Vector2(0, 6));
             Theme.Subtle(

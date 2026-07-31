@@ -346,7 +346,7 @@ internal sealed class BaseEmjVariant : IEmjVariant
             {
                 scanned = scanned with { Flags = scanned.Flags | ActionFlags.Discard };
             }
-            return scanned;
+            return NormalizeCallPromptForHandShape(hand.Count, scanned);
         }
 
         // Our turn = hand % 3 == 2 (14/11/8/5/2). Post-minkan-pre-rinshan (closed=10 with 1 minkan) is intentionally not discard-eligible.
@@ -354,6 +354,27 @@ internal sealed class BaseEmjVariant : IEmjVariant
             return new LegalActions(ActionFlags.Discard, [], [], [], []);
 
         return LegalActions.None;
+    }
+
+    internal static LegalActions NormalizeCallPromptForHandShape(
+        int handCount, LegalActions scanned)
+    {
+        // The call-list component can retain its previous labels while play
+        // has already moved on. With 13/10/7/... closed tiles, self-turn
+        // actions are impossible and must not keep the stale row actionable.
+        if (handCount <= 0 || handCount % 3 != 1)
+            return scanned;
+
+        const ActionFlags selfTurnOnly =
+            ActionFlags.Discard | ActionFlags.Riichi | ActionFlags.Tsumo |
+            ActionFlags.AnKan | ActionFlags.ShouMinKan;
+        ActionFlags flags = scanned.Flags & ~selfTurnOnly;
+        const ActionFlags reactionOffers =
+            ActionFlags.Pon | ActionFlags.Chi | ActionFlags.MinKan | ActionFlags.Ron;
+        if ((flags & reactionOffers) == 0)
+            return LegalActions.None;
+
+        return scanned with { Flags = flags };
     }
 
     private unsafe AtkValueRecord[] SnapshotAtkValues(AtkValue* atkValues, ushort atkCount)

@@ -43,6 +43,15 @@ public sealed record Configuration : IPluginConfiguration
     /// <summary>Auto-clicks Next on the post-hand result modal so the next hand starts without manual input.</summary>
     public bool AutoAdvanceAfterHand { get; init; } = false;
 
+    /// <summary>Use the live packet/MJAI bridge instead of the built-in heuristic policy.</summary>
+    public bool MortalEnabled { get; init; } = false;
+
+    public string MortalWslDistribution { get; init; } = "";
+
+    public string MortalWorkingDirectory { get; init; } = "";
+
+    public string MortalPythonExecutable { get; init; } = "python";
+
     public bool EnableGameLogging { get; init; } = true;
 
     /// <summary>

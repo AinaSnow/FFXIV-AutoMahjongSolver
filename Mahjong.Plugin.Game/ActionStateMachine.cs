@@ -18,6 +18,7 @@ public sealed class ActionStateMachine
     private DispatchContext? lastContext;
     private bool riichiConfirmLatched;
     private Tile? riichiConfirmTile;
+    private bool? riichiConfirmTileIsRed;
     private int lastObservedWall = -1;
 
     public ActionStateMachine(TimeSpan dispatchTimeout, TimeSpan retryCooldown)
@@ -36,6 +37,9 @@ public sealed class ActionStateMachine
     /// probe-accept path without an explicit tile decision.
     /// </summary>
     public Tile? RiichiConfirmTile => riichiConfirmTile;
+
+    /// <summary>Red identity paired with <see cref="RiichiConfirmTile"/> when the decision source distinguishes tile copies.</summary>
+    public bool? RiichiConfirmTileIsRed => riichiConfirmTileIsRed;
 
     public bool TryRecoverFromStuckDispatch(DateTime now)
     {
@@ -65,17 +69,21 @@ public sealed class ActionStateMachine
     public void ClearContext() => lastContext = null;
 
     /// <summary>A null <paramref name="target"/> preserves any previously-latched tile.</summary>
-    public void LatchRiichiConfirm(Tile? target = null)
+    public void LatchRiichiConfirm(Tile? target = null, bool? targetIsRed = null)
     {
         riichiConfirmLatched = true;
         if (target is not null)
+        {
             riichiConfirmTile = target;
+            riichiConfirmTileIsRed = targetIsRed;
+        }
     }
 
     public void ClearRiichiConfirm()
     {
         riichiConfirmLatched = false;
         riichiConfirmTile = null;
+        riichiConfirmTileIsRed = null;
     }
 
     /// <summary>
@@ -88,6 +96,7 @@ public sealed class ActionStateMachine
         {
             riichiConfirmLatched = false;
             riichiConfirmTile = null;
+            riichiConfirmTileIsRed = null;
             lastContext = null;
         }
         lastObservedWall = wall;

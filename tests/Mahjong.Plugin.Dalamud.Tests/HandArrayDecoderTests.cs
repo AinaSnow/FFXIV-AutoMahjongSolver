@@ -133,6 +133,20 @@ public class HandArrayDecoderTests
         Assert.Equal(5, slot);
     }
 
+    [Fact]
+    public void FindAddonSlot_distinguishes_red_and_normal_five()
+    {
+        var raw = new int[14]
+        {
+            EmjTextureBase + 34,
+            EmjTextureBase + 4,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        };
+
+        Assert.Equal(0, HandArrayDecoder.FindAddonSlot(raw, EmjTextureBase, 4, targetIsRed: true));
+        Assert.Equal(1, HandArrayDecoder.FindAddonSlot(raw, EmjTextureBase, 4, targetIsRed: false));
+    }
+
     // --- Real NA EmjL captures (issue #30) ---
     // These decode raw addon ints read at handArrayStart 0x0DB8 on a live NA EmjL table through the
     // *loaded* data/layouts/emj_l.json profile, so they pin the texture base against ground truth.

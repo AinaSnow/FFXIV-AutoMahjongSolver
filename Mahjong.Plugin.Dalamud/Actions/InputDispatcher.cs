@@ -398,11 +398,24 @@ public sealed class InputDispatcher
 
     /// <summary>List-index of <paramref name="target"/> in the rendered hand, for UI highlight callers. Prefers index 13 when hand is full. For addon-slot resolution (dispatch path) use <c>AddonEmjReader.FindAddonSlotOfTile</c>.</summary>
     public static int FindSlotOfTile(Tile target, System.Collections.Generic.IReadOnlyList<Tile> hand)
+        => FindSlotOfTile(target, hand, [], targetIsRed: null);
+
+    /// <summary>Rendered-hand slot matching tile kind and optional red identity. Prefers the drawn tile in slot 13.</summary>
+    public static int FindSlotOfTile(
+        Tile target,
+        System.Collections.Generic.IReadOnlyList<Tile> hand,
+        System.Collections.Generic.IReadOnlyList<bool> handIsRed,
+        bool? targetIsRed)
     {
-        if (hand.Count == 14 && hand[13].Id == target.Id)
+        bool Matches(int index) =>
+            hand[index].Id == target.Id
+            && (!targetIsRed.HasValue
+                || index < handIsRed.Count && handIsRed[index] == targetIsRed.Value);
+
+        if (hand.Count == 14 && Matches(13))
             return 13;
         for (int i = 0; i < hand.Count; i++)
-            if (hand[i].Id == target.Id)
+            if (Matches(i))
                 return i;
         return -1;
     }

@@ -20,7 +20,7 @@ public sealed class SettingsWindow : Window, IDisposable
         ArgumentNullException.ThrowIfNull(plugin);
         this.plugin = plugin;
         Flags = ImGuiWindowFlags.NoCollapse;
-        Size = new Vector2(480, 420);
+        Size = new Vector2(500, 560);
         SizeCondition = ImGuiCond.FirstUseEver;
         SizeConstraints = new WindowSizeConstraints
         {
@@ -122,6 +122,41 @@ public sealed class SettingsWindow : Window, IDisposable
             if (ImGui.Checkbox("Auto-advance after each hand", ref autoAdvance))
                 plugin.ConfigService.Update(c => c with { AutoAdvanceAfterHand = autoAdvance });
             Theme.Subtle("Click \"Next\" on the win/draw results screen so the next hand starts automatically.");
+        }
+
+        ImGui.Dummy(new Vector2(0, 4));
+
+        using (Theme.BeginCard("settings-mortal"))
+        {
+            Theme.SectionHeader("Mortal AI");
+
+            bool enabled = cfg.MortalEnabled;
+            if (ImGui.Checkbox("Use Mortal for live decisions", ref enabled))
+                plugin.ConfigService.Update(c => c with { MortalEnabled = enabled });
+
+            if (enabled)
+                ImGui.BeginDisabled();
+
+            string distribution = cfg.MortalWslDistribution;
+            ImGui.SetNextItemWidth(300);
+            if (ImGui.InputText("WSL distribution", ref distribution, 128))
+                plugin.ConfigService.Update(c => c with { MortalWslDistribution = distribution });
+
+            string directory = cfg.MortalWorkingDirectory;
+            ImGui.SetNextItemWidth(420);
+            if (ImGui.InputText("Mortal directory", ref directory, 512))
+                plugin.ConfigService.Update(c => c with { MortalWorkingDirectory = directory });
+
+            string python = cfg.MortalPythonExecutable;
+            ImGui.SetNextItemWidth(180);
+            if (ImGui.InputText("Python executable", ref python, 128))
+                plugin.ConfigService.Update(c => c with { MortalPythonExecutable = python });
+
+            if (enabled)
+                ImGui.EndDisabled();
+
+            Theme.Subtle($"Status: {plugin.MortalBridge.Status}");
+            Theme.Subtle($"Packets {plugin.MortalBridge.PacketsProcessed}  ·  MJAI {plugin.MortalBridge.EventsSent}  ·  Decisions {plugin.MortalBridge.ReactionsReceived}");
         }
 
         ImGui.Dummy(new Vector2(0, 4));

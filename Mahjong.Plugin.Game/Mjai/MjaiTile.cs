@@ -41,4 +41,46 @@ public static class MjaiTile
             result[i] = Format(snapshot.Hand[i], snapshot.HandIsRed[i]);
         return result;
     }
+
+    public static bool TryParse(string? value, out Tile tile, out bool isRed)
+    {
+        tile = default;
+        isRed = false;
+        if (string.IsNullOrWhiteSpace(value) || value == Unknown)
+            return false;
+
+        string text = value;
+        if (text.EndsWith('r'))
+        {
+            isRed = true;
+            text = text[..^1];
+        }
+
+        int id;
+        if (text.Length == 2 && text[0] is >= '1' and <= '9')
+        {
+            int number = text[0] - '0';
+            int suitBase = text[1] switch
+            {
+                'm' => 0,
+                'p' => 9,
+                's' => 18,
+                _ => -1,
+            };
+            if (suitBase < 0 || (isRed && number != 5))
+                return false;
+            id = suitBase + number - 1;
+        }
+        else
+        {
+            isRed = false;
+            id = Array.IndexOf(Honors, text);
+            if (id < 0)
+                return false;
+            id += 27;
+        }
+
+        tile = new Tile((byte)id);
+        return true;
+    }
 }

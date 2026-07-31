@@ -15,6 +15,10 @@ to find offsets, AtkValue indices, and node IDs.
 | `sync-corpus.ps1` | Mirror the R2 telemetry corpus to local `corpus/`, gunzipping as it arrives | `wrangler` + Cloudflare credentials |
 | `extract-fixture.mjs` | Convert one memdump record into a Track 0 replay fixture | A memdumps `.ndjson(.gz)` + a `seq` number |
 | `test-extract-fixture.mjs` | Smoke test the above against a synthetic memdump | None |
+| `parse-mahjong-packets.mjs` | Decode confirmed Mahjong packets into text, NDJSON, or a summary | A Packet Logger session `.log` |
+| `test-parse-mahjong-packets.mjs` | Regression-test the confirmed packet layouts with synthetic payloads | None |
+| `mortal-bridge.mjs` | Replay a Packet Logger session, or follow a file written by an append-capable producer, through Mortal | Packet log + bot config JSON |
+| `test-mortal-bridge.mjs` | Exercise Mortal subprocess JSONL transport with a fake bot | None |
 
 ## Workflow for a new variant
 
@@ -32,6 +36,66 @@ to find offsets, AtkValue indices, and node IDs.
 
 See [`data/layouts/README.md`](../data/layouts/README.md) for the JSON
 schema.
+
+### Parsing a Packet Logger session
+
+Human matches send a dedicated Mahjong message family that is not present in
+NPC matches. Decode the confirmed messages without exposing roster packets:
+
+```powershell
+node tools/parse-mahjong-packets.mjs "C:\path\to\Session.log" --format text
+node tools/parse-mahjong-packets.mjs "C:\path\to\Session.log" --format ndjson
+node tools/parse-mahjong-packets.mjs "C:\path\to\Session.log" --format summary
+node tools/parse-mahjong-packets.mjs "C:\path\to\Session.log" --format mjai
+```
+
+The decoder currently covers match/hand initialization, draws, chi, pon, and
+discards including tsumogiri, riichi, and post-call markers. Message IDs 639
+and 640 are unconfirmed and only appear as metadata with `--include-unknown`.
+Message 642 is always suppressed because its payload contains player names.
+Numeric opcodes are patch-specific; the decoder keys on Packet Logger's
+`DOWN_ID_*` names instead. The `mjai` format rotates wind seats so the local
+player is always actor 0, hides opponent starting hands/draws with `?`, and
+emits the lifecycle and reach sequence expected by Mortal. Launch Mortal with
+player ID `0` when consuming this stream.
+
+Replay a completed session through Mortal:
+
+```powershell
+node tools/mortal-bridge.mjs "C:\path\to\Session.log" --bot-config mortal-bridge.json
+```
+
+Follow a file that is actively appended by its producer:
+
+```powershell
+node tools/mortal-bridge.mjs "C:\path\to\Session.log" --bot-config mortal-bridge.json --follow
+```
+
+In follow mode, existing events rebuild Mortal's state with `can_act=false`.
+Only newly appended events can produce actions on stdout. Status and Mortal
+stderr go to stderr, keeping stdout valid action-only JSONL. The FFXIV Network
+Packet Analysis Tool's session files are manual exports and do not grow after
+export, so `--follow` is not a live source for that tool. It remains useful for
+testing another append-capable packet producer. Copy
+`mortal-bridge.example.json` outside version control and adjust the executable,
+distribution, and Mortal working directory.
+
+### Live Mortal integration
+
+The Dalamud plugin captures the six confirmed Mahjong receive opcodes directly
+in-process and never captures message 642, whose payload contains player names.
+It converts the payloads to MJAI and owns the Mortal WSL subprocess, so no
+separate Python backend needs to be started manually.
+
+Configure these values under **Settings > Mortal AI** while Mortal is disabled:
+
+- WSL distribution, for example `Ubuntu-25.10`
+- Mortal directory inside WSL, for example `/mnt/e/path/to/Mortal/mortal`
+- Python executable, normally `python`
+
+Enable Mortal before a match or before the next hand begins. The current opcode
+map is patch-specific and comes from the verified human-match capture; the
+offline parser continues to key on the analysis tool's stable `DOWN_ID_*` names.
 
 ## Pulling user telemetry
 

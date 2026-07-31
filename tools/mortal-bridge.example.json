@@ -1,0 +1,11 @@
+{
+  "command": "wsl.exe",
+  "args": [
+    "-d",
+    "Ubuntu-25.10",
+    "-e",
+    "bash",
+    "-lc",
+    "cd /path/to/Mortal/mortal && exec python mortal.py 0"
+  ]
+}

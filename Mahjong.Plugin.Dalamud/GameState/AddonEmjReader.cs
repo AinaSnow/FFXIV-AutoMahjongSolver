@@ -279,8 +279,8 @@ public sealed class AddonEmjReader : IDisposable
         return slots;
     }
 
-    /// <summary>Addon-slot of the first hand-array entry decoding to <paramref name="target"/>; prefers slot 13. Returns -1 if not found.</summary>
-    public unsafe int FindAddonSlotOfTile(Mahjong.Core.Tile target)
+    /// <summary>Addon-slot of the first hand-array entry decoding to <paramref name="target"/> and optional red identity; prefers slot 13. Returns -1 if not found.</summary>
+    public unsafe int FindAddonSlotOfTile(Mahjong.Core.Tile target, bool? targetIsRed = null)
     {
         if (ActiveLayout is null)
             return -1;
@@ -296,7 +296,7 @@ public sealed class AddonEmjReader : IDisposable
             raw[i] = *(int*)(basePtr + ActiveLayout.Offsets.HandArrayStart + i * 4);
         // Resolve off the same array the read path uses so a tile-ID shift clicks the right slot (issue #52).
         int eff = Variants.HandArrayDecoder.ResolveTextureBase(raw, ActiveLayout.TileTextureBase, out _);
-        return Variants.HandArrayDecoder.FindAddonSlot(raw, eff, target.Id);
+        return Variants.HandArrayDecoder.FindAddonSlot(raw, eff, target.Id, targetIsRed);
     }
 
     public unsafe StateSnapshot? TryBuildSnapshot()

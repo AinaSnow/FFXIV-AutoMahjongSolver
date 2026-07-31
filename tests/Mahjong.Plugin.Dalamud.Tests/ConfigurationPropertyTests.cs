@@ -11,6 +11,9 @@ public class ConfigurationPropertyTests
         HumanizedDelayMs = 700,
         ShowInGameHighlight = false,
         ShowSuggestionDetails = true,
+        MortalEnabled = true,
+        MortalWslDistribution = "Ubuntu",
+        MortalWorkingDirectory = "/opt/mortal",
         EnableGameLogging = false,
         InstallId = Guid.NewGuid(),
     };
@@ -73,6 +76,7 @@ public class ConfigurationPropertyTests
         Assert.False(c.DevMode);
         Assert.True(c.ShowInGameHighlight);
         Assert.False(c.ShowSuggestionDetails);
+        Assert.False(c.MortalEnabled);
         Assert.True(c.EnableGameLogging);
     }
 

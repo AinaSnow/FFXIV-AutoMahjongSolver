@@ -176,6 +176,18 @@ public class ActionStateMachineTests
     }
 
     [Fact]
+    public void RiichiConfirm_stores_red_identity_with_the_tile()
+    {
+        var fsm = NewFsm();
+        var tile = Tile.FromId(4);
+        fsm.LatchRiichiConfirm(tile, targetIsRed: true);
+
+        Assert.True(fsm.RiichiConfirmTileIsRed);
+        fsm.ClearRiichiConfirm();
+        Assert.Null(fsm.RiichiConfirmTileIsRed);
+    }
+
+    [Fact]
     public void RiichiConfirm_subsequent_null_latch_keeps_original_tile()
     {
         // Pins that a re-latch with null tile keeps the original policy-chosen tile across the post-riichi yaku-preview confirm.

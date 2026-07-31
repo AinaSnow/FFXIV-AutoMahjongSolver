@@ -17,9 +17,14 @@ public sealed class AutoPlayLoop : IDisposable
     private const int DefaultHandResultStateCode = 29;
     private static readonly TimeSpan RetryCooldown = TimeSpan.FromSeconds(3.0);
     private static readonly TimeSpan DispatchTimeout = TimeSpan.FromSeconds(10.0);
+    private static readonly TimeSpan MortalWinDecisionTimeout = TimeSpan.FromSeconds(0.75);
+    private static readonly TimeSpan MortalCallDecisionTimeout = TimeSpan.FromSeconds(1.5);
+    private static readonly TimeSpan MortalDiscardDecisionTimeout = TimeSpan.FromSeconds(3.0);
+    private static readonly TimeSpan TerminalWinSuppressionWindow = TimeSpan.FromSeconds(5.0);
 
     private const int VariantAcceptDelayMs = 500;
     private const int CallDecisionDelayMs = 700;
+    private const int MortalRetryDelayMs = 100;
     private const int RiichiTsumogiriDelayMs = 700;
     private const int HandResultAdvanceDelayMs = 300;
     /// <summary>The configured result state must persist this long before we fire the Next click. Firing during the result-modal animation phase landed the addon in a stuck state-32 with no inputs accepted (2026-05-26).</summary>
@@ -39,6 +44,10 @@ public sealed class AutoPlayLoop : IDisposable
     private string? lastSkipReason;
     private DateTime? handResultFirstSeenAt;
     private bool handResultDispatchedThisInstance;
+    private int mortalWaitKey;
+    private DateTime mortalWaitStartedAt;
+    private bool hasMortalWait;
+    private DateTime? terminalWinDispatchedAt;
 
     public string LastActionDescription { get; private set; } = "(none)";
 
@@ -82,6 +91,14 @@ public sealed class AutoPlayLoop : IDisposable
         if (!IsAutomationArmed())
         {
             var cfg = plugin.Configuration;
+            if (cfg.TosAccepted
+                && cfg.AutomationArmed
+                && cfg.SuggestionOnly
+                && cfg.MortalEnabled
+                && plugin.Aggregator.Latest is { } hintSnapshot)
+            {
+                plugin.MortalBridge.RefreshRecommendation(hintSnapshot);
+            }
             EmitSkipReason($"gate: tos={cfg.TosAccepted} armed={cfg.AutomationArmed} suggest_only={cfg.SuggestionOnly}",
                 state: -1, hand: -1, flags: 0);
             return;
@@ -138,8 +155,19 @@ public sealed class AutoPlayLoop : IDisposable
 
         if (!isCallPrompt && !isDiscardTurn)
         {
+            hasMortalWait = false;
             // Do not clear FSM context on transient "not actionable" ticks — discard-animation gaps drop the Discard flag mid-commit and clearing here permits a duplicate dispatch.
             EmitSkipReason($"not actionable (state={state} hand={snap.Hand.Count} legal={snap.Legal.Flags})",
+                state: state, hand: snap.Hand.Count, flags: flags);
+            return;
+        }
+
+        if (isCallPrompt
+            && (snap.Legal.Flags & (ActionFlags.Ron | ActionFlags.Tsumo)) != 0
+            && terminalWinDispatchedAt is { } winAt
+            && DateTime.UtcNow - winAt < TerminalWinSuppressionWindow)
+        {
+            EmitSkipReason("terminal win already dispatched",
                 state: state, hand: snap.Hand.Count, flags: flags);
             return;
         }
@@ -259,8 +287,14 @@ public sealed class AutoPlayLoop : IDisposable
 
     private void CheckStuckStateAndEmit(StateSnapshot? snap)
     {
-        if (snap is null)
+        if (snap is null || snap.Legal.Flags == ActionFlags.None)
+        {
+            stuckStateCode = null;
+            stuckHandCount = null;
+            stuckLegal = null;
+            stuckEmitted = false;
             return;
+        }
 
         var legal = snap.Legal.Flags;
         if (stuckStateCode != snap.AddonStateCode
@@ -614,7 +648,10 @@ public sealed class AutoPlayLoop : IDisposable
 
     private void ScheduleDiscard(DispatchContext context)
     {
-        ScheduleAction("discard", context, plugin.Configuration.HumanizedDelayMs, () =>
+        int delayMs = hasMortalWait
+            ? MortalRetryDelayMs
+            : plugin.Configuration.HumanizedDelayMs;
+        ScheduleAction("discard", context, delayMs, () =>
         {
             var snap = plugin.AddonReader.TryBuildSnapshot();
             int currentState = ReadStateCode();
@@ -625,11 +662,16 @@ public sealed class AutoPlayLoop : IDisposable
                 return;
             }
 
-            var choice = plugin.Policy.Choose(snap);
+            if (!TryChoose(snap, out var choice))
+            {
+                LastActionDescription = "waiting for Mortal discard";
+                fsm.ClearContext();
+                return;
+            }
             log.Info(
                 $"[AutoPlayLoop] discard body: schedState={context.State} curState={currentState} " +
                 $"hand={snap.Hand.Count} melds={snap.OurMelds.Count} flags={snap.Legal.Flags} " +
-                $"choice={choice.Kind} tile={choice.DiscardTile}");
+                $"choice={choice.Kind} tile={choice.DiscardTile} reason={choice.Reasoning}");
             EmitDecisionFinding("discard", snap, choice);
             DispatchPolicyChoice(snap, choice);
             log.Info(
@@ -647,7 +689,8 @@ public sealed class AutoPlayLoop : IDisposable
 
     private void ScheduleCallDecision(DispatchContext context)
     {
-        ScheduleAction("call", context, CallDecisionDelayMs, () =>
+        int delayMs = hasMortalWait ? MortalRetryDelayMs : CallDecisionDelayMs;
+        ScheduleAction("call", context, delayMs, () =>
         {
             var snap = plugin.AddonReader.TryBuildSnapshot();
             int currentState = ReadStateCode();
@@ -657,11 +700,16 @@ public sealed class AutoPlayLoop : IDisposable
                 log.Info($"[AutoPlayLoop] {LastActionDescription}");
                 return;
             }
-            var choice = plugin.Policy.Choose(snap);
+            if (!TryChoose(snap, out var choice))
+            {
+                LastActionDescription = "waiting for Mortal call decision";
+                fsm.ClearContext();
+                return;
+            }
             log.Info(
                 $"[AutoPlayLoop] call body: schedState={context.State} curState={currentState} " +
                 $"hand={snap.Hand.Count} melds={snap.OurMelds.Count} flags={snap.Legal.Flags} " +
-                $"choice={choice.Kind} tile={choice.DiscardTile}");
+                $"choice={choice.Kind} tile={choice.DiscardTile} reason={choice.Reasoning}");
             EmitDecisionFinding("call", snap, choice);
             DispatchCallChoice(snap, choice);
             // LastDiscardPath belongs to DispatchDiscard — do not print it on the call path; it would be stale.
@@ -688,7 +736,7 @@ public sealed class AutoPlayLoop : IDisposable
             Tile tile;
             if (fsm.RiichiConfirmTile is { } target)
             {
-                slot = plugin.AddonReader.FindAddonSlotOfTile(target);
+                slot = plugin.AddonReader.FindAddonSlotOfTile(target, fsm.RiichiConfirmTileIsRed);
                 if (slot < 0)
                 {
                     LastActionDescription = $"riichi-tsumogiri aborted: latched tile {target} not in hand";
@@ -802,13 +850,20 @@ public sealed class AutoPlayLoop : IDisposable
 
         // Self-declared kans produce no opp-discard signal; MeldTracker.ObserveSnapshot cannot infer them, so record here to preserve the 14-tile invariant.
         if (result == InputDispatcher.DispatchResult.Ok)
+        {
             plugin.MeldTracker.Record(Meld.AnKan(kanTile));
+            plugin.MortalBridge.ConfirmKanDecisionDispatched(choice);
+        }
     }
 
     private void DispatchDiscardOrRiichi(StateSnapshot snap, ActionChoice choice)
     {
         var tile = choice.DiscardTile!.Value;
-        int slot = plugin.AddonReader.FindAddonSlotOfTile(tile);
+        bool? targetIsRed = plugin.MortalBridge.Enabled
+            && plugin.MortalBridge.TryGetRecommendedDiscardRedIdentity(snap, choice, out bool mortalIsRed)
+                ? mortalIsRed
+                : null;
+        int slot = plugin.AddonReader.FindAddonSlotOfTile(tile, targetIsRed);
         if (slot < 0)
         {
             LastActionDescription = $"tile {tile} not in hand";
@@ -823,7 +878,7 @@ public sealed class AutoPlayLoop : IDisposable
             LastActionDescription = $"auto-riichi[opt={riichiIdx}] (tile={tile}) → {rResult}";
             plugin.GameLogger.RecordAction(ActionKind.Riichi, tile, riichiIdx, rResult.ToString(), choice.Reasoning);
             EmitDispatchFinding("riichi", rResult, option: riichiIdx, tile: tile, snap: snap);
-            fsm.LatchRiichiConfirm(tile);
+            fsm.LatchRiichiConfirm(tile, targetIsRed);
             ClearRetryDebounceIfHookFailed(rResult);
             return;
         }
@@ -871,6 +926,14 @@ public sealed class AutoPlayLoop : IDisposable
         if (choice.Kind != ActionKind.Pass || !snap.Legal.Can(ActionFlags.Riichi))
             return false;
 
+        // A Mortal "none" reaction is authoritative. Do not let the fallback
+        // heuristic turn it into a riichi declaration.
+        if (plugin.MortalBridge.Enabled && !plugin.MortalBridge.CurrentHandQuarantined)
+        {
+            probeReason = "riichi declined by Mortal";
+            return false;
+        }
+
         if (fsm.IsRiichiConfirmPending || snap.Hand.Count == 0 || snap.Hand.Count % 3 != 2)
         {
             probeReason = "riichi-confirm";
@@ -896,6 +959,92 @@ public sealed class AutoPlayLoop : IDisposable
         probeTile = verdict.DiscardTile;
         probeReason = string.IsNullOrEmpty(verdict.Reasoning) ? "riichi-accept" : verdict.Reasoning;
         return true;
+    }
+
+    private bool TryChoose(StateSnapshot snapshot, out ActionChoice choice)
+    {
+        if (plugin.MortalBridge.Enabled && !plugin.MortalBridge.CurrentHandQuarantined)
+        {
+            if (plugin.MortalBridge.TryChoose(snapshot, out choice))
+            {
+                hasMortalWait = false;
+                return true;
+            }
+
+            int key = ComputeMortalDecisionKey(snapshot);
+            var now = DateTime.UtcNow;
+            if (!hasMortalWait || mortalWaitKey != key)
+            {
+                mortalWaitKey = key;
+                mortalWaitStartedAt = now;
+                hasMortalWait = true;
+                return false;
+            }
+
+            TimeSpan timeout = MortalDecisionTimeout(snapshot.Legal.Flags);
+            if (now - mortalWaitStartedAt < timeout)
+                return false;
+
+            hasMortalWait = false;
+            plugin.MortalBridge.QuarantineUnresponsiveHand(
+                $"No decision for {snapshot.Legal.Flags} within {timeout.TotalSeconds:0.#}s");
+            var fallback = plugin.Policy.Choose(snapshot);
+            string detail = string.IsNullOrWhiteSpace(fallback.Reasoning)
+                ? "local policy"
+                : fallback.Reasoning;
+            choice = fallback with { Reasoning = $"Mortal timeout; local fallback: {detail}" };
+            return true;
+        }
+
+        hasMortalWait = false;
+        choice = plugin.Policy.Choose(snapshot);
+        return true;
+    }
+
+    internal static TimeSpan MortalDecisionTimeout(ActionFlags flags)
+    {
+        if ((flags & (ActionFlags.Ron | ActionFlags.Tsumo)) != 0)
+            return MortalWinDecisionTimeout;
+        if ((flags & CallPromptFlags) != 0)
+            return MortalCallDecisionTimeout;
+        return MortalDiscardDecisionTimeout;
+    }
+
+    internal static int ComputeMortalDecisionKey(StateSnapshot snapshot)
+    {
+        var hash = new HashCode();
+        hash.Add(snapshot.AddonStateCode);
+        hash.Add((int)snapshot.Legal.Flags);
+        for (int i = 0; i < snapshot.Hand.Count; i++)
+        {
+            hash.Add(snapshot.Hand[i].Id);
+            hash.Add(i < snapshot.HandIsRed.Count && snapshot.HandIsRed[i]);
+        }
+        foreach (var tile in snapshot.Legal.DiscardableTiles)
+            hash.Add(tile.Id);
+        AddDecisionCandidates(ref hash, snapshot.Legal.PonCandidates);
+        AddDecisionCandidates(ref hash, snapshot.Legal.ChiCandidates);
+        AddDecisionCandidates(ref hash, snapshot.Legal.KanCandidates);
+        foreach (var meld in snapshot.OurMelds)
+        {
+            hash.Add((int)meld.Kind);
+            foreach (var tile in meld.Tiles)
+                hash.Add(tile.Id);
+        }
+        return hash.ToHashCode();
+    }
+
+    private static void AddDecisionCandidates(
+        ref HashCode hash, IReadOnlyList<MeldCandidate> candidates)
+    {
+        foreach (var candidate in candidates)
+        {
+            hash.Add((int)candidate.Kind);
+            hash.Add(candidate.ClaimedTile.Id);
+            hash.Add(candidate.FromSeat);
+            foreach (var tile in candidate.HandTiles)
+                hash.Add(tile.Id);
+        }
     }
 
     private void DispatchAccept(StateSnapshot snap, ActionChoice choice, LegalActions legal, bool acceptRiichiPopup, Tile? riichiProbeTile, string riichiReason)
@@ -926,6 +1075,17 @@ public sealed class AutoPlayLoop : IDisposable
             && choice.Call is { } shouCand)
         {
             plugin.MeldTracker.UpgradeToShouMinKan(shouCand.ClaimedTile);
+            plugin.MortalBridge.ConfirmKanDecisionDispatched(choice);
+        }
+        else if (result2 == InputDispatcher.DispatchResult.Ok && choice.Kind == ActionKind.MinKan)
+        {
+            plugin.MortalBridge.ConfirmKanDecisionDispatched(choice);
+        }
+
+        if (result2 == InputDispatcher.DispatchResult.Ok
+            && loggedKind is ActionKind.Ron or ActionKind.Tsumo)
+        {
+            terminalWinDispatchedAt = DateTime.UtcNow;
         }
     }
 

@@ -12,6 +12,7 @@ using Mahjong.Plugin.Dalamud.Composition;
 using Mahjong.Plugin.Dalamud.GameState;
 using Mahjong.Plugin.Dalamud.Hooks;
 using Mahjong.Plugin.Dalamud.Logging;
+using Mahjong.Plugin.Dalamud.Mortal;
 using Mahjong.Plugin.Dalamud.Telemetry;
 using Mahjong.Plugin.Dalamud.UI;
 using Mahjong.Plugin.Game;
@@ -60,6 +61,8 @@ public sealed class Plugin : IDalamudPlugin
     public InputDispatcher Dispatcher { get; }
     public GameLogger GameLogger { get; }
     public AutoPlayLoop AutoPlay { get; }
+    public MahjongNetworkCapture NetworkCapture { get; }
+    public LiveMortalBridge MortalBridge { get; }
 
     public IDiscardCapture DiscardCapture { get; }
 
@@ -157,6 +160,13 @@ public sealed class Plugin : IDalamudPlugin
             policyAccessor: () => Policy,
             eventLogger: EventLogger,
             meldTrackerAccessor: () => MeldTracker.SerializeState());
+        NetworkCapture = new MahjongNetworkCapture(GameInterop, Log);
+        MortalBridge = new LiveMortalBridge(
+            NetworkCapture,
+            Framework,
+            ConfigService,
+            () => Aggregator.Latest,
+            Log);
         AutoPlay = new AutoPlayLoop(this, Framework, Log, mahjongAddon);
 
         DiscardCapture = DiscardCaptureFactory.Create(
@@ -237,6 +247,8 @@ public sealed class Plugin : IDalamudPlugin
         DebugOverlay.Dispose();
         HandOverlay.Dispose();
         AutoPlay.Dispose();
+        MortalBridge.Dispose();
+        NetworkCapture.Dispose();
         DiscardCaptureLogger.Dispose();
         DiscardTracker.Dispose();
         StrategyDiagnostics.Dispose();

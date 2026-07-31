@@ -20,6 +20,10 @@ public class ConfigurationTests
         Assert.Equal(1200, c.HumanizedDelayMs);
         Assert.True(c.ShowInGameHighlight);
         Assert.False(c.ShowSuggestionDetails);
+        Assert.False(c.MortalEnabled);
+        Assert.Equal("", c.MortalWslDistribution);
+        Assert.Equal("", c.MortalWorkingDirectory);
+        Assert.Equal("python", c.MortalPythonExecutable);
         Assert.True(c.EnableGameLogging);
     }
 

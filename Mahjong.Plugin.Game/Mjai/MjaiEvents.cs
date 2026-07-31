@@ -65,6 +65,18 @@ public sealed record MjaiDora(
     public string Type => "dora";
 }
 
+public sealed record MjaiEndKyoku : IMjaiEvent
+{
+    [JsonPropertyName("type"), JsonPropertyOrder(-1)]
+    public string Type => "end_kyoku";
+}
+
+public sealed record MjaiEndGame : IMjaiEvent
+{
+    [JsonPropertyName("type"), JsonPropertyOrder(-1)]
+    public string Type => "end_game";
+}
+
 public sealed record MjaiOpenCall : IMjaiEvent
 {
     private static readonly HashSet<string> AllowedTypes = ["chi", "pon", "daiminkan"];
@@ -95,4 +107,31 @@ public sealed record MjaiOpenCall : IMjaiEvent
         Pai = pai;
         Consumed = consumed;
     }
+}
+
+public sealed record MjaiAnkan(
+    [property: JsonPropertyName("actor")] int Actor,
+    [property: JsonPropertyName("consumed")] string[] Consumed) : IMjaiEvent
+{
+    [JsonPropertyName("type"), JsonPropertyOrder(-1)]
+    public string Type => "ankan";
+}
+
+public sealed record MjaiKakan(
+    [property: JsonPropertyName("actor")] int Actor,
+    [property: JsonPropertyName("pai")] string Pai,
+    [property: JsonPropertyName("consumed")] string[] Consumed) : IMjaiEvent
+{
+    [JsonPropertyName("type"), JsonPropertyOrder(-1)]
+    public string Type => "kakan";
+}
+
+public sealed record MjaiDaiminkan(
+    [property: JsonPropertyName("actor")] int Actor,
+    [property: JsonPropertyName("target")] int Target,
+    [property: JsonPropertyName("pai")] string Pai,
+    [property: JsonPropertyName("consumed")] string[] Consumed) : IMjaiEvent
+{
+    [JsonPropertyName("type"), JsonPropertyOrder(-1)]
+    public string Type => "daiminkan";
 }

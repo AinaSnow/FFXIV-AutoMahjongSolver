@@ -22,6 +22,8 @@ server/dist/
 # Never commit — install IDs identify a single install across sessions and
 # memory blobs can carry player-name strings.
 .local/
+# Local Mortal bundle was initially created under this misspelled path.
+.loacl/
 
 # Tuner output (evolutionary / coordinate-descent weight runs).
 data/weights/

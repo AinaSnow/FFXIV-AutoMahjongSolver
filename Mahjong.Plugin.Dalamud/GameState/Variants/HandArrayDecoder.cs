@@ -101,19 +101,29 @@ internal static class HandArrayDecoder
         return new DecodedTiles(tiles, isRedByTile, akadora);
     }
 
-    /// <summary>Addon slot whose raw decodes to <paramref name="targetTileId"/>. Prefers slot 13 (last-drawn), else lowest match. -1 if not found.</summary>
-    public static int FindAddonSlot(ReadOnlySpan<int> rawSlots, int textureBase, int targetTileId)
+    /// <summary>Addon slot whose raw decodes to <paramref name="targetTileId"/> and optional red identity. Prefers slot 13 (last-drawn), else lowest match. -1 if not found.</summary>
+    public static int FindAddonSlot(
+        ReadOnlySpan<int> rawSlots,
+        int textureBase,
+        int targetTileId,
+        bool? targetIsRed = null)
     {
         if (rawSlots.Length > 13
-            && DecodeTileId(rawSlots[13], textureBase, out _) == targetTileId)
+            && IsMatch(rawSlots[13], textureBase, targetTileId, targetIsRed))
             return 13;
         for (int i = 0; i < rawSlots.Length; i++)
         {
             if (i == 13)
                 continue;
-            if (DecodeTileId(rawSlots[i], textureBase, out _) == targetTileId)
+            if (IsMatch(rawSlots[i], textureBase, targetTileId, targetIsRed))
                 return i;
         }
         return -1;
+    }
+
+    private static bool IsMatch(int raw, int textureBase, int targetTileId, bool? targetIsRed)
+    {
+        int id = DecodeTileId(raw, textureBase, out bool isRed);
+        return id == targetTileId && (!targetIsRed.HasValue || targetIsRed.Value == isRed);
     }
 }
