@@ -39,7 +39,7 @@ public class MjaiTests
     }
 
     [Fact]
-    public void Mortal_reaction_parser_ignores_metadata_and_reads_action_fields()
+    public void Mortal_reaction_parser_reads_action_fields_and_evaluation_time()
     {
         const string json = "{\"type\":\"chi\",\"actor\":0,\"target\":3,\"pai\":\"4s\",\"consumed\":[\"5sr\",\"6s\"],\"meta\":{\"eval_time_ns\":123}}";
 
@@ -49,6 +49,7 @@ public class MjaiTests
         Assert.Equal(3, reaction.Target);
         Assert.Equal("4s", reaction.Pai);
         Assert.Equal(["5sr", "6s"], reaction.Consumed);
+        Assert.Equal(123, reaction.EvalTimeNs);
     }
 
     [Fact]
@@ -72,6 +73,27 @@ public class MjaiTests
             "{\"type\":\"tsumo\",\"actor\":0,\"pai\":\"5mr\"}\n" +
             "{\"type\":\"dahai\",\"actor\":0,\"pai\":\"1m\",\"tsumogiri\":false}\n",
             journal.ToReplayText());
+    }
+
+    [Fact]
+    public void Journal_replaces_only_the_latest_provisional_event()
+    {
+        var journal = new MjaiEventJournal();
+        var provisional = new MjaiDahai(1, "5p", false);
+        journal.Append(new MjaiStartGame());
+        journal.Append(provisional);
+
+        Assert.True(journal.TryReplaceLast(
+            provisional,
+            [new MjaiReach(1), new MjaiDahai(1, "1s", false), new MjaiReachAccepted(1)]));
+        Assert.Equal(
+            "{\"type\":\"start_game\"}\n" +
+            "{\"type\":\"reach\",\"actor\":1}\n" +
+            "{\"type\":\"dahai\",\"actor\":1,\"pai\":\"1s\",\"tsumogiri\":false}\n" +
+            "{\"type\":\"reach_accepted\",\"actor\":1}\n",
+            journal.ToReplayText());
+
+        Assert.False(journal.TryReplaceLast(provisional, [new MjaiDahai(1, "2s", false)]));
     }
 
     [Theory]

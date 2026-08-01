@@ -38,9 +38,9 @@ public sealed class CallPromptNormalizationTests
     }
 
     [Theory]
-    [InlineData(ActionFlags.Ron | ActionFlags.Pass, 0.75)]
-    [InlineData(ActionFlags.Chi | ActionFlags.Pass, 1.5)]
-    [InlineData(ActionFlags.Discard, 3.0)]
+    [InlineData(ActionFlags.Ron | ActionFlags.Pass, 1.5)]
+    [InlineData(ActionFlags.Chi | ActionFlags.Pass, 5.0)]
+    [InlineData(ActionFlags.Discard, 4.0)]
     public void Mortal_timeout_prioritizes_short_lived_windows(ActionFlags flags, double seconds)
     {
         Assert.Equal(
@@ -72,6 +72,31 @@ public sealed class CallPromptNormalizationTests
         Assert.Equal(
             AutoPlayLoop.ComputeMortalDecisionKey(first),
             AutoPlayLoop.ComputeMortalDecisionKey(later));
+    }
+
+    [Fact]
+    public void Chi_variant_selection_honors_mortal_consumed_tiles()
+    {
+        var sixSou = Tile.FromId(23);
+        var sevenSou = Tile.FromId(24);
+        var eightSou = Tile.FromId(25);
+        var preferred = new MeldCandidate(MeldKind.Chi, eightSou, [sixSou, sevenSou], 3);
+        var snapshot = StateSnapshot.Empty with
+        {
+            Hand = [Tile.FromId(19), Tile.FromId(20), sixSou, sevenSou],
+            HandIsRed = [false, false, false, false],
+        };
+        IReadOnlyList<int[]> variants =
+        [
+            [18, 19, 20],
+            [23, 24, 25],
+        ];
+
+        int selected = AutoPlayLoop.PickBestChiVariantIndex(
+            variants, snapshot, preferred, out string note);
+
+        Assert.Equal(1, selected);
+        Assert.Equal("Mortal variant 1", note);
     }
 
     private static LegalActions Legal(ActionFlags flags) =>

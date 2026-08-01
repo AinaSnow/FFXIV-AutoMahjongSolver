@@ -17,9 +17,9 @@ public sealed class AutoPlayLoop : IDisposable
     private const int DefaultHandResultStateCode = 29;
     private static readonly TimeSpan RetryCooldown = TimeSpan.FromSeconds(3.0);
     private static readonly TimeSpan DispatchTimeout = TimeSpan.FromSeconds(10.0);
-    private static readonly TimeSpan MortalWinDecisionTimeout = TimeSpan.FromSeconds(0.75);
-    private static readonly TimeSpan MortalCallDecisionTimeout = TimeSpan.FromSeconds(1.5);
-    private static readonly TimeSpan MortalDiscardDecisionTimeout = TimeSpan.FromSeconds(3.0);
+    private static readonly TimeSpan MortalWinDecisionTimeout = TimeSpan.FromSeconds(1.5);
+    private static readonly TimeSpan MortalCallDecisionTimeout = TimeSpan.FromSeconds(5.0);
+    private static readonly TimeSpan MortalDiscardDecisionTimeout = TimeSpan.FromSeconds(4.0);
     private static readonly TimeSpan TerminalWinSuppressionWindow = TimeSpan.FromSeconds(5.0);
 
     private const int VariantAcceptDelayMs = 500;
@@ -48,6 +48,7 @@ public sealed class AutoPlayLoop : IDisposable
     private DateTime mortalWaitStartedAt;
     private bool hasMortalWait;
     private DateTime? terminalWinDispatchedAt;
+    private MeldCandidate? preferredChiCall;
 
     public string LastActionDescription { get; private set; } = "(none)";
 
@@ -548,9 +549,10 @@ public sealed class AutoPlayLoop : IDisposable
             var variants = TryReadChiVariants();
             var snap = plugin.AddonReader.TryBuildSnapshot();
             if (variants is { Count: > 1 } && snap is not null)
-                bestIdx = PickBestChiVariantIndex(variants, snap, out scoreNote);
+                bestIdx = PickBestChiVariantIndex(variants, snap, preferredChiCall, out scoreNote);
 
             var result = plugin.Dispatcher.DispatchChiVariant(bestIdx);
+            preferredChiCall = null;
             LastActionDescription = $"auto-variant[opt={bestIdx}] → {result} ({scoreNote})";
             log.Info($"[AutoPlayLoop] variant dispatch: {LastActionDescription}");
             plugin.GameLogger.RecordAction(ActionKind.Chi, null, bestIdx, result.ToString(), $"chi-variant: {scoreNote}");
@@ -605,8 +607,28 @@ public sealed class AutoPlayLoop : IDisposable
     }
 
     /// <summary>Picks the chi variant whose post-call closed hand has the lowest shanten. Tries all 3 (claim, hand-pair) splits per variant since the claimed tile isn't explicitly marked in AtkValues. Ties resolve to the lower variant index.</summary>
-    private static int PickBestChiVariantIndex(IReadOnlyList<int[]> variants, StateSnapshot snap, out string note)
+    internal static int PickBestChiVariantIndex(
+        IReadOnlyList<int[]> variants,
+        StateSnapshot snap,
+        MeldCandidate? preferredCall,
+        out string note)
     {
+        if (preferredCall is { Kind: MeldKind.Chi } preferred)
+        {
+            int[] wanted = [preferred.ClaimedTile.Id, .. preferred.HandTiles.Select(tile => (int)tile.Id)];
+            Array.Sort(wanted);
+            for (int i = 0; i < variants.Count; i++)
+            {
+                int[] offered = variants[i].ToArray();
+                Array.Sort(offered);
+                if (offered.SequenceEqual(wanted))
+                {
+                    note = $"Mortal variant {i}";
+                    return i;
+                }
+            }
+        }
+
         var counts = new int[Mahjong.Core.Tile.Count34];
         foreach (var t in snap.Hand)
             counts[t.Id]++;
@@ -986,13 +1008,17 @@ public sealed class AutoPlayLoop : IDisposable
                 return false;
 
             hasMortalWait = false;
-            plugin.MortalBridge.QuarantineUnresponsiveHand(
+            plugin.MortalBridge.RecoverUnresponsiveDecision(
                 $"No decision for {snapshot.Legal.Flags} within {timeout.TotalSeconds:0.#}s");
-            var fallback = plugin.Policy.Choose(snapshot);
+            bool opponentResponse = (snapshot.Legal.Flags &
+                (ActionFlags.Pon | ActionFlags.Chi | ActionFlags.MinKan | ActionFlags.Ron)) != 0;
+            var fallback = opponentResponse && !plugin.MortalBridge.HasAuthoritativeOpponentDiscard
+                ? ActionChoice.Pass("pass: no authoritative opponent discard")
+                : plugin.Policy.Choose(plugin.MortalBridge.NormalizeForLocalFallback(snapshot));
             string detail = string.IsNullOrWhiteSpace(fallback.Reasoning)
                 ? "local policy"
                 : fallback.Reasoning;
-            choice = fallback with { Reasoning = $"Mortal timeout; local fallback: {detail}" };
+            choice = fallback with { Reasoning = $"Mortal timeout; replay recovery; local fallback: {detail}" };
             return true;
         }
 
@@ -1062,6 +1088,13 @@ public sealed class AutoPlayLoop : IDisposable
             acceptRiichiPopup ? riichiReason : choice.Reasoning);
         EmitDispatchFinding(label, result2, option: acceptIndex, snap: snap);
         ClearRetryDebounceIfHookFailed(result2);
+
+        if (result2 == InputDispatcher.DispatchResult.Ok
+            && choice.Kind == ActionKind.Chi
+            && choice.Call is { } chiCall)
+        {
+            preferredChiCall = chiCall;
+        }
 
         // Yaku-preview confirm popup shares the Riichi-flag signature — latch to prevent retry-dispatch and carry the probe's chosen discard.
         if (acceptRiichiPopup)

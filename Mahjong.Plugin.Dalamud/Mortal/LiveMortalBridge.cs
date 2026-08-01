@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Dalamud.Plugin.Services;
+using Mahjong.Engine;
 using Mahjong.Plugin.Game;
 using Mahjong.Plugin.Dalamud.GameState;
 using Mahjong.Plugin.Game.Mjai;
@@ -41,7 +42,15 @@ public sealed class LiveMortalBridge : IDisposable
     private bool quarantinedKyokuEnded;
     private volatile bool replayCrashDetected;
     private long replayValidationDeadlineTicks;
+    private long lastModelEvalNanoseconds;
     private CapturedMahjongPacket? lastCapturedPacket;
+    private MjaiDahai? lastNetworkDiscard;
+    private MjaiDahai? recoveredPendingServerDiscard;
+    private int? lastNetworkDrawActor;
+    private readonly int[] observedDiscardCounts = [-1, -1, -1, -1];
+    private int? latestUiDiscardSeat;
+    private int latestUiDiscardCount = -1;
+    private int lastCandidateCorrectionKey;
     private bool disposed;
 
     public LiveMortalBridge(
@@ -78,6 +87,17 @@ public sealed class LiveMortalBridge : IDisposable
 
     public long ReactionsReceived { get; private set; }
 
+    public long DecisionsMapped { get; private set; }
+
+    public long DecisionTimeouts { get; private set; }
+
+    public long CandidateCorrections { get; private set; }
+
+    public long RecoveredDiscardEvents { get; private set; }
+
+    public double LastModelEvalMilliseconds =>
+        Interlocked.Read(ref lastModelEvalNanoseconds) / 1_000_000d;
+
     public void QuarantineUnresponsiveHand(string reason)
     {
         if (waitingForNextHand)
@@ -94,16 +114,43 @@ public sealed class LiveMortalBridge : IDisposable
         QuarantineCurrentHand(reason);
     }
 
+    public void RecoverUnresponsiveDecision(string reason)
+    {
+        DecisionTimeouts++;
+        string lastEvent = journal.Snapshot().LastOrDefault() ?? "(none)";
+        log.Warning(
+            $"[Mortal] {reason}; using one local fallback and restarting with replay " +
+            $"(events={EventsSent}, reactions={ReactionsReceived}, queued={reactions.Count}, " +
+            $"last_mjai={lastEvent}, dropped={capture.DroppedPackets}).");
+
+        Stop("Recovering from decision timeout", preserveMjaiState: true);
+        capture.CaptureEnabled = true;
+        lastStartAttemptUtc = DateTime.MinValue;
+    }
+
     public bool TryChoose(StateSnapshot snapshot, out ActionChoice choice)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         if (TryGetRecommendation(snapshot, out choice, out _))
             return true;
 
+        TryRecoverMissingDiscard(snapshot);
+        if (IsOpponentResponseWindow(snapshot.Legal.Flags)
+            && lastNetworkDiscard is not { Actor: > 0 })
+        {
+            choice = ActionChoice.Pass("waiting for authoritative opponent discard");
+            return false;
+        }
+
+        var decisionSnapshot = NormalizeCallCandidates(snapshot, lastNetworkDiscard, out bool corrected);
+        if (corrected)
+            RecordCandidateCorrection(snapshot, decisionSnapshot);
+
         while (reactions.TryDequeue(out var reaction))
         {
-            if (TryMapDecision(reaction, snapshot, out choice, out bool? isRed))
+            if (TryMapDecision(reaction, decisionSnapshot, out choice, out bool? isRed))
             {
+                DecisionsMapped++;
                 PublishRecommendation(snapshot, choice, isRed);
                 if (reaction.Type is "ankan" or "kakan" or "daiminkan")
                 {
@@ -286,12 +333,14 @@ public sealed class LiveMortalBridge : IDisposable
             if (!ProcessCapturedPacket(packet))
                 return;
         }
+        ObserveSnapshot(snapshotAccessor());
     }
 
     private bool ProcessCapturedPacket(CapturedMahjongPacket packet)
     {
         lastCapturedPacket = packet;
-        foreach (var evt in decoder.Process(packet.MessageId, packet.Payload))
+        IReadOnlyList<IMjaiEvent> decodedEvents = decoder.Process(packet.MessageId, packet.Payload);
+        foreach (var evt in decodedEvents)
         {
             if (evt is MjaiStartKyoku start && !IsSafeStartKyoku(start))
             {
@@ -319,6 +368,49 @@ public sealed class LiveMortalBridge : IDisposable
                 return false;
             }
 
+        }
+
+        if (recoveredPendingServerDiscard is { } recovered
+            && decodedEvents.OfType<MjaiDahai>().FirstOrDefault() is { } serverDiscard)
+        {
+            bool exactDiscard = serverDiscard.Actor == recovered.Actor
+                && string.Equals(serverDiscard.Pai, recovered.Pai, StringComparison.Ordinal);
+            if (exactDiscard && decodedEvents.Count == 1)
+            {
+                recoveredPendingServerDiscard = null;
+                ObserveNetworkEvent(serverDiscard);
+                log.Information(
+                    $"[Mortal] Delayed server discard matched recovered event " +
+                    $"actor={serverDiscard.Actor} pai={serverDiscard.Pai}; duplicate suppressed.");
+                return true;
+            }
+
+            if (!journal.TryReplaceLast(recovered, decodedEvents))
+            {
+                log.Error(
+                    $"[Mortal] Could not replace provisional discard with its delayed packet; " +
+                    $"recovered={recovered.Actor}:{recovered.Pai}, " +
+                    $"server={serverDiscard.Actor}:{serverDiscard.Pai}.");
+                QuarantineCurrentHand("Discard correction failed; waiting for the next kyoku");
+                return false;
+            }
+
+            recoveredPendingServerDiscard = null;
+            foreach (var evt in decodedEvents)
+                ObserveNetworkEvent(evt);
+            log.Warning(
+                $"[Mortal] Corrected provisional discard from delayed packet and restarting with replay: " +
+                $"recovered={recovered.Actor}:{recovered.Pai}, " +
+                $"server={serverDiscard.Actor}:{serverDiscard.Pai}.");
+            Stop("Correcting provisional discard", preserveMjaiState: true);
+            capture.CaptureEnabled = true;
+            lastStartAttemptUtc = DateTime.MinValue;
+            return false;
+        }
+
+        foreach (var evt in decodedEvents)
+        {
+            ObserveNetworkEvent(evt);
             if (!TrySendEvent(evt))
                 return false;
         }
@@ -344,6 +436,10 @@ public sealed class LiveMortalBridge : IDisposable
             quarantinedKyokuEnded = false;
             decoder = new MahjongPacketMjaiDecoder();
             journal.Clear();
+            lastNetworkDiscard = null;
+            recoveredPendingServerDiscard = null;
+            lastNetworkDrawActor = null;
+            ResetObservedDiscardCounts();
             bool resumed = ProcessCapturedPacket(packet);
             if (resumed)
             {
@@ -449,7 +545,7 @@ public sealed class LiveMortalBridge : IDisposable
 
     private void Stop(string status, bool preserveMjaiState = false)
     {
-        capture.CaptureEnabled = false;
+        capture.CaptureEnabled = preserveMjaiState;
         var old = client;
         client = null;
         if (old is not null)
@@ -469,6 +565,11 @@ public sealed class LiveMortalBridge : IDisposable
             waitingForNextHand = false;
             quarantinedKyokuEnded = false;
             lastCapturedPacket = null;
+            lastNetworkDiscard = null;
+            recoveredPendingServerDiscard = null;
+            lastNetworkDrawActor = null;
+            ResetObservedDiscardCounts();
+            lastCandidateCorrectionKey = 0;
         }
         replayCrashDetected = false;
         if (!preserveMjaiState)
@@ -514,6 +615,11 @@ public sealed class LiveMortalBridge : IDisposable
         pendingStartTileKinds = [];
         waitingForNextHand = true;
         quarantinedKyokuEnded = false;
+        lastNetworkDiscard = null;
+        recoveredPendingServerDiscard = null;
+        lastNetworkDrawActor = null;
+        ResetObservedDiscardCounts();
+        lastCandidateCorrectionKey = 0;
         replayStateOnNextStart = false;
         replayCrashDetected = false;
         Interlocked.Exchange(ref replayValidationDeadlineTicks, 0);
@@ -539,6 +645,8 @@ public sealed class LiveMortalBridge : IDisposable
         }
 
         ReactionsReceived++;
+        if (parsed.EvalTimeNs is > 0)
+            Interlocked.Exchange(ref lastModelEvalNanoseconds, parsed.EvalTimeNs.Value);
         lock (reachLock)
         {
             if (parsed.Type == "reach" && parsed.Actor == 0)
@@ -659,6 +767,266 @@ public sealed class LiveMortalBridge : IDisposable
             kan.Pai != MjaiTile.Unknown && kan.Consumed.All(tile => tile != MjaiTile.Unknown),
         _ => true,
     };
+
+    internal static StateSnapshot NormalizeCallCandidates(
+        StateSnapshot snapshot,
+        MjaiDahai? lastDiscard,
+        out bool corrected)
+    {
+        corrected = false;
+        if (lastDiscard is not { Actor: > 0 }
+            || !MjaiTile.TryParse(lastDiscard.Pai, out var claimed, out _))
+        {
+            return snapshot;
+        }
+
+        var legal = snapshot.Legal;
+        const ActionFlags networkCallFlags =
+            ActionFlags.Pon | ActionFlags.Chi | ActionFlags.MinKan;
+        if ((legal.Flags & networkCallFlags) == 0)
+            return snapshot;
+
+        var derived = CallCandidateDeriver.Derive(snapshot.Hand, claimed, lastDiscard.Actor);
+        IReadOnlyList<MeldCandidate> pons = legal.Can(ActionFlags.Pon)
+            ? derived.Pon
+            : legal.PonCandidates;
+        IReadOnlyList<MeldCandidate> chis = legal.Can(ActionFlags.Chi)
+            ? derived.Chi
+            : legal.ChiCandidates;
+        IReadOnlyList<MeldCandidate> kans = legal.Can(ActionFlags.MinKan)
+            ? [.. legal.KanCandidates.Where(candidate => candidate.Kind != MeldKind.MinKan), .. derived.Kan]
+            : legal.KanCandidates;
+
+        corrected = !CandidateListsEqual(legal.PonCandidates, pons)
+            || !CandidateListsEqual(legal.ChiCandidates, chis)
+            || !CandidateListsEqual(legal.KanCandidates, kans);
+        if (!corrected)
+            return snapshot;
+
+        return snapshot with
+        {
+            Legal = legal with
+            {
+                PonCandidates = pons,
+                ChiCandidates = chis,
+                KanCandidates = kans,
+            },
+        };
+    }
+
+    private void ObserveNetworkEvent(IMjaiEvent evt)
+    {
+        switch (evt)
+        {
+            case MjaiDahai discard:
+                lastNetworkDiscard = discard;
+                lastNetworkDrawActor = null;
+                ClearObservedDiscardEvidence();
+                break;
+            case MjaiStartKyoku:
+            case MjaiEndKyoku:
+            case MjaiOpenCall:
+                lastNetworkDiscard = null;
+                recoveredPendingServerDiscard = null;
+                lastNetworkDrawActor = null;
+                if (evt is MjaiStartKyoku or MjaiEndKyoku)
+                    ResetObservedDiscardCounts();
+                break;
+            case MjaiTsumo draw:
+                lastNetworkDiscard = null;
+                recoveredPendingServerDiscard = null;
+                lastNetworkDrawActor = draw.Actor;
+                ClearObservedDiscardEvidence();
+                break;
+        }
+    }
+
+    private void ObserveSnapshot(StateSnapshot? snapshot)
+    {
+        if (snapshot is null || snapshot.Seats.Count != 4)
+            return;
+
+        int changedSeat = -1;
+        int changedCount = 0;
+        for (int seat = 0; seat < 4; seat++)
+        {
+            int current = snapshot.Seats[seat].DiscardCount;
+            int previous = observedDiscardCounts[seat];
+            if (previous >= 0 && current == previous + 1)
+            {
+                changedSeat = seat;
+                changedCount++;
+            }
+            else if (previous >= 0 && current != previous)
+            {
+                changedCount += 2;
+            }
+            observedDiscardCounts[seat] = current;
+        }
+
+        if (changedCount == 1
+            && changedSeat > 0
+            && HasCompleteObservedDiscard(snapshot, changedSeat, observedDiscardCounts[changedSeat]))
+        {
+            latestUiDiscardSeat = changedSeat;
+            latestUiDiscardCount = observedDiscardCounts[changedSeat];
+        }
+        else if (changedCount > 0)
+        {
+            ClearObservedDiscardEvidence();
+        }
+    }
+
+    private bool TryRecoverMissingDiscard(StateSnapshot snapshot)
+    {
+        const ActionFlags opponentCallFlags =
+            ActionFlags.Pon | ActionFlags.Chi | ActionFlags.MinKan | ActionFlags.Ron;
+        if ((snapshot.Legal.Flags & opponentCallFlags) == 0 || lastNetworkDiscard is not null)
+            return false;
+
+        int? actor = latestUiDiscardSeat is > 0
+            && latestUiDiscardSeat == lastNetworkDrawActor
+            ? latestUiDiscardSeat
+            : null;
+        if (actor is null
+            || !TryGetObservedDiscard(
+                snapshot,
+                actor.Value,
+                latestUiDiscardCount,
+                out var claimed,
+                out bool isRed)
+            || !IsObservedDiscardCompatibleWithPrompt(snapshot, actor.Value, claimed))
+        {
+            return false;
+        }
+
+        string pai = MjaiTile.Format(claimed, isRed);
+        var recovered = new MjaiDahai(actor.Value, pai, false);
+        if (!TrySendEvent(recovered))
+            return false;
+
+        decoder.RecoverLastDiscard(actor.Value, pai);
+        recoveredPendingServerDiscard = recovered;
+        ObserveNetworkEvent(recovered);
+        RecoveredDiscardEvents++;
+        log.Warning(
+            $"[Mortal] Recovered missing discard from UI state: " +
+            $"actor={actor.Value} pai={pai} legal={snapshot.Legal.Flags}.");
+        return true;
+    }
+
+    internal static bool TryGetObservedDiscard(
+        StateSnapshot snapshot,
+        int actor,
+        int expectedDiscardCount,
+        out Tile claimed,
+        out bool isRed)
+    {
+        const SnapshotObservationFlags required =
+            SnapshotObservationFlags.PublicDiscardTiles |
+            SnapshotObservationFlags.PublicDiscardRedIdentity;
+        if (actor is > 0 and < 4
+            && expectedDiscardCount > 0
+            && (snapshot.Observations & required) == required)
+        {
+            var seat = snapshot.Seats[actor];
+            if (seat.DiscardCount == expectedDiscardCount
+                && seat.Discards.Count == expectedDiscardCount
+                && seat.DiscardIsRed.Count == expectedDiscardCount)
+            {
+                claimed = seat.Discards[^1];
+                isRed = seat.DiscardIsRed[^1];
+                return true;
+            }
+        }
+
+        claimed = default;
+        isRed = false;
+        return false;
+    }
+
+    internal StateSnapshot NormalizeForLocalFallback(StateSnapshot snapshot) =>
+        NormalizeCallCandidates(snapshot, lastNetworkDiscard, out _);
+
+    internal bool HasAuthoritativeOpponentDiscard =>
+        lastNetworkDiscard is { Actor: > 0 };
+
+    private static bool IsOpponentResponseWindow(ActionFlags flags) =>
+        (flags & (ActionFlags.Pon | ActionFlags.Chi | ActionFlags.MinKan | ActionFlags.Ron)) != 0;
+
+    private static bool HasCompleteObservedDiscard(
+        StateSnapshot snapshot,
+        int actor,
+        int discardCount) =>
+        TryGetObservedDiscard(snapshot, actor, discardCount, out _, out _);
+
+    private static bool IsObservedDiscardCompatibleWithPrompt(
+        StateSnapshot snapshot,
+        int actor,
+        Tile claimed)
+    {
+        var legal = snapshot.Legal;
+        var derived = CallCandidateDeriver.Derive(snapshot.Hand, claimed, actor);
+        return legal.Can(ActionFlags.Ron)
+            || (legal.Can(ActionFlags.Pon) && derived.Pon.Count > 0)
+            || (legal.Can(ActionFlags.Chi) && derived.Chi.Count > 0)
+            || (legal.Can(ActionFlags.MinKan) && derived.Kan.Count > 0);
+    }
+
+    private void ResetObservedDiscardCounts()
+    {
+        Array.Fill(observedDiscardCounts, -1);
+        ClearObservedDiscardEvidence();
+    }
+
+    private void ClearObservedDiscardEvidence()
+    {
+        latestUiDiscardSeat = null;
+        latestUiDiscardCount = -1;
+    }
+
+    private void RecordCandidateCorrection(StateSnapshot original, StateSnapshot corrected)
+    {
+        int key = HashCode.Combine(
+            original.AddonStateCode,
+            (int)original.Legal.Flags,
+            lastNetworkDiscard?.Actor,
+            lastNetworkDiscard?.Pai,
+            original.WallRemaining);
+        if (key == lastCandidateCorrectionKey)
+            return;
+        lastCandidateCorrectionKey = key;
+        CandidateCorrections++;
+        log.Warning(
+            $"[Mortal] Corrected call candidates from network discard " +
+            $"actor={lastNetworkDiscard?.Actor} pai={lastNetworkDiscard?.Pai}: " +
+            $"pon {FormatCandidates(original.Legal.PonCandidates)} -> {FormatCandidates(corrected.Legal.PonCandidates)}, " +
+            $"chi {FormatCandidates(original.Legal.ChiCandidates)} -> {FormatCandidates(corrected.Legal.ChiCandidates)}.");
+    }
+
+    private static bool CandidateListsEqual(
+        IReadOnlyList<MeldCandidate> left,
+        IReadOnlyList<MeldCandidate> right)
+    {
+        if (left.Count != right.Count)
+            return false;
+        for (int i = 0; i < left.Count; i++)
+        {
+            if (left[i].Kind != right[i].Kind
+                || left[i].ClaimedTile != right[i].ClaimedTile
+                || left[i].FromSeat != right[i].FromSeat
+                || !left[i].HandTiles.SequenceEqual(right[i].HandTiles))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static string FormatCandidates(IReadOnlyList<MeldCandidate> candidates) =>
+        candidates.Count == 0
+            ? "[]"
+            : $"[{string.Join(',', candidates.Select(candidate => $"{candidate.Kind}:{candidate.ClaimedTile.Id}@{candidate.FromSeat}"))}]";
 
     private static string FormatRawKind(int? value) =>
         value is { } kind ? $"{kind} (0x{unchecked((uint)kind):X8})" : "n/a";

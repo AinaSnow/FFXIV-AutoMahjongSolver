@@ -443,10 +443,10 @@ internal sealed class BaseEmjVariant : IEmjVariant
         if (labels.OffersPon)
         {
             flags |= ActionFlags.Pon;
-            // Doman exposes the discarded tile as a consecutive duplicate in [16..21]; fall back to unique-pair heuristic.
+            // Only accept the exact claimed tile published by the prompt. The
+            // Mortal bridge can rebuild candidates from the network discard;
+            // guessing from every pair in our hand can select the wrong call.
             AppendPonCandidateFromAtkValues(hand, counts, atkValues, pons);
-            if (pons.Count == 0)
-                AppendPonCandidate(hand, counts, pons);
         }
 
         if (labels.OffersKan)
@@ -462,18 +462,6 @@ internal sealed class BaseEmjVariant : IEmjVariant
         }
 
         return new LegalActions(flags, [], pons, chis, kans);
-    }
-
-    private void AppendPonCandidate(List<Tile> hand, int[] counts, List<MeldCandidate> pons)
-    {
-        for (int id = 0; id < Tile.Count34; id++)
-        {
-            if (counts[id] < 2)
-                continue;
-            var claimed = Tile.FromId(id);
-            var derived = CallCandidateDeriver.Derive(hand, claimed, fromSeat: 1);
-            pons.AddRange(derived.Pon);
-        }
     }
 
     /// <summary>The pon-triggering tile is published as a consecutive duplicate Int in [16..21]; scan and pick the tile_id appearing >= 2 times.</summary>
@@ -515,26 +503,17 @@ internal sealed class BaseEmjVariant : IEmjVariant
         }
     }
 
-    /// <summary>Try the configured chi-claim slot first; if it yields no derivable chi, scan a bounded window for any int slot that does and stop at first match.</summary>
+    /// <summary>Use only the configured chi-claim slot. Arbitrary AtkValue ints often decode as unrelated hand tiles.</summary>
     private void AppendChiCandidate(
         List<Tile> hand, IReadOnlyList<AtkValueRecord> atkValues, List<MeldCandidate> chis)
     {
         if (atkValues.Count == 0)
             return;
 
-        // Exactly one claim tile per prompt — finding extra candidates inflates ChiCandidates.Count and corrupts the Pass-button index derived from it.
+        // Exactly one claim tile per prompt. If this slot is absent the Mortal
+        // bridge will derive it from the confirmed network discard.
         int configuredIdx = profile.AtkValues.ChiClaimedTile;
-        if (TryDeriveChiFromSlot(hand, atkValues, configuredIdx, chis))
-            return;
-
-        int scanLimit = Math.Min(atkValues.Count, profile.AtkValues.ChiFallbackScanLimit);
-        for (int i = 0; i < scanLimit; i++)
-        {
-            if (i == configuredIdx)
-                continue;
-            if (TryDeriveChiFromSlot(hand, atkValues, i, chis))
-                return;
-        }
+        TryDeriveChiFromSlot(hand, atkValues, configuredIdx, chis);
     }
 
     private bool TryDeriveChiFromSlot(
@@ -633,8 +612,6 @@ internal sealed class BaseEmjVariant : IEmjVariant
         {
             if (atkValues.Count > 0)
                 AppendPonCandidateFromAtkValues(handList, counts, atkValues, pons);
-            if (pons.Count == 0)
-                AppendPonCandidate(handList, counts, pons);
         }
         if ((flags & ActionFlags.Chi) != 0 && atkValues.Count > 0)
             AppendChiCandidate(handList, atkValues, chis);

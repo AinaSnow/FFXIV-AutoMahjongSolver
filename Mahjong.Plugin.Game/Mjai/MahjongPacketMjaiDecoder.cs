@@ -94,6 +94,14 @@ public sealed class MahjongPacketMjaiDecoder
         return output;
     }
 
+    /// <summary>Repairs one UI-observed discard that was absent from capture so a following call can be decoded.</summary>
+    public void RecoverLastDiscard(int actor, string tile)
+    {
+        if (!handOpen || !IsSeat(actor) || actor == 0 || tile == MjaiTile.Unknown)
+            throw new ArgumentException("Recovered discard must be a known opponent tile in an open hand.");
+        lastDiscard = new LastDiscard(actor, tile);
+    }
+
     public static string DecodePhysicalTile(ushort physical)
     {
         if (physical == ushort.MaxValue)

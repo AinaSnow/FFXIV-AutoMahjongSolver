@@ -7,7 +7,8 @@ public sealed record MortalReaction(
     int? Actor,
     int? Target,
     string? Pai,
-    string[] Consumed)
+    string[] Consumed,
+    long? EvalTimeNs = null)
 {
     public static bool TryParse(string json, out MortalReaction? reaction)
     {
@@ -33,7 +34,8 @@ public sealed record MortalReaction(
                 ReadOptionalInt(root, "actor"),
                 ReadOptionalInt(root, "target"),
                 ReadOptionalString(root, "pai"),
-                ReadStringArray(root, "consumed"));
+                ReadStringArray(root, "consumed"),
+                ReadOptionalMetaInt64(root, "eval_time_ns"));
             return true;
         }
         catch (JsonException)
@@ -60,5 +62,17 @@ public sealed record MortalReaction(
             .Where(item => item.ValueKind == JsonValueKind.String)
             .Select(item => item.GetString()!)
             .ToArray();
+    }
+
+    private static long? ReadOptionalMetaInt64(JsonElement root, string name)
+    {
+        if (!root.TryGetProperty("meta", out var meta)
+            || meta.ValueKind != JsonValueKind.Object
+            || !meta.TryGetProperty(name, out var value)
+            || !value.TryGetInt64(out long result))
+        {
+            return null;
+        }
+        return result;
     }
 }

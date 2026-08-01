@@ -204,6 +204,83 @@ public sealed class MortalBridgeTests
             new MjaiOpenCall("pon", 0, 2, "5p", ["5p", MjaiTile.Unknown])));
     }
 
+    [Fact]
+    public void Network_discard_replaces_a_wrong_chi_candidate()
+    {
+        var oneSou = Tile.FromId(18);
+        var twoSou = Tile.FromId(19);
+        var threeSou = Tile.FromId(20);
+        var sixSou = Tile.FromId(23);
+        var sevenSou = Tile.FromId(24);
+        var eightSou = Tile.FromId(25);
+        var wrong = new MeldCandidate(MeldKind.Chi, oneSou, [twoSou, threeSou], 3);
+        var snapshot = Snapshot(
+            [twoSou, threeSou, sixSou, sevenSou],
+            new LegalActions(ActionFlags.Chi | ActionFlags.Pass, [], [], [wrong], []));
+
+        var normalized = LiveMortalBridge.NormalizeCallCandidates(
+            snapshot,
+            new MjaiDahai(3, "8s", false),
+            out bool corrected);
+
+        Assert.True(corrected);
+        var candidate = Assert.Single(normalized.Legal.ChiCandidates);
+        Assert.Equal(eightSou, candidate.ClaimedTile);
+        Assert.Equal([sixSou, sevenSou], candidate.HandTiles);
+        Assert.Equal(3, candidate.FromSeat);
+    }
+
+    [Fact]
+    public void Network_discard_corrects_pon_source_seat()
+    {
+        var eightMan = Tile.FromId(7);
+        var wrong = new MeldCandidate(MeldKind.Pon, eightMan, [eightMan, eightMan], 1);
+        var snapshot = Snapshot(
+            [eightMan, eightMan],
+            new LegalActions(ActionFlags.Pon | ActionFlags.Pass, [], [wrong], [], []));
+
+        var normalized = LiveMortalBridge.NormalizeCallCandidates(
+            snapshot,
+            new MjaiDahai(2, "8m", false),
+            out bool corrected);
+
+        Assert.True(corrected);
+        Assert.Equal(2, Assert.Single(normalized.Legal.PonCandidates).FromSeat);
+    }
+
+    [Fact]
+    public void Missing_discard_requires_complete_observed_river_data()
+    {
+        var eightMan = Tile.FromId(7);
+        var incomplete = Snapshot(
+            [eightMan, eightMan],
+            new LegalActions(ActionFlags.Pon | ActionFlags.Pass, [], [], [], []));
+        Assert.False(LiveMortalBridge.TryGetObservedDiscard(
+            incomplete, actor: 2, expectedDiscardCount: 1, out _, out _));
+
+        var seats = incomplete.Seats.ToArray();
+        seats[2] = seats[2] with
+        {
+            Discards = [eightMan],
+            DiscardIsRed = [true],
+            DiscardCount = 1,
+        };
+        var observed = incomplete with
+        {
+            Seats = seats,
+            Observations = SnapshotObservationFlags.PublicDiscardTiles |
+                SnapshotObservationFlags.PublicDiscardRedIdentity,
+        };
+
+        Assert.True(LiveMortalBridge.TryGetObservedDiscard(
+            observed, actor: 2, expectedDiscardCount: 1, out var claimed, out bool isRed));
+        Assert.Equal(eightMan, claimed);
+        Assert.True(isRed);
+
+        Assert.False(LiveMortalBridge.TryGetObservedDiscard(
+            observed, actor: 2, expectedDiscardCount: 2, out _, out _));
+    }
+
     private static StateSnapshot Snapshot(IReadOnlyList<Tile> hand, LegalActions legal) =>
         StateSnapshot.Empty with
         {

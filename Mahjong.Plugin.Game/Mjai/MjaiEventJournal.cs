@@ -26,10 +26,34 @@ public sealed class MjaiEventJournal
     public string Append(IMjaiEvent evt)
     {
         ArgumentNullException.ThrowIfNull(evt);
-        string json = JsonSerializer.Serialize(evt, evt.GetType(), JsonOptions);
+        string json = Serialize(evt);
         lock (sync)
             lines.Add(json);
         return json;
+    }
+
+    /// <summary>
+    /// Replaces the most recent event when a provisional live observation is
+    /// superseded by its authoritative network packet.
+    /// </summary>
+    public bool TryReplaceLast(IMjaiEvent expected, IEnumerable<IMjaiEvent> replacements)
+    {
+        ArgumentNullException.ThrowIfNull(expected);
+        ArgumentNullException.ThrowIfNull(replacements);
+        string expectedJson = Serialize(expected);
+        string[] replacementJson = replacements.Select(Serialize).ToArray();
+        lock (sync)
+        {
+            if (lines.Count == 0
+                || !string.Equals(lines[^1], expectedJson, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            lines.RemoveAt(lines.Count - 1);
+            lines.AddRange(replacementJson);
+            return true;
+        }
     }
 
     public string[] Snapshot()
@@ -51,4 +75,7 @@ public sealed class MjaiEventJournal
         lock (sync)
             lines.Clear();
     }
+
+    private static string Serialize(IMjaiEvent evt) =>
+        JsonSerializer.Serialize(evt, evt.GetType(), JsonOptions);
 }

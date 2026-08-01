@@ -157,6 +157,7 @@ public sealed class SettingsWindow : Window, IDisposable
 
             Theme.Subtle($"Status: {plugin.MortalBridge.Status}");
             Theme.Subtle($"Packets {plugin.MortalBridge.PacketsProcessed}  ·  MJAI {plugin.MortalBridge.EventsSent}  ·  Decisions {plugin.MortalBridge.ReactionsReceived}");
+            Theme.Subtle($"Mapped {plugin.MortalBridge.DecisionsMapped}  ·  Timeouts {plugin.MortalBridge.DecisionTimeouts}  ·  Corrected {plugin.MortalBridge.CandidateCorrections}  ·  Recovered {plugin.MortalBridge.RecoveredDiscardEvents}  ·  Model {plugin.MortalBridge.LastModelEvalMilliseconds:0.0} ms");
         }
 
         ImGui.Dummy(new Vector2(0, 4));
