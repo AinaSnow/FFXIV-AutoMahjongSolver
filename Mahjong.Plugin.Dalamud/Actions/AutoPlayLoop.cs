@@ -21,10 +21,12 @@ public sealed class AutoPlayLoop : IDisposable
     private static readonly TimeSpan MortalCallDecisionTimeout = TimeSpan.FromSeconds(5.0);
     private static readonly TimeSpan MortalDiscardDecisionTimeout = TimeSpan.FromSeconds(4.0);
     private static readonly TimeSpan TerminalWinSuppressionWindow = TimeSpan.FromSeconds(5.0);
+    private static readonly TimeSpan TerminalWinLatchWindow = TimeSpan.FromSeconds(5.0);
 
     private const int VariantAcceptDelayMs = 500;
     private const int CallDecisionDelayMs = 700;
     private const int MortalRetryDelayMs = 100;
+    private const int TerminalWinConfirmationDelayMs = 400;
     private const int RiichiTsumogiriDelayMs = 700;
     private const int HandResultAdvanceDelayMs = 300;
     /// <summary>The configured result state must persist this long before we fire the Next click. Firing during the result-modal animation phase landed the addon in a stuck state-32 with no inputs accepted (2026-05-26).</summary>
@@ -40,6 +42,8 @@ public sealed class AutoPlayLoop : IDisposable
     private readonly IPluginLog log;
     private readonly MahjongAddon addon;
     private readonly ActionStateMachine fsm = new(DispatchTimeout, RetryCooldown);
+    private readonly TerminalWinConfirmationTracker terminalWinConfirmation =
+        new(TerminalWinSuppressionWindow);
     private bool disposed;
     private string? lastSkipReason;
     private DateTime? handResultFirstSeenAt;
@@ -48,6 +52,8 @@ public sealed class AutoPlayLoop : IDisposable
     private DateTime mortalWaitStartedAt;
     private bool hasMortalWait;
     private DateTime? terminalWinDispatchedAt;
+    private StateSnapshot? pendingTerminalWin;
+    private DateTime pendingTerminalWinObservedAt;
     private MeldCandidate? preferredChiCall;
 
     public string LastActionDescription { get; private set; } = "(none)";
@@ -73,6 +79,7 @@ public sealed class AutoPlayLoop : IDisposable
         this.framework = framework;
         this.log = log;
         this.addon = addon;
+        plugin.Aggregator.Changed += OnSnapshotChanged;
         framework.Update += OnUpdate;
     }
 
@@ -82,6 +89,23 @@ public sealed class AutoPlayLoop : IDisposable
             return;
         disposed = true;
         framework.Update -= OnUpdate;
+        plugin.Aggregator.Changed -= OnSnapshotChanged;
+    }
+
+    private void OnSnapshotChanged(StateSnapshot snapshot)
+    {
+        if (!IsAutomationArmed())
+        {
+            terminalWinConfirmation.Reset();
+            return;
+        }
+
+        terminalWinConfirmation.Observe(snapshot, DateTime.UtcNow);
+        if ((snapshot.Legal.Flags & (ActionFlags.Ron | ActionFlags.Tsumo)) == 0)
+            return;
+
+        pendingTerminalWin = snapshot;
+        pendingTerminalWinObservedAt = DateTime.UtcNow;
     }
 
     private unsafe void OnUpdate(IFramework fw)
@@ -91,6 +115,8 @@ public sealed class AutoPlayLoop : IDisposable
 
         if (!IsAutomationArmed())
         {
+            pendingTerminalWin = null;
+            terminalWinConfirmation.Reset();
             var cfg = plugin.Configuration;
             if (cfg.TosAccepted
                 && cfg.AutomationArmed
@@ -121,7 +147,7 @@ public sealed class AutoPlayLoop : IDisposable
         }
 
         // StateAggregator subscribed first and has already produced the current frame's snapshot.
-        var snap = plugin.Aggregator.Latest;
+        var snap = ResolvePendingTerminalWin(plugin.Aggregator.Latest, DateTime.UtcNow);
 
         // Runs before the snapshot-null guard so the windowExpired path still emits commit=false on transient nulls.
         CheckPendingDispatchOutcome(snap);
@@ -149,6 +175,10 @@ public sealed class AutoPlayLoop : IDisposable
 
         bool isCallPrompt = (snap.Legal.Flags & CallPromptFlags) != 0;
         bool isDiscardTurn = snap.Legal.Can(ActionFlags.Discard);
+        bool isTerminalWinPrompt =
+            (snap.Legal.Flags & (ActionFlags.Ron | ActionFlags.Tsumo)) != 0;
+        bool isTerminalWinConfirmation = terminalWinConfirmation.TryGetConfirmation(
+            snap, DateTime.UtcNow, out var terminalWinKind);
         int flags = (int)snap.Legal.Flags;
 
         // Riichi-confirm latch is hand-scoped via ObserveWall — popup signature drops mid-hand and clearing per-tick would let the loop redeclare riichi 20+ times in one hand.
@@ -164,7 +194,7 @@ public sealed class AutoPlayLoop : IDisposable
         }
 
         if (isCallPrompt
-            && (snap.Legal.Flags & (ActionFlags.Ron | ActionFlags.Tsumo)) != 0
+            && isTerminalWinPrompt
             && terminalWinDispatchedAt is { } winAt
             && DateTime.UtcNow - winAt < TerminalWinSuppressionWindow)
         {
@@ -173,10 +203,27 @@ public sealed class AutoPlayLoop : IDisposable
             return;
         }
 
-        if (fsm.ShouldSuppressForContext(context, DateTime.UtcNow))
+        if (isCallPrompt
+            && isTerminalWinPrompt
+            && terminalWinConfirmation.IsAwaitingTransition(snap, DateTime.UtcNow))
+        {
+            EmitSkipReason("terminal win initial selection dispatched; awaiting confirmation",
+                state: state, hand: snap.Hand.Count, flags: flags);
+            return;
+        }
+
+        if (!isTerminalWinConfirmation
+            && fsm.ShouldSuppressForContext(context, DateTime.UtcNow))
         {
             EmitSkipReason($"suppressed for context (state={context.State} hand={context.Hand})",
                 state: state, hand: snap.Hand.Count, flags: flags);
+            return;
+        }
+
+        if (isTerminalWinConfirmation)
+        {
+            EmitProgressing();
+            ScheduleTerminalWinConfirmation(context, terminalWinKind);
             return;
         }
 
@@ -191,6 +238,57 @@ public sealed class AutoPlayLoop : IDisposable
             ScheduleCallDecision(context);
         else
             ScheduleDiscard(context);
+    }
+
+    private StateSnapshot? ResolvePendingTerminalWin(StateSnapshot? current, DateTime now)
+    {
+        if (current is null)
+        {
+            pendingTerminalWin = null;
+            return null;
+        }
+        if (pendingTerminalWin is not { } pending)
+            return current;
+        if (now - pendingTerminalWinObservedAt > TerminalWinLatchWindow
+            || !TerminalWinConfirmationTracker.HasSameHandContext(pending, current))
+        {
+            pendingTerminalWin = null;
+            return current;
+        }
+
+        return CarryForwardTerminalWin(pending, current);
+    }
+
+    internal static StateSnapshot CarryForwardTerminalWin(
+        StateSnapshot pending, StateSnapshot current)
+    {
+        const ActionFlags winFlags = ActionFlags.Ron | ActionFlags.Tsumo;
+        if ((current.Legal.Flags & winFlags) != 0
+            || !TerminalWinConfirmationTracker.HasSameHandContext(pending, current))
+            return current;
+
+        ActionFlags carry = ActionFlags.None;
+        if (pending.Legal.Can(ActionFlags.Tsumo)
+            && current.Legal.Can(ActionFlags.Discard))
+        {
+            carry |= ActionFlags.Tsumo;
+        }
+        if (pending.Legal.Can(ActionFlags.Ron)
+            && current.Legal.Can(ActionFlags.Pass)
+            && !current.Legal.Can(ActionFlags.Discard))
+        {
+            carry |= ActionFlags.Ron;
+        }
+        if (carry == ActionFlags.None)
+            return current;
+
+        return current with
+        {
+            Legal = current.Legal with
+            {
+                Flags = current.Legal.Flags | carry | ActionFlags.Pass,
+            },
+        };
     }
 
     /// <summary>Dedup by exact reason string — loop ticks 60x/sec, so emit only on transitions.</summary>
@@ -675,9 +773,19 @@ public sealed class AutoPlayLoop : IDisposable
             : plugin.Configuration.HumanizedDelayMs;
         ScheduleAction("discard", context, delayMs, () =>
         {
-            var snap = plugin.AddonReader.TryBuildSnapshot();
+            var snap = ResolvePendingTerminalWin(
+                plugin.AddonReader.TryBuildSnapshot(), DateTime.UtcNow);
             int currentState = ReadStateCode();
-            if (snap is null || !snap.Legal.Can(ActionFlags.Discard))
+            bool isTerminalWin = snap is not null
+                && (snap.Legal.Flags & (ActionFlags.Ron | ActionFlags.Tsumo)) != 0;
+            if (isTerminalWin && !plugin.Dispatcher.IsCallPromptVisible())
+            {
+                pendingTerminalWin = null;
+                LastActionDescription = $"discard promoted to win, but prompt is no longer visible (state={currentState})";
+                log.Info($"[AutoPlayLoop] {LastActionDescription}");
+                return;
+            }
+            if (snap is null || (!snap.Legal.Can(ActionFlags.Discard) && !isTerminalWin))
             {
                 LastActionDescription = $"discard aborted: not a discard state (state={currentState} hand={snap?.Hand.Count ?? -1} flags={snap?.Legal.Flags.ToString() ?? "null"})";
                 log.Info($"[AutoPlayLoop] {LastActionDescription}");
@@ -695,7 +803,10 @@ public sealed class AutoPlayLoop : IDisposable
                 $"hand={snap.Hand.Count} melds={snap.OurMelds.Count} flags={snap.Legal.Flags} " +
                 $"choice={choice.Kind} tile={choice.DiscardTile} reason={choice.Reasoning}");
             EmitDecisionFinding("discard", snap, choice);
-            DispatchPolicyChoice(snap, choice);
+            if (isTerminalWin)
+                DispatchCallChoice(snap, choice);
+            else
+                DispatchPolicyChoice(snap, choice);
             log.Info(
                 $"[AutoPlayLoop] discard body done: {LastActionDescription} " +
                 $"path={plugin.Dispatcher.LastDiscardPath}");
@@ -714,11 +825,20 @@ public sealed class AutoPlayLoop : IDisposable
         int delayMs = hasMortalWait ? MortalRetryDelayMs : CallDecisionDelayMs;
         ScheduleAction("call", context, delayMs, () =>
         {
-            var snap = plugin.AddonReader.TryBuildSnapshot();
+            var snap = ResolvePendingTerminalWin(
+                plugin.AddonReader.TryBuildSnapshot(), DateTime.UtcNow);
             int currentState = ReadStateCode();
             if (snap is null)
             {
                 LastActionDescription = $"call: no snapshot (state={currentState})";
+                log.Info($"[AutoPlayLoop] {LastActionDescription}");
+                return;
+            }
+            if ((snap.Legal.Flags & (ActionFlags.Ron | ActionFlags.Tsumo)) != 0
+                && !plugin.Dispatcher.IsCallPromptVisible())
+            {
+                pendingTerminalWin = null;
+                LastActionDescription = $"call aborted: terminal prompt is no longer visible (state={currentState})";
                 log.Info($"[AutoPlayLoop] {LastActionDescription}");
                 return;
             }
@@ -739,6 +859,35 @@ public sealed class AutoPlayLoop : IDisposable
                 $"[AutoPlayLoop] call body done: {LastActionDescription} " +
                 $"pon={snap.Legal.PonCandidates.Count} chi={snap.Legal.ChiCandidates.Count} " +
                 $"kan={snap.Legal.KanCandidates.Count}");
+        });
+    }
+
+    private void ScheduleTerminalWinConfirmation(
+        DispatchContext context, ActionKind kind)
+    {
+        ScheduleAction("terminal-win-confirm", context, TerminalWinConfirmationDelayMs, () =>
+        {
+            var snap = ResolvePendingTerminalWin(
+                plugin.AddonReader.TryBuildSnapshot(), DateTime.UtcNow);
+            int currentState = ReadStateCode();
+            if (snap is null
+                || !terminalWinConfirmation.TryGetConfirmation(
+                    snap, DateTime.UtcNow, out var currentKind)
+                || currentKind != kind
+                || !plugin.Dispatcher.IsCallPromptVisible())
+            {
+                terminalWinConfirmation.Reset();
+                LastActionDescription =
+                    $"terminal-win-confirm aborted: prompt changed (state={currentState})";
+                log.Info($"[AutoPlayLoop] {LastActionDescription}");
+                return;
+            }
+
+            var choice = kind == ActionKind.Ron
+                ? ActionChoice.DeclareRon("terminal win confirmation")
+                : ActionChoice.DeclareTsumo("terminal win confirmation");
+            EmitDecisionFinding("terminal-win-confirm", snap, choice);
+            DispatchCallChoice(snap, choice);
         });
     }
 
@@ -1080,6 +1229,14 @@ public sealed class AutoPlayLoop : IDisposable
         int acceptIndex = acceptRiichiPopup
             ? ComputeAcceptIndex(ActionKind.Riichi, legal, choice.Call)
             : ComputeAcceptIndex(choice.Kind, legal, choice.Call);
+        var now = DateTime.UtcNow;
+        bool isTerminalWin = loggedKind is ActionKind.Ron or ActionKind.Tsumo;
+        bool isTerminalConfirmation = isTerminalWin
+            && terminalWinConfirmation.TryGetConfirmation(snap, now, out var pendingKind)
+            && pendingKind == loggedKind;
+        if (isTerminalWin && !isTerminalConfirmation)
+            terminalWinConfirmation.Begin(loggedKind, snap, now);
+
         var result2 = plugin.Dispatcher.DispatchCallOption(acceptIndex);
         string label = acceptRiichiPopup ? "riichi-confirm" : choice.Kind.ToString().ToLowerInvariant();
         LastActionDescription = $"auto-{label}[opt={acceptIndex}] → {result2}";
@@ -1115,10 +1272,16 @@ public sealed class AutoPlayLoop : IDisposable
             plugin.MortalBridge.ConfirmKanDecisionDispatched(choice);
         }
 
-        if (result2 == InputDispatcher.DispatchResult.Ok
-            && loggedKind is ActionKind.Ron or ActionKind.Tsumo)
+        if (isTerminalWin && result2 != InputDispatcher.DispatchResult.Ok)
+        {
+            terminalWinConfirmation.Reset();
+        }
+        else if (isTerminalConfirmation
+            && result2 == InputDispatcher.DispatchResult.Ok)
         {
             terminalWinDispatchedAt = DateTime.UtcNow;
+            pendingTerminalWin = null;
+            terminalWinConfirmation.Complete();
         }
     }
 

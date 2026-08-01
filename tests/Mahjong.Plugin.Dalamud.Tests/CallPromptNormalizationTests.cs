@@ -75,6 +75,53 @@ public sealed class CallPromptNormalizationTests
     }
 
     [Fact]
+    public void Transient_tsumo_is_carried_into_same_open_hand_discard_snapshot()
+    {
+        var hand = Tiles.Parse("67p11z8p").ToArray();
+        var pending = StateSnapshot.Empty with
+        {
+            AddonStateCode = 15,
+            Hand = hand,
+            HandIsRed = new bool[hand.Length],
+            WallRemaining = 7,
+            Legal = Legal(ActionFlags.Tsumo | ActionFlags.Pass),
+        };
+        var current = pending with
+        {
+            AddonStateCode = 6,
+            Legal = Legal(ActionFlags.Discard),
+        };
+
+        var carried = AutoPlayLoop.CarryForwardTerminalWin(pending, current);
+
+        Assert.Equal(
+            ActionFlags.Discard | ActionFlags.Tsumo | ActionFlags.Pass,
+            carried.Legal.Flags);
+    }
+
+    [Fact]
+    public void Transient_tsumo_is_not_carried_after_wall_changes()
+    {
+        var hand = Tiles.Parse("67p11z8p").ToArray();
+        var pending = StateSnapshot.Empty with
+        {
+            Hand = hand,
+            HandIsRed = new bool[hand.Length],
+            WallRemaining = 7,
+            Legal = Legal(ActionFlags.Tsumo | ActionFlags.Pass),
+        };
+        var current = pending with
+        {
+            WallRemaining = 6,
+            Legal = Legal(ActionFlags.Discard),
+        };
+
+        var carried = AutoPlayLoop.CarryForwardTerminalWin(pending, current);
+
+        Assert.Equal(ActionFlags.Discard, carried.Legal.Flags);
+    }
+
+    [Fact]
     public void Chi_variant_selection_honors_mortal_consumed_tiles()
     {
         var sixSou = Tile.FromId(23);

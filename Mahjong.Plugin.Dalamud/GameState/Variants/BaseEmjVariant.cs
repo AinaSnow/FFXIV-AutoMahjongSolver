@@ -310,16 +310,19 @@ internal sealed class BaseEmjVariant : IEmjVariant
         return (new DecodedTiles(tiles, isRedByTile, redCount), tiles.Count == len);
     }
 
-    /// <summary>State-6 (SelfDeclareList) is dual-use: hand=14 is the self-declare popup, hand!=14 with %3==2 is the post-call discard-from-list popup — gate on hand=14 or stale "Pon" labels strand the loop.</summary>
+    /// <summary>State-6 (SelfDeclareList) is dual-use: it can be a self-declare popup or the post-call discard surface. Open hands have 11/8/5/2 closed tiles on their turn, so hand=14 alone cannot distinguish the two.</summary>
     private LegalActions BuildLegalActions(
         int stateCode, List<Tile> hand, IReadOnlyList<AtkValueRecord> atkValues,
         bool callModalVisible, IReadOnlyList<string>? listWidgetLabels)
     {
         var states = profile.StateCodes;
+        bool isSelfTurnShape = hand.Count > 0 && hand.Count % 3 == 2;
+        bool isSelfDeclareState =
+            stateCode == states.SelfDeclareList && isSelfTurnShape;
         bool isCallPromptState =
             stateCode == states.CallPrompt ||
             stateCode == states.CallPromptList ||
-            (stateCode == states.SelfDeclareList && hand.Count == 14);
+            isSelfDeclareState;
 
         if (isCallPromptState && callModalVisible)
         {
@@ -328,7 +331,13 @@ internal sealed class BaseEmjVariant : IEmjVariant
                 ActionFlags.MinKan | ActionFlags.ShouMinKan |
                 ActionFlags.Ron | ActionFlags.Riichi | ActionFlags.Tsumo;
             LegalActions scanned;
-            if (atkValues.Count > 0)
+            // State-6 is a list widget: its live labels are on the visible
+            // child rows, while parent AtkValues can retain an older prompt.
+            if (isSelfDeclareState && listWidgetLabels is { Count: > 0 })
+            {
+                scanned = BuildCallPromptLegalFromListItems(hand, atkValues, listWidgetLabels);
+            }
+            else if (atkValues.Count > 0)
             {
                 scanned = BuildCallPromptLegal(hand, atkValues);
                 if ((scanned.Flags & acceptMask) == 0)
@@ -339,21 +348,44 @@ internal sealed class BaseEmjVariant : IEmjVariant
                 scanned = BuildCallPromptLegalFromListItems(hand, atkValues, listWidgetLabels);
             }
 
-            // State-6 hand=14 popup also exposes the closed hand as a discard surface; surface Discard here so policy.Choose can pick a tile when Pass is the call verdict.
-            bool isSelfDeclarePopup =
-                stateCode == states.SelfDeclareList && hand.Count == 14;
-            if (isSelfDeclarePopup)
-            {
-                scanned = scanned with { Flags = scanned.Flags | ActionFlags.Discard };
-            }
+            // State-6 may retain stale opponent-reaction labels. Keep only
+            // self-turn actions there, and fall back to a plain discard when
+            // no actual self-declare option is visible.
+            if (isSelfDeclareState)
+                return NormalizeSelfDeclarePrompt(scanned);
+
             return NormalizeCallPromptForHandShape(hand.Count, scanned);
         }
 
-        // Our turn = hand % 3 == 2 (14/11/8/5/2). Post-minkan-pre-rinshan (closed=10 with 1 minkan) is intentionally not discard-eligible.
-        if (hand.Count > 0 && hand.Count % 3 == 2)
+        // Our turn = hand % 3 == 2 (14/11/8/5/2), but only at confirmed
+        // discard states. Animation states such as 15/22 can retain 14 tiles
+        // after riichi and must not schedule another discard.
+        bool isDiscardState =
+            stateCode == states.OurTurnDiscard ||
+            stateCode == states.SelfDeclareList ||
+            stateCode == states.PostDrawIdle;
+        // Post-minkan-pre-rinshan (closed=10 with 1 minkan) is intentionally not discard-eligible.
+        if (isDiscardState && hand.Count > 0 && hand.Count % 3 == 2)
             return new LegalActions(ActionFlags.Discard, [], [], [], []);
 
         return LegalActions.None;
+    }
+
+    internal static LegalActions NormalizeSelfDeclarePrompt(LegalActions scanned)
+    {
+        const ActionFlags selfDeclareOffers =
+            ActionFlags.Riichi | ActionFlags.Tsumo |
+            ActionFlags.AnKan | ActionFlags.MinKan | ActionFlags.ShouMinKan;
+        ActionFlags offers = scanned.Flags & selfDeclareOffers;
+        if (offers == ActionFlags.None)
+            return new LegalActions(ActionFlags.Discard, [], [], [], []);
+
+        return scanned with
+        {
+            Flags = offers | ActionFlags.Discard | ActionFlags.Pass,
+            PonCandidates = [],
+            ChiCandidates = [],
+        };
     }
 
     internal static LegalActions NormalizeCallPromptForHandShape(

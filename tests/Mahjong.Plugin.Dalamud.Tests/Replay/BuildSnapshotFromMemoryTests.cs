@@ -85,6 +85,25 @@ public class BuildSnapshotFromMemoryTests
         Assert.Equal(ActionFlags.None, snap.Legal.Flags);
     }
 
+    [Theory]
+    [InlineData(15)]
+    [InlineData(22)]
+    public void Animation_state_with_fourteen_tiles_is_not_a_discard_turn(int stateCode)
+    {
+        var memory = new AddonMemoryBuilder(EmjProfile)
+            .WithScores(25000, 25000, 25000, 25000)
+            .WithHand("1234m456p789s1234z")
+            .Build();
+
+        var (variant, ctx) = MakeVariant(EmjProfile);
+        var snap = variant.BuildSnapshotFromMemory(
+            memory, [AtkValueRecord.OfInt(stateCode)], ctx,
+            callModalVisible: false);
+
+        Assert.NotNull(snap);
+        Assert.Equal(ActionFlags.None, snap!.Legal.Flags);
+    }
+
     [Fact]
     public void Call_modal_visible_at_state15_with_pon_label_emits_pon_flag()
     {
@@ -161,6 +180,50 @@ public class BuildSnapshotFromMemoryTests
         Assert.True(snap!.Legal.Can(ActionFlags.Riichi));
         Assert.True(snap.Legal.Can(ActionFlags.Pass));
         Assert.True(snap.Legal.Can(ActionFlags.Discard));
+    }
+
+    [Fact]
+    public void Open_hand_state6_list_widget_emits_tsumo_flag()
+    {
+        var memory = new AddonMemoryBuilder(JpProfile)
+            .WithScores(25000, 25000, 25000, 25000)
+            .WithHand("67p11z8p")
+            .Build();
+
+        var atkValues = new AtkValueRecord[2];
+        atkValues[JpProfile.AtkValues.StateCode] =
+            AtkValueRecord.OfInt(JpProfile.StateCodes.SelfDeclareList);
+
+        var (variant, ctx) = MakeVariant(JpProfile);
+        var snap = variant.BuildSnapshotFromMemory(
+            memory, atkValues, ctx, callModalVisible: true,
+            listWidgetLabels: ["ツモ", "キャンセル"]);
+
+        Assert.NotNull(snap);
+        Assert.Equal(
+            ActionFlags.Discard | ActionFlags.Tsumo | ActionFlags.Pass,
+            snap!.Legal.Flags);
+    }
+
+    [Fact]
+    public void Open_hand_state6_ignores_stale_opponent_reaction_label()
+    {
+        var memory = new AddonMemoryBuilder(JpProfile)
+            .WithScores(25000, 25000, 25000, 25000)
+            .WithHand("123m456p11z")
+            .Build();
+
+        var atkValues = new AtkValueRecord[2];
+        atkValues[JpProfile.AtkValues.StateCode] =
+            AtkValueRecord.OfInt(JpProfile.StateCodes.SelfDeclareList);
+
+        var (variant, ctx) = MakeVariant(JpProfile);
+        var snap = variant.BuildSnapshotFromMemory(
+            memory, atkValues, ctx, callModalVisible: true,
+            listWidgetLabels: ["ポン", "キャンセル"]);
+
+        Assert.NotNull(snap);
+        Assert.Equal(ActionFlags.Discard, snap!.Legal.Flags);
     }
 
     [Fact]

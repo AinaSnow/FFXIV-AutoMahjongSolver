@@ -251,7 +251,15 @@ public sealed class InputDispatcher
         if (hostComp == null)
             return false;
         var shell = hostComp->GetNodeById(CallModalShellNodeId);
-        return shell != null && (int)shell->Type == 1030;
+        return shell != null && shell->IsVisible() && (int)shell->Type == 1030;
+    }
+
+    /// <summary>Revalidates that the actionable call/self-declare modal is still visible immediately before a delayed dispatch.</summary>
+    public unsafe bool IsCallPromptVisible()
+    {
+        if (!addon.TryGet(out var unit, out _) || !unit->IsVisible)
+            return false;
+        return IsListWidgetPopupActive(unit);
     }
 
     /// <summary>
