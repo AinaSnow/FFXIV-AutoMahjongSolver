@@ -52,3 +52,7 @@ node tools/audit-debug-packets.mjs "C:\path\to\capture.ndjson" 2026.09.15.0000.0
 尾部新增 `rejection_counts`、`diagnostic_samples`、`diagnostic_dropped`、`diagnostic_unsampled`。其中 `rejected = diagnostic_samples + diagnostic_dropped + diagnostic_unsampled`；这些是录制会话的计数，既有预缓冲损失仍按不完整标记计入。审计工具兼容 schema 1/2，诊断不进入 opcode 目录，报告不回显候选内存内容。头部可能包含本机地址或实体标识，仅保存在本地原文件。
 
 验证步骤：更新并重载插件（若提示 Hook 初始化失败再完整重启游戏），打开自动录包；入桌后等待 10–20 秒，查看失败原因和 `diagnostics` 数量，然后关闭录包开关使文件封口，正常继续对局即可。只需检查最新 `capture-*.ndjson`，不必为了采样完成整场或中途退赛。本次更新提供定位证据，尚不宣称解决实际包头布局问题。
+
+### 已确认的限制（2026-09-24 02:20）
+
+新短样本确认当前 OnReceivePacket 入口的 IPC-16 字节不满足网络段头布局：候选长度为 0，段类型与目标均不符；IPC 标记及 opcode 位置仍与 NetworkMonitor 一致。因此当前实现只能提供有界诊断，尚不能用此入口可靠确定完整包长。详见 [实机审查](reviews/20260924-international-match.md)。在换用携带真实长度的上游边界或其他捕获后端前，继续完整对局不会消除这个阻断；保持网络推理未验证状态。
