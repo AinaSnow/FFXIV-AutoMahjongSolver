@@ -6,7 +6,11 @@ import { pathToFileURL } from "node:url";
 export function auditDebugCapture(text, expectedVersion) {
   const versionPattern = /^\d{4}\.\d{2}\.\d{2}\.\d{4}\.\d{4}$/;
   if (!versionPattern.test(expectedVersion)) throw new Error("Expected game version YYYY.MM.DD.NNNN.NNNN");
-  const blockers = new Set(), inventory = new Map();
+  const blockers = new Set(), inventory = new Map(), diagnosticReasons = new Map();
+  const knownReasons = new Set(["invalid-ipc-pointer", "unreadable-header", "short-header", "invalid-segment-length",
+    "segment-type-mismatch", "target-mismatch", "ipc-marker-mismatch", "unreadable-segment",
+    "segment-changed-during-copy", "capture-exception", "pre-roll-incomplete", "invalid-segment-header", "other"]);
+  let diagnosticCount = 0;
   let header = null, footer = null, packets = 0, malformed = 0, first = null, last = null;
   for (const line of text.replace(/^\uFEFF/, "").split(/\r?\n/).filter(line => line.trim())) {
     let record;
@@ -15,13 +19,25 @@ export function auditDebugCapture(text, expectedVersion) {
     if (!record || typeof record !== "object") { malformed++; continue; }
     if (footer) blockers.add("records_after_footer");
     if (record.e === "capture-start") {
-      if (header || packets) blockers.add("misplaced_or_duplicate_header");
+      if (header || packets || diagnosticCount) blockers.add("misplaced_or_duplicate_header");
       header ??= record;
-      if (record.schema_version !== 1 || record.capture !== "raw-zone-receive" || record.protocol_inference !== false)
+      if (![1,2].includes(record.schema_version) || record.capture !== "raw-zone-receive" || record.protocol_inference !== false)
         blockers.add("unsupported_capture_schema");
     } else if (record.e === "capture-end") {
       if (footer) blockers.add("duplicate_footer");
       footer ??= record;
+    } else if (record.e === "capture-diagnostic") {
+      diagnosticCount++;
+      if (!header) blockers.add("diagnostic_before_header");
+      const valid = header?.schema_version === 2 && knownReasons.has(record.reason)
+        && record.layout_verified === false && record.header_offset_from_ipc === -16 && record.requested_header_bytes === 32
+        && (record.header_hex === null || typeof record.header_hex === "string" && /^[0-9a-f]{64}$/i.test(record.header_hex))
+        && Number.isFinite(Date.parse(record.t)) && Array.isArray(record.failed_checks)
+        && record.failed_checks.every(reason => knownReasons.has(reason));
+      if (!valid) { malformed++; continue; }
+      const count = (diagnosticReasons.get(record.reason) ?? 0) + 1;
+      diagnosticReasons.set(record.reason, count);
+      if (count > 2 || diagnosticCount > 8) blockers.add("diagnostic_sample_limit_exceeded");
     } else if (record.e === "raw-packet") {
       packets++;
       if (!header) blockers.add("packet_before_header");
@@ -57,6 +73,18 @@ export function auditDebugCapture(text, expectedVersion) {
     if (footer.stream_complete !== true) blockers.add("incomplete_capture");
     if (!["disabled", "left-table", "unload", "size-limit"].includes(footer.reason)) blockers.add("unknown_end_reason");
     if (footer.reason === "size-limit") blockers.add("size_limit_reached");
+    if (header?.schema_version === 2) {
+      const counts = footer.rejection_counts;
+      if (!counts || typeof counts !== "object" || Array.isArray(counts)
+        || Object.entries(counts).some(([reason, count]) => !knownReasons.has(reason) || !Number.isSafeInteger(count) || count < 0)
+        || Object.values(counts).reduce((sum,n)=>sum+n,0) !== footer.rejected)
+        blockers.add("invalid_rejection_counts");
+      if (footer.diagnostic_samples !== diagnosticCount
+        || ![footer.diagnostic_dropped,footer.diagnostic_unsampled].every(n=>Number.isSafeInteger(n) && n>=0)
+        || diagnosticCount + footer.diagnostic_dropped > 8
+        || diagnosticCount + footer.diagnostic_dropped + footer.diagnostic_unsampled !== footer.rejected)
+        blockers.add("diagnostic_count_mismatch");
+    }
   }
   if (first !== null && new Date(first).toISOString().slice(0,10) < expectedVersion.slice(0,10).replaceAll(".", "-"))
     blockers.add("capture_predates_requested_build");
@@ -65,6 +93,9 @@ export function auditDebugCapture(text, expectedVersion) {
     verified: false, openingBoundaryVerified: false, sourceSha256: createHash("sha256").update(text).digest("hex"),
     packets, malformed, first: first === null ? null : new Date(first).toISOString(), last: last === null ? null : new Date(last).toISOString(),
     dropped: footer?.dropped ?? null, rejected: footer?.rejected ?? null, endReason: footer?.reason ?? null,
+    diagnostics: { samples: diagnosticCount, reasons: Object.fromEntries(diagnosticReasons),
+      // Do not echo candidate memory bytes or unvalidated fields into audit output.
+      dropped: footer?.diagnostic_dropped ?? null, unsampled: footer?.diagnostic_unsampled ?? null },
     inventory: [...inventory.values()].sort((a,b) => a.opcode.localeCompare(b.opcode))
       .map(entry => ({ ...entry, payloadLengths: [...entry.payloadLengths].sort((a,b) => a-b) })),
     blockers: [...blockers], remainingValidation: ["identify Mahjong opcodes using synchronized UI evidence",

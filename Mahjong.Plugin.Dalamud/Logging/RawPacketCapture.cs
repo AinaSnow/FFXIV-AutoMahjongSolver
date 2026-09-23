@@ -21,7 +21,7 @@ internal sealed unsafe class RawPacketCapture(IGameInteropProvider interop) : ID
     private bool failed;
     private volatile bool enabled;
     public event Action<RawReceivedPacket>? Received;
-    public event Action<string>? Rejected;
+    public event Action<PacketReadFailure>? Rejected;
     public string? Error { get; private set; }
     public bool IsEnabled => enabled;
     public long RejectedPackets => Interlocked.Read(ref rejected);
@@ -71,15 +71,15 @@ internal sealed unsafe class RawPacketCapture(IGameInteropProvider interop) : ID
         {
             if (enabled)
             {
-                if (TryCopy((nint)ipc, target, out var packet, out string error)) Received?.Invoke(packet!);
-                else { Interlocked.Increment(ref rejected); Rejected?.Invoke(error); }
+                if (TryCopyDetailed((nint)ipc, target, Read, out var packet, out var failure)) Received?.Invoke(packet!);
+                else { Interlocked.Increment(ref rejected); Rejected?.Invoke(failure!); }
             }
         }
         catch (Exception ex)
         {
             Interlocked.Increment(ref rejected);
             Error = $"Capture rejected: {ex.GetType().Name}";
-            try { Rejected?.Invoke(Error); } catch { /* Never interfere with the original receiver. */ }
+            try { Rejected?.Invoke(new PacketReadFailure("capture-exception", target)); } catch { /* Never interfere with the original receiver. */ }
         }
         finally { callOriginal(dispatcher, target, ipc); }
     }
@@ -90,39 +90,73 @@ internal sealed unsafe class RawPacketCapture(IGameInteropProvider interop) : ID
     internal static bool TryReadHeader(ReadOnlySpan<byte> header, uint target, out int size, out ushort opcode)
     {
         size = 0; opcode = 0;
-        if (header.Length < HeaderLength) return false;
-        uint length = BinaryPrimitives.ReadUInt32LittleEndian(header);
-        // Segment header immediately precedes IPC header. See docs/auto-packet-logger.md for sources.
-        if (length < HeaderLength || length > MaxSegmentLength
-            || BinaryPrimitives.ReadUInt16LittleEndian(header[12..]) != 3
-            || BinaryPrimitives.ReadUInt32LittleEndian(header[8..]) != target
-            || BinaryPrimitives.ReadUInt16LittleEndian(header[16..]) != 0x14) return false;
-        size = (int)length;
+        if (HeaderFailures(header, target).Length != 0) return false;
+        size = (int)BinaryPrimitives.ReadUInt32LittleEndian(header);
         opcode = BinaryPrimitives.ReadUInt16LittleEndian(header[18..]);
         return true;
     }
 
+    internal static string[] HeaderFailures(ReadOnlySpan<byte> header, uint target)
+    {
+        if (header.Length < HeaderLength) return ["short-header"];
+        List<string> failures = [];
+        uint length = BinaryPrimitives.ReadUInt32LittleEndian(header);
+        if (length < HeaderLength || length > MaxSegmentLength) failures.Add("invalid-segment-length");
+        if (BinaryPrimitives.ReadUInt16LittleEndian(header[12..]) != 3) failures.Add("segment-type-mismatch");
+        if (BinaryPrimitives.ReadUInt32LittleEndian(header[8..]) != target) failures.Add("target-mismatch");
+        if (BinaryPrimitives.ReadUInt16LittleEndian(header[16..]) != 0x14) failures.Add("ipc-marker-mismatch");
+        return failures.ToArray();
+    }
+
+    internal delegate bool MemoryReader(nint address, Span<byte> bytes, out int win32Error);
+
     internal static bool TryCopy(nint ipc, uint target, out RawReceivedPacket? packet, out string error)
     {
-        packet = null; error = "invalid-segment-header";
-        if ((nuint)ipc < 16) return false;
+        bool copied = TryCopyDetailed(ipc, target, Read, out packet, out var failure);
+        error = failure?.Reason ?? "";
+        return copied;
+    }
+
+    internal static bool TryCopyDetailed(nint ipc, uint target, MemoryReader read,
+        out RawReceivedPacket? packet, out PacketReadFailure? failure)
+    {
+        packet = null; failure = null;
+        if (ipc < 16) { failure = new("invalid-ipc-pointer", target); return false; }
         Span<byte> header = stackalloc byte[HeaderLength];
-        if (!Read(ipc - 16, header) || !TryReadHeader(header, target, out int size, out ushort opcode)) return false;
+        if (!read(ipc - 16, header, out int readError))
+        {
+            // Never serialize a partial or uninitialized stack buffer.
+            failure = new("unreadable-header", target, Win32Error: readError);
+            return false;
+        }
+        var checks = HeaderFailures(header, target);
+        if (checks.Length != 0)
+        {
+            failure = new(checks[0], target, header.ToArray(), checks);
+            return false; // Do not allocate or read a payload using an unvalidated length.
+        }
+        int size = (int)BinaryPrimitives.ReadUInt32LittleEndian(header);
+        ushort opcode = BinaryPrimitives.ReadUInt16LittleEndian(header[18..]);
         var segment = new byte[size];
-        if (!Read(ipc - 16, segment)) { error = "unreadable-segment"; return false; }
-        if (!segment.AsSpan(0, HeaderLength).SequenceEqual(header)) { error = "segment-changed-during-copy"; return false; }
+        if (!read(ipc - 16, segment, out readError))
+            { failure = new("unreadable-segment", target, header.ToArray(), Win32Error: readError); return false; }
+        if (!segment.AsSpan(0, HeaderLength).SequenceEqual(header))
+            { failure = new("segment-changed-during-copy", target, header.ToArray()); return false; }
         packet = new(DateTimeOffset.UtcNow, Stopwatch.GetTimestamp(), opcode, size, segment[HeaderLength..]);
-        error = "";
         return true;
     }
 
-    private static bool Read(nint address, Span<byte> bytes)
+    private static bool Read(nint address, Span<byte> bytes, out int win32Error)
     {
         fixed (byte* destination = bytes)
-            return ReadProcessMemory((nint)(-1), address, destination, (nuint)bytes.Length, out nuint read) && read == (nuint)bytes.Length;
+        {
+            bool ok = ReadProcessMemory((nint)(-1), address, destination, (nuint)bytes.Length, out nuint read);
+            win32Error = ok ? 0 : Marshal.GetLastPInvokeError();
+            return ok && read == (nuint)bytes.Length;
+        }
     }
 
-    [DllImport("kernel32.dll")]
+    [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ReadProcessMemory(nint process, nint address, void* buffer, nuint size, out nuint read);
 

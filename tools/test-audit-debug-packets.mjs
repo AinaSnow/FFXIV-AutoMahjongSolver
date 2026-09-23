@@ -28,3 +28,24 @@ assert.ok(auditDebugCapture(JSON.stringify(start)+"\n{",version).blockers.includ
 assert.ok(audit([start,{...end,packets:0}]).blockers.includes("no_packets"));
 assert.throws(()=>auditDebugCapture("","bad-version"));
 console.log("debug packet audit tests passed");
+
+const diagnostic = {e:"capture-diagnostic",t:packet.t,reason:"invalid-segment-length",failed_checks:["invalid-segment-length"],
+  layout_verified:false,header_offset_from_ipc:-16,requested_header_bytes:32,header_hex:"AB".repeat(32)};
+const diagnosticEnd = {...end,packets:0,rejected:100,stream_complete:false,rejection_counts:{"invalid-segment-length":100},
+  diagnostic_samples:2,diagnostic_dropped:0,diagnostic_unsampled:98};
+const diagnosticStart = {...start,schema_version:2};
+const diagnosticResult = audit([diagnosticStart,diagnostic,diagnostic,diagnosticEnd]);
+assert.deepEqual(diagnosticResult.blockers,["no_packets","transport_read_rejected","incomplete_capture"]);
+assert.equal(diagnosticResult.packets,0);
+assert.equal(diagnosticResult.diagnostics.samples,2);
+assert.deepEqual(diagnosticResult.inventory,[]);
+assert.ok(!JSON.stringify(diagnosticResult).includes(diagnostic.header_hex));
+assert.ok(audit([diagnosticStart,{...diagnostic,header_hex:"AA"},diagnosticEnd]).blockers.includes("malformed_records"));
+assert.ok(audit([diagnosticStart,diagnostic,diagnostic,diagnostic,diagnosticEnd]).blockers.includes("diagnostic_sample_limit_exceeded"));
+assert.ok(audit([diagnosticStart,diagnostic,diagnostic,{...diagnosticEnd,rejection_counts:{bad:100}}]).blockers.includes("invalid_rejection_counts"));
+assert.ok(audit([diagnosticStart,diagnostic,diagnostic,{...diagnosticEnd,diagnostic_samples:0}]).blockers.includes("diagnostic_count_mismatch"));
+const mixed = audit([diagnosticStart,diagnostic,packet,{...diagnosticEnd,packets:1,rejected:1,
+  diagnostic_samples:1,diagnostic_unsampled:0,rejection_counts:{"invalid-segment-length":1}}]);
+assert.deepEqual(mixed.inventory,good.inventory);
+assert.deepEqual(mixed.blockers,["transport_read_rejected","incomplete_capture"]);
+console.log("bounded header diagnostic audit tests passed");

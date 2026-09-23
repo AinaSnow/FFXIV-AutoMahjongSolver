@@ -64,12 +64,14 @@ public sealed class AutoPacketRecorder : IDisposable
         }
     }
 
-    public void Reject(string reason)
+    public void Reject(string reason) => Reject(new PacketReadFailure(reason));
+
+    public void Reject(PacketReadFailure failure)
     {
         lock(gate)
         {
             if (!armed || disposed) return;
-            if (current is not null) current.Reject(reason);
+            if (current is not null) current.Reject(failure);
             else { preRollRejected++; lastPreRollFailure = timestamp(); }
         }
     }

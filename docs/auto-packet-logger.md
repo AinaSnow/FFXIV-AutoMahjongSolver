@@ -40,3 +40,15 @@ node tools/audit-debug-packets.mjs "C:\path\to\capture.ndjson" 2026.09.15.0000.0
 `[DiscardCapture] using addon-poll strategy` 是正常的信息日志。旧版本的 `sigscan recorded for telemetry` 文案已改为本地诊断，不存在远程上传。
 
 从虚表 Hook 版本升级到接收入口版本时，请完整退出并重启游戏。Dalamud 的函数指针 Hook 卸载后可能保留转发槽位，而其 FollowJmp 只追踪跳转指令，不会追踪以 movabs 开头的该转发桩。新版拒绝把游戏模块之外的指针当作接收入口，并给出完整重启提示；不自动修改其他插件的 Hook。入桌后五秒无包会在设置和本地日志中报告一次。
+
+## 2026-09-24 诊断采样（schema 2）
+
+最新实战已确认入口收到回调，但 1262 次读取都被旧版合并原因 `invalid-segment-header` 拒绝。新版保持原校验条件，将失败细分为 `invalid-ipc-pointer`、`unreadable-header`、`invalid-segment-length`、`segment-type-mismatch`、`target-mismatch`、`ipc-marker-mismatch`、`unreadable-segment` 和 `segment-changed-during-copy`。一次头部校验有多个不符项时，样本的 `failed_checks` 全部保留；汇总按首个原因计数，避免重复计数。
+
+桌内失败会写入 `capture-diagnostic`：每场最多尝试保存 8 个样本，每种首要原因最多 2 个。样本只使用现有读取的 IPC 指针前 16 字节开始的 32 字节候选头，不扫描相邻内存、不扩展读取范围、不从未验证长度复制载荷。头部不能完整读取时不保存任何缓冲区内容，只记录 Win32 错误码；读取成功时保存候选长度、目标、段类型、IPC 标记、opcode 和头部十六进制。所有字段均为未验证候选值，`layout_verified=false`，不用于公开局面或 Mortal。
+
+诊断与有效包共享有界后台写入队列，队列满不等待；达到采样上限后只增加计数。桌外失败仅影响既有预缓冲不完整标记，不保存头部样本。每次新入桌重置采样预算，关闭开关或离桌会排空已接收记录再封口。状态显示具体失败原因与已写诊断数；`Saved` 仍只计算有效包，诊断不能让零包录制变为成功。
+
+尾部新增 `rejection_counts`、`diagnostic_samples`、`diagnostic_dropped`、`diagnostic_unsampled`。其中 `rejected = diagnostic_samples + diagnostic_dropped + diagnostic_unsampled`；这些是录制会话的计数，既有预缓冲损失仍按不完整标记计入。审计工具兼容 schema 1/2，诊断不进入 opcode 目录，报告不回显候选内存内容。头部可能包含本机地址或实体标识，仅保存在本地原文件。
+
+验证步骤：更新并重载插件（若提示 Hook 初始化失败再完整重启游戏），打开自动录包；入桌后等待 10–20 秒，查看失败原因和 `diagnostics` 数量，然后关闭录包开关使文件封口，正常继续对局即可。只需检查最新 `capture-*.ndjson`，不必为了采样完成整场或中途退赛。本次更新提供定位证据，尚不宣称解决实际包头布局问题。
