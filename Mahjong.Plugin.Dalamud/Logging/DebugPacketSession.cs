@@ -99,8 +99,8 @@ public sealed class DebugPacketSession
         try
         {
             using var writer = factory(Path);
-            await WriteLine(writer, JsonSerializer.Serialize(new { e="capture-start", schema_version=2,
-                t=DateTimeOffset.UtcNow, environment, capture="raw-zone-receive", hook_mode="function-entry", protocol_inference=false,
+            await WriteLine(writer, JsonSerializer.Serialize(new { e="capture-start", schema_version=3,
+                t=DateTimeOffset.UtcNow, environment, capture="raw-zone-receive", hook_mode="deucalion-pipe", capture_backend="deucalion-1.5.x", protocol_inference=false,
                 pre_roll_seconds=2, pre_roll_max_packets=256, max_file_bytes=maxBytes,
                 opening_boundary_verified=false, max_diagnostic_samples=MaxDiagnosticSamples, max_diagnostic_samples_per_reason=2 }));
             bool limited = false;
@@ -117,6 +117,11 @@ public sealed class DebugPacketSession
                     var packet = (RawReceivedPacket)item;
                     line = JsonSerializer.Serialize(new { e="raw-packet", t=packet.Time, sequence=Written+1,
                         opcode=$"0x{packet.Opcode:X4}", segment_length=packet.SegmentLength,
+                        transport=packet.Transport, transport_length=packet.TransportLength,
+                        length_source=packet.Transport == "deucalion" ? "deucalion-envelope" : "segment-header",
+                        ipc_length=packet.Payload.Length+16, source_actor=packet.SourceActor, target_actor=packet.TargetActor,
+                        server_timestamp_ms=packet.ServerTimestampMilliseconds,
+                        ipc_header_hex=packet.IpcHeader is null ? null : Convert.ToHexString(packet.IpcHeader),
                         payload_length=packet.Payload.Length, payload_hex=Convert.ToHexString(packet.Payload) });
                 }
                 if (Bytes + Encoding.UTF8.GetByteCount(line) + 4096 > maxBytes)

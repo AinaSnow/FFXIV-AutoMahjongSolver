@@ -76,5 +76,17 @@
           Condition="Exists('$(ZipPath)') and Exists('$(IconPath)')" />
   </Target>
 
+  <Target Name="VerifyCaptureRuntime" BeforeTargets="BeforeBuild">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)..\tools\install-deucalion.ps1&quot; -VerifyOnly" />
+  </Target>
+  <ItemGroup>
+    <Content Include="../artifacts/deucalion/deucalion.dll" Link="capture-runtime/deucalion.dll" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../artifacts/deucalion/deucalion-1.5.0-source.zip" Link="capture-runtime/deucalion-1.5.0-source.zip" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../artifacts/deucalion/LICENSE.md" Link="capture-runtime/LICENSE.md" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../docs/deucalion-NOTICE.md" Link="capture-runtime/NOTICE.md" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="BundleCaptureRuntime" AfterTargets="BundleIcon" Condition="'$(Configuration)' == 'Release'">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)..\tools\bundle-capture-runtime.ps1&quot; -ZipPath &quot;$(ProjectDir)$(OutputPath)$(AssemblyName)\latest.zip&quot; -RuntimePath &quot;$(ProjectDir)$(OutputPath)capture-runtime&quot;" />
+  </Target>
   <ItemGroup><Content Include="../tools/mortal_runner.py" Link="mortal_runner.py" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
 </Project>

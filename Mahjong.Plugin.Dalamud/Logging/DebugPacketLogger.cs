@@ -1,11 +1,13 @@
 using Dalamud.Plugin.Services;
+using Mahjong.Plugin.Dalamud.Mortal;
 
 namespace Mahjong.Plugin.Dalamud.Logging;
 
-/// <summary>Framework owner of the optional raw receive hook and table-triggered recorder.</summary>
+/// <summary>Framework owner of the shared receive subscriber and optional table-triggered recorder.</summary>
 public sealed class DebugPacketLogger : IDisposable
 {
-    private readonly RawPacketCapture source;
+    private readonly DeucalionCapture source;
+    private readonly MahjongNetworkCapture network;
     private readonly AutoPacketRecorder recorder;
     private readonly IFramework framework;
     private readonly IPluginLog? log;
@@ -17,20 +19,21 @@ public sealed class DebugPacketLogger : IDisposable
     public long Packets => recorder.Latest?.Written ?? 0;
     public long Dropped => recorder.Latest?.Dropped ?? 0;
     public long Rejected => source.RejectedPackets;
-    public string Status => !enabled() ? "Off" : source.Error ?? recorder.Latest?.Error ??
-        (!source.IsEnabled ? "Waiting for capture hook" :
+    public string Status => !enabled() ? "Off" : recorder.Latest?.Error ??
+        (!source.IsEnabled ? source.Status :
         recorder.IsRecording ? recorder.Latest!.Progress : present() && recorder.Latest is {} last ? last.Status : "Armed; waiting for mahjong table");
     private bool disposed, recordingEnabled, tablePresent;
 
-    public DebugPacketLogger(IGameInteropProvider interop, IFramework framework, string configDirectory,
+    public DebugPacketLogger(string pluginDirectory, MahjongNetworkCapture network, IFramework framework, string configDirectory,
         Func<bool> enabled, Func<bool> present, Func<MatchArchiveEnvironment> environment, IPluginLog? log = null)
     {
         this.log = log;
+        this.network = network;
         this.framework=framework; this.enabled=enabled; this.present=present; this.environment=environment;
         recorder = new AutoPacketRecorder(configDirectory);
-        source = new RawPacketCapture(interop);
-        source.Received += recorder.Record;
-        source.Rejected += recorder.Reject;
+        source = new DeucalionCapture(pluginDirectory);
+        source.Received += Record;
+        source.Rejected += Reject;
         framework.Update += Update;
     }
 
@@ -38,8 +41,12 @@ public sealed class DebugPacketLogger : IDisposable
     {
         if (disposed) return;
         bool active = enabled();
-        source.SetEnabled(active);
-        bool captureEnabled = active && source.IsEnabled;
+        network.RefreshProfile();
+        source.SetEnabled(active || network.HasVerifiedBuild);
+        network.TransportReady = source.IsEnabled;
+        network.TransportStatus = source.Status;
+        // Arm pre-roll while connecting so the first received packet is retained.
+        bool captureEnabled = active && !source.Status.StartsWith("Deucalion unavailable",StringComparison.Ordinal);
         bool visible = present();
         if (captureEnabled != recordingEnabled || visible != tablePresent)
         {
@@ -48,7 +55,7 @@ public sealed class DebugPacketLogger : IDisposable
             tablePresent = visible;
         }
         if (!active) { warnedHookError = null; return; }
-        if (source.Error is { } error && error != warnedHookError)
+        if (source.Status is { } error && error.StartsWith("Deucalion unavailable",StringComparison.Ordinal) && error != warnedHookError)
         {
             warnedHookError = error;
             log?.Warning($"[PacketDebug] {error}");
@@ -62,14 +69,17 @@ public sealed class DebugPacketLogger : IDisposable
         }
     }
 
+    private void Record(RawReceivedPacket packet) { recorder.Record(packet); network.Record(packet); }
+    private void Reject(PacketReadFailure failure) { recorder.Reject(failure); network.MarkTransportGap(); }
+
     public void Dispose()
     {
         if (disposed) return;
         disposed=true;
         framework.Update -= Update;
         source.SetEnabled(false);
-        source.Received -= recorder.Record;
-        source.Rejected -= recorder.Reject;
+        source.Received -= Record;
+        source.Rejected -= Reject;
         recorder.Dispose();
         source.Dispose();
     }

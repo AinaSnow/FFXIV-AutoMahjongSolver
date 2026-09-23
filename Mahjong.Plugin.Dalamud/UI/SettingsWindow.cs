@@ -189,7 +189,7 @@ public sealed class SettingsWindow : Window, IDisposable
             bool capture = cfg.DebugAutoPacketLogging;
             if (ImGui.Checkbox("Automatically record packets at mahjong tables", ref capture))
                 plugin.ConfigService.Update(c => c with { DebugAutoPacketLogging = capture });
-            ImGui.TextWrapped("Saves local raw receive data per table, including a 2-second pre-roll. May contain player information. No upload or use for decisions.");
+            ImGui.TextWrapped("Saves local received packets through bundled Deucalion, with a 2-second pre-roll. May contain player information. No upload. Unverified packets are never used for decisions.");
             Theme.Subtle($"Status: {plugin.DebugPackets.Status}");
             Theme.Subtle($"Saved {plugin.DebugPackets.Packets}  |  Queue drops {plugin.DebugPackets.Dropped}  |  Read rejects {plugin.DebugPackets.Rejected}");
             Theme.Subtle("64 MiB per capture; automatically stops on leaving the table. Files remain until you remove them.");

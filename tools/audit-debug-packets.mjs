@@ -9,7 +9,7 @@ export function auditDebugCapture(text, expectedVersion) {
   const blockers = new Set(), inventory = new Map(), diagnosticReasons = new Map();
   const knownReasons = new Set(["invalid-ipc-pointer", "unreadable-header", "short-header", "invalid-segment-length",
     "segment-type-mismatch", "target-mismatch", "ipc-marker-mismatch", "unreadable-segment",
-    "segment-changed-during-copy", "capture-exception", "pre-roll-incomplete", "invalid-segment-header", "other"]);
+    "segment-changed-during-copy", "capture-exception", "pre-roll-incomplete", "invalid-segment-header", "transport-invalid-frame", "transport-disconnected", "other"]);
   let diagnosticCount = 0;
   let header = null, footer = null, packets = 0, malformed = 0, first = null, last = null;
   for (const line of text.replace(/^\uFEFF/, "").split(/\r?\n/).filter(line => line.trim())) {
@@ -21,7 +21,7 @@ export function auditDebugCapture(text, expectedVersion) {
     if (record.e === "capture-start") {
       if (header || packets || diagnosticCount) blockers.add("misplaced_or_duplicate_header");
       header ??= record;
-      if (![1,2].includes(record.schema_version) || record.capture !== "raw-zone-receive" || record.protocol_inference !== false)
+      if (![1,2,3].includes(record.schema_version) || record.capture !== "raw-zone-receive" || record.protocol_inference !== false)
         blockers.add("unsupported_capture_schema");
     } else if (record.e === "capture-end") {
       if (footer) blockers.add("duplicate_footer");
@@ -29,8 +29,12 @@ export function auditDebugCapture(text, expectedVersion) {
     } else if (record.e === "capture-diagnostic") {
       diagnosticCount++;
       if (!header) blockers.add("diagnostic_before_header");
-      const valid = header?.schema_version === 2 && knownReasons.has(record.reason)
-        && record.layout_verified === false && record.header_offset_from_ipc === -16 && record.requested_header_bytes === 32
+      const transportFailure = header?.schema_version === 3 && ["transport-invalid-frame","transport-disconnected"].includes(record.reason);
+      const diagnosticShape = transportFailure
+        ? record.header_offset_from_ipc === null && record.requested_header_bytes === 0 && record.header_hex === null
+        : record.header_offset_from_ipc === -16 && record.requested_header_bytes === 32;
+      const valid = [2,3].includes(header?.schema_version) && knownReasons.has(record.reason)
+        && record.layout_verified === false && diagnosticShape
         && (record.header_hex === null || typeof record.header_hex === "string" && /^[0-9a-f]{64}$/i.test(record.header_hex))
         && Number.isFinite(Date.parse(record.t)) && Array.isArray(record.failed_checks)
         && record.failed_checks.every(reason => knownReasons.has(reason));
@@ -48,9 +52,17 @@ export function auditDebugCapture(text, expectedVersion) {
         if (last !== null && time < last) blockers.add("timestamps_out_of_order");
         first ??= time; last = time;
       }
+      const deucalion = header?.schema_version === 3 && record.transport === "deucalion";
+      const lengthsValid = deucalion
+        ? record.segment_length === null && record.length_source === "deucalion-envelope"
+          && record.transport_length === record.payload_length + 41 && record.ipc_length === record.payload_length + 16
+          && typeof record.ipc_header_hex === "string" && /^[0-9a-f]{32}$/i.test(record.ipc_header_hex)
+          && record.ipc_header_hex.slice(0,4).toUpperCase() === "1400"
+          && ("0x" + record.ipc_header_hex.slice(6,8) + record.ipc_header_hex.slice(4,6)).toUpperCase() === record.opcode?.toUpperCase()
+        : header?.schema_version !== 3 && record.segment_length === record.payload_length + 32;
       const valid = /^0x[0-9a-f]{4}$/i.test(record.opcode) &&
         Number.isInteger(record.payload_length) && record.payload_length >= 0 && record.payload_length <= 65504 &&
-        record.segment_length === record.payload_length + 32 && typeof record.payload_hex === "string" &&
+        lengthsValid && typeof record.payload_hex === "string" &&
         record.payload_hex.length === record.payload_length * 2 && /^[0-9a-f]*$/i.test(record.payload_hex);
       if (!valid) { malformed++; continue; }
       const opcode = "0x" + record.opcode.slice(2).toUpperCase();
@@ -73,7 +85,7 @@ export function auditDebugCapture(text, expectedVersion) {
     if (footer.stream_complete !== true) blockers.add("incomplete_capture");
     if (!["disabled", "left-table", "unload", "size-limit"].includes(footer.reason)) blockers.add("unknown_end_reason");
     if (footer.reason === "size-limit") blockers.add("size_limit_reached");
-    if (header?.schema_version === 2) {
+    if ([2,3].includes(header?.schema_version)) {
       const counts = footer.rejection_counts;
       if (!counts || typeof counts !== "object" || Array.isArray(counts)
         || Object.entries(counts).some(([reason, count]) => !knownReasons.has(reason) || !Number.isSafeInteger(count) || count < 0)

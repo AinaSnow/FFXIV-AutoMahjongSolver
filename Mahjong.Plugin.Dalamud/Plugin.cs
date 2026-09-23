@@ -155,9 +155,9 @@ public sealed class Plugin : IDalamudPlugin
         // Accessor closes over AddonReader so state codes and the hand-array offset follow the active variant. Constructed after AddonReader so the closure resolves to the live profile by the time DispatchDiscard runs.
         Dispatcher = new InputDispatcher(mahjongAddon, () => AddonReader.ActiveLayout);
         MatchArchive = new MatchArchiveWriter(configDir, Log, archiveIo, () => (ConfigService.Current.ArchiveRetentionDays, ConfigService.Current.ArchiveMaxBytes));
-        NetworkCapture = new MahjongNetworkCapture(GameInterop, Log,
+        NetworkCapture = new MahjongNetworkCapture(Log,
             () => AddonReader.ActiveLayout?.Name, Path.Combine(pluginAssemblyDir, "protocols"));
-        DebugPackets = new DebugPacketLogger(GameInterop, Framework, configDir,
+        DebugPackets = new DebugPacketLogger(pluginAssemblyDir, NetworkCapture, Framework, configDir,
             () => Configuration.DebugAutoPacketLogging, () => AddonReader.LastObservation.Present,
             () => new MatchArchiveEnvironment(NetworkCapture.GameVersion, AddonReader.ActiveLayout?.Name,
                 NetworkCapture.ProtocolVerified, NetworkCapture.ProtocolStatus, typeof(Plugin).Module.ModuleVersionId.ToString()), Log);

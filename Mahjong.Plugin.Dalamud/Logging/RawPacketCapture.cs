@@ -8,7 +8,9 @@ using FFXIVClientStructs.FFXIV.Client.Network;
 
 namespace Mahjong.Plugin.Dalamud.Logging;
 
-public sealed record RawReceivedPacket(DateTimeOffset Time, long Timestamp, ushort Opcode, int SegmentLength, byte[] Payload);
+public sealed record RawReceivedPacket(DateTimeOffset Time, long Timestamp, ushort Opcode, int? SegmentLength, byte[] Payload,
+    string Transport = "function-entry", int? TransportLength = null, uint? SourceActor = null, uint? TargetActor = null,
+    ulong? ServerTimestampMilliseconds = null, byte[]? IpcHeader = null);
 
 /// <summary>Read-only diagnostic tap. Raw bytes never enter the public-state or Mortal queues.</summary>
 internal sealed unsafe class RawPacketCapture(IGameInteropProvider interop) : IDisposable

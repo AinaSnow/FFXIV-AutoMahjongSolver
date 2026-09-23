@@ -30,3 +30,9 @@
 `match-archives/<session>/games/` 保存已有兼容游戏日志，`packets.ndjson` 保存验证启用时捕获的数据包，`summary.json` 保存本地摘要；`managed-complete.json` 表示归档写入流程结束，其 `incomplete` 仍可为 true。无结束标记的旧目录不会被自动清理。
 
 排查先查看实际降级原因和 session/hand/sequence，再比对 snapshot revision、decision 和 action。回放一致率衡量状态与执行回归，不能替代对战名次。Mortal 未返回候选分布时，UI 显示无候选数据，不填入内置策略分数。
+
+## 2026-09-24 接收后端迁移
+
+正式接收与调试录包共用 [Deucalion 后端](auto-packet-logger.md)，不再在 OnReceivePacket 入口按固定长度复制游戏内存。原始数据必须通过管道握手和长度校验，再匹配已验证客户端版本/变体的协议 profile，且载荷长度必须精确一致。未验证 profile、未知 opcode 和长度不匹配的数据不会喂给 MJAI；不再使用历史测试 opcode 表作为运行回退。
+
+Mortal 的启用条件增加传输已连接。连接失效时停止现有模型会话；捕获丢失仍走原有隔离/下一局同步逻辑。调试开关只控制文件录制；已验证协议存在时，正式消费者独立保持接收。当前仓库仍仅含未验证模板，需实际新录包对照开局/手牌/弃牌/鸣牌/结算完成协议验证后，Mortal 才能恢复。

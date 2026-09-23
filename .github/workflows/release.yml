@@ -59,6 +59,10 @@ jobs:
         shell: pwsh
         run: ./tools/install-dalamud.ps1
 
+      - name: Install pinned capture runtime
+        shell: pwsh
+        run: ./tools/install-deucalion.ps1
+
       - name: Build (Release)
         run: dotnet build Mahjong.Plugin.Dalamud.sln --configuration Release -p:RestoreLockedMode=true
 

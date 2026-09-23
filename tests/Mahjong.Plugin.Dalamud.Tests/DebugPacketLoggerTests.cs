@@ -10,8 +10,14 @@ namespace Mahjong.Plugin.Dalamud.Tests;
 public class DebugPacketLoggerTests
 {
     private static readonly MatchArchiveEnvironment EnvironmentInfo = new("2026.09.15.0000.0000", "Emj", false, "unverified", "test-build");
-    private static RawReceivedPacket Packet(ushort opcode = 0xBEEF, long? timestamp = null, int bytes = 4) =>
-        new(DateTimeOffset.UtcNow, timestamp ?? Stopwatch.GetTimestamp(), opcode, bytes + 32, new byte[bytes]);
+    private static RawReceivedPacket Packet(ushort opcode = 0xBEEF, long? timestamp = null, int bytes = 4)
+    {
+        var ipc = new byte[16];
+        BinaryPrimitives.WriteUInt16LittleEndian(ipc,0x14);
+        BinaryPrimitives.WriteUInt16LittleEndian(ipc.AsSpan(2),opcode);
+        return new(DateTimeOffset.UtcNow,timestamp ?? Stopwatch.GetTimestamp(),opcode,null,new byte[bytes],
+            "deucalion",bytes+41,1,2,0,ipc);
+    }
     private static JsonElement[] Read(string path) => File.ReadAllLines(path).Select(line => JsonSerializer.Deserialize<JsonElement>(line)).ToArray();
     private static async Task Finish(DebugPacketSession session) => await session.Completion.WaitAsync(TimeSpan.FromSeconds(5));
     private static byte[] Segment()

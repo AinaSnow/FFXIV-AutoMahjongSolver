@@ -49,3 +49,13 @@ const mixed = audit([diagnosticStart,diagnostic,packet,{...diagnosticEnd,packets
 assert.deepEqual(mixed.inventory,good.inventory);
 assert.deepEqual(mixed.blockers,["transport_read_rejected","incomplete_capture"]);
 console.log("bounded header diagnostic audit tests passed");
+
+const pipeStart = {...start,schema_version:3,hook_mode:"deucalion-pipe"};
+const pipePacket = {...packet,transport:"deucalion",segment_length:null,length_source:"deucalion-envelope",
+  transport_length:43,ipc_length:18,ipc_header_hex:"1400EFBE000000000000000000000000"};
+const pipeEnd = {...end,rejection_counts:{},diagnostic_samples:0,diagnostic_dropped:0,diagnostic_unsampled:0};
+assert.deepEqual(audit([pipeStart,pipePacket,pipeEnd]).blockers,[]);
+for(const bad of [{...pipePacket,transport_length:99},{...pipePacket,ipc_header_hex:"14004200000000000000000000000000"},
+  {...pipePacket,segment_length:34},{...pipePacket,transport:"function-entry"}])
+  assert.ok(audit([pipeStart,bad,pipeEnd]).blockers.includes("malformed_records"));
+console.log("Deucalion capture schema audit tests passed");

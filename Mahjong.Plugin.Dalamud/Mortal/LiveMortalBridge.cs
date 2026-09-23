@@ -83,7 +83,7 @@ public sealed class LiveMortalBridge : IDisposable
 
     public event Action<StateSnapshot, PolicyEvaluation>? DecisionPublished;
 
-    public bool Enabled => configService.Current.MortalEnabled && capture.ProtocolVerified;
+    public bool Enabled => configService.Current.MortalEnabled && capture.ProtocolVerified && capture.TransportReady;
 
     public bool IsRunning => client?.IsRunning == true;
 
@@ -289,6 +289,12 @@ public sealed class LiveMortalBridge : IDisposable
         {
             if (client is not null) Stop(capture.ProtocolStatus);
             Status = capture.ProtocolStatus;
+            return;
+        }
+        if (!capture.TransportReady)
+        {
+            if (client is not null) Stop(capture.TransportStatus);
+            Status = capture.TransportStatus;
             return;
         }
         if (capture.DroppedPackets != observedDrops)
