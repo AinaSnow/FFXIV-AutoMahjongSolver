@@ -381,7 +381,17 @@ public sealed class LiveMortalBridge : IDisposable
     private bool ProcessCapturedPacket(CapturedMahjongPacket packet)
     {
         lastCapturedPacket = packet;
-        IReadOnlyList<IMjaiEvent> decodedEvents = decoder.Process(packet.MessageId, packet.Payload);
+        IReadOnlyList<IMjaiEvent> decodedEvents;
+        try
+        {
+            decodedEvents = decoder.Process(packet.MessageId, packet.Payload);
+        }
+        catch (InvalidDataException ex)
+        {
+            log.Warning(ex, $"[Mortal] Unsupported protocol event message={packet.MessageId} opcode=0x{packet.Opcode:X4}.");
+            QuarantineCurrentHand(ex.Message);
+            return false;
+        }
         foreach (var evt in decodedEvents)
         {
             if (evt is MjaiStartKyoku start && !IsSafeStartKyoku(start))

@@ -114,7 +114,8 @@ public sealed class MahjongPacketMjaiDecoder
             return MjaiTile.Unknown;
 
         int copy = physical & 3;
-        bool isVerifiedRed = id == 22 && copy == 1;
+        // Captured self draws/discards confirm copy 1 for 5p and 5s. 5m is still unverified.
+        bool isVerifiedRed = id is 13 or 22 && copy == 1;
         return MjaiTile.Format(new Tile((byte)id), isVerifiedRed);
     }
 
@@ -174,7 +175,7 @@ public sealed class MahjongPacketMjaiDecoder
             Bakaze: round < SeatNames.Length ? SeatNames[round] : "E",
             DoraMarker: dora,
             Kyoku: Math.Abs(handIndex % 4) + 1,
-            Honba: 0,
+            Honba: ReadInt32(payload, 12),
             Kyotaku: 0,
             Oya: RelativeSeat(0, absoluteSelfSeat),
             Scores: scores,
@@ -206,15 +207,16 @@ public sealed class MahjongPacketMjaiDecoder
             return;
         }
 
-        if (action is 0x500 or 0x600 && lastDiscard is { } previous)
-        {
-            output.Add(new MjaiOpenCall(
-                action == 0x500 ? "pon" : "chi",
-                actor,
-                previous.Actor,
-                previous.Tile,
-                [DecodePhysicalTile(ReadUInt16(payload, 12)), DecodePhysicalTile(ReadUInt16(payload, 14))]));
-        }
+        if (action is not (0x500 or 0x600))
+            throw new InvalidDataException($"Unsupported draw/call action 0x{action:X}; hand history is incomplete.");
+        if (lastDiscard is not { } previous)
+            throw new InvalidDataException("Call has no preceding discard; hand history is incomplete.");
+        output.Add(new MjaiOpenCall(
+            action == 0x500 ? "pon" : "chi",
+            actor,
+            previous.Actor,
+            previous.Tile,
+            [DecodePhysicalTile(ReadUInt16(payload, 12)), DecodePhysicalTile(ReadUInt16(payload, 14))]));
         lastDiscard = null;
     }
 
@@ -229,6 +231,10 @@ public sealed class MahjongPacketMjaiDecoder
 
         int actor = RelativeSeat(seat, selfSeat.Value);
         uint action = ReadUInt32(payload, 8);
+        // 0xA10 is the captured discard after chi/pon. Kan-related 0x212 has not
+        // yet been verified for tsumogiri; do not silently label it tedashi.
+        if (action is not (0x110 or 0x111 or 0x112 or 0xA10))
+            throw new InvalidDataException($"Unsupported discard action 0x{action:X}; hand history is incomplete.");
         ushort physical = ReadUInt16(payload, 12);
         LastDiscardPhysical = physical;
         LastDiscardAction = action;

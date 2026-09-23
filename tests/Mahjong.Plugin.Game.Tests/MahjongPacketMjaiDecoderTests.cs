@@ -53,6 +53,8 @@ public sealed class MahjongPacketMjaiDecoderTests
     }
 
     [Theory]
+    [InlineData(53, "5pr")]
+    [InlineData(52, "5p")]
     [InlineData(89, "5sr")]
     [InlineData(88, "5s")]
     [InlineData(136, "5mr")]
@@ -125,6 +127,39 @@ public sealed class MahjongPacketMjaiDecoderTests
         Assert.Empty(decoder.Process(642, new byte[576]));
         Assert.Empty(decoder.Process(637, new byte[99]));
         Assert.Empty(decoder.Finish());
+    }
+
+    [Theory]
+    [InlineData(0x130u)]
+    [InlineData(0x200u)]
+    [InlineData(0x400u)]
+    [InlineData(0xDEADu)]
+    public void Unsupported_call_or_draw_does_not_silently_leave_an_incomplete_history(uint action)
+    {
+        var decoder = new MahjongPacketMjaiDecoder();
+        decoder.Process(637, HandStart());
+        var payload = Draw(0, 20);
+        WriteUInt32(payload, 4, action);
+        var error = Assert.Throws<InvalidDataException>(() => decoder.Process(638, payload));
+        Assert.Contains($"0x{action:X}", error.Message);
+    }
+
+    [Theory]
+    [InlineData(0x212u)]
+    [InlineData(0xDEADu)]
+    public void Unsupported_discard_does_not_invent_a_tedashi_flag(uint action)
+    {
+        var decoder = new MahjongPacketMjaiDecoder();
+        decoder.Process(637, HandStart());
+        Assert.Throws<InvalidDataException>(() => decoder.Process(641, Discard(0, 20, action)));
+    }
+
+    [Fact]
+    public void Call_without_its_claimed_discard_rejects_incomplete_history()
+    {
+        var decoder = new MahjongPacketMjaiDecoder();
+        decoder.Process(637, HandStart());
+        Assert.Throws<InvalidDataException>(() => decoder.Process(638, Call(1, 0x500, 20, 20)));
     }
 
     private static byte[] MatchStart() => new byte[48];
