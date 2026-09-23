@@ -57,7 +57,7 @@ public class DiscardCaptureLoggerTests
     }
 
     [Fact]
-    public void Captured_event_writes_a_log_line()
+    public async Task Captured_event_writes_a_log_line()
     {
         using var tmp = new TempDir();
         var capture = new FakeDiscardCapture { StrategyName = "native-asm" };
@@ -69,6 +69,7 @@ public class DiscardCaptureLoggerTests
             ObservedAtUtc: new DateTime(2026, 5, 7, 12, 0, 0, DateTimeKind.Utc),
             SequenceNumber: 7));
 
+        await logger.FlushAsync();
         var contents = File.ReadAllText(logger.LogPath);
         Assert.Contains("seq=7", contents);
         Assert.Contains("strategy=native-asm", contents);
@@ -77,7 +78,7 @@ public class DiscardCaptureLoggerTests
     }
 
     [Fact]
-    public void Unknown_seat_is_rendered_as_question_mark()
+    public async Task Unknown_seat_is_rendered_as_question_mark()
     {
         using var tmp = new TempDir();
         var capture = new FakeDiscardCapture();
@@ -85,12 +86,13 @@ public class DiscardCaptureLoggerTests
 
         capture.Fire(new DiscardEvent(-1, Tile.FromId(5), DateTime.UtcNow, 1));
 
+        await logger.FlushAsync();
         var contents = File.ReadAllText(logger.LogPath);
         Assert.Contains("seat=?", contents);
     }
 
     [Fact]
-    public void Multiple_events_append_one_line_each()
+    public async Task Multiple_events_append_one_line_each()
     {
         using var tmp = new TempDir();
         var capture = new FakeDiscardCapture();
@@ -100,12 +102,13 @@ public class DiscardCaptureLoggerTests
         capture.Fire(new DiscardEvent(1, Tile.FromId(2), DateTime.UtcNow, 2));
         capture.Fire(new DiscardEvent(2, Tile.FromId(3), DateTime.UtcNow, 3));
 
+        await logger.FlushAsync();
         var lines = File.ReadAllLines(logger.LogPath);
         Assert.Equal(3, lines.Length);
     }
 
     [Fact]
-    public void Disposed_logger_does_not_write_subsequent_events()
+    public async Task Disposed_logger_does_not_write_subsequent_events()
     {
         using var tmp = new TempDir();
         var capture = new FakeDiscardCapture();
@@ -115,6 +118,7 @@ public class DiscardCaptureLoggerTests
         logger.Dispose();
         capture.Fire(new DiscardEvent(0, Tile.FromId(2), DateTime.UtcNow, 2));
 
+        await logger.FlushAsync();
         var lines = File.ReadAllLines(logger.LogPath);
         Assert.Single(lines);
     }

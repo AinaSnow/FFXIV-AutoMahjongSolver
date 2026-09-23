@@ -9,6 +9,8 @@ public sealed class DiscardCaptureLogger : IDisposable
     private readonly IDiscardCapture capture;
     private readonly string logPath;
     private bool disposed;
+    private readonly BackgroundIoWorker io = new();
+    public Task FlushAsync() => io.FlushAsync();
 
     public string LogPath => logPath;
 
@@ -28,17 +30,9 @@ public sealed class DiscardCaptureLogger : IDisposable
     {
         if (disposed)
             return;
-        try
-        {
-            using var w = new StreamWriter(new FileStream(
-                logPath, FileMode.Append, FileAccess.Write, FileShare.Read));
-            string seat = evt.Seat >= 0 ? evt.Seat.ToString() : "?";
-            w.WriteLine(
-                $"{evt.ObservedAtUtc:o}  seq={evt.SequenceNumber}  " +
-                $"strategy={capture.StrategyName}  seat={seat}  " +
-                $"tile_id={evt.Tile.Id} ({evt.Tile})");
-        }
-        catch { }
+        string seat = evt.Seat >= 0 ? evt.Seat.ToString() : "?";
+        string line = $"{evt.ObservedAtUtc:o}  seq={evt.SequenceNumber}  strategy={capture.StrategyName}  seat={seat}  tile_id={evt.Tile.Id} ({evt.Tile})";
+        io.TryEnqueue(() => File.AppendAllText(logPath, line + Environment.NewLine));
     }
 
     public void Dispose()
@@ -47,5 +41,6 @@ public sealed class DiscardCaptureLogger : IDisposable
             return;
         disposed = true;
         capture.DiscardObserved -= OnDiscard;
+        io.Dispose();
     }
 }

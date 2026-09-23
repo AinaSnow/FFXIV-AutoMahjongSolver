@@ -1,3 +1,4 @@
+using Mahjong.Plugin.Dalamud.Logging;
 using System;
 using System.Globalization;
 using System.IO;
@@ -17,7 +18,8 @@ public sealed class InputRecorder : IDisposable
 
     private readonly InputEventLogger logger;
     private readonly string inputsDir;
-    private readonly object writerLock = new();
+    private readonly BackgroundIoWorker io = new();
+    public Task FlushAsync() => io.FlushAsync();
     private long sequence;
     private bool disposed;
 
@@ -41,6 +43,7 @@ public sealed class InputRecorder : IDisposable
         if (disposed)
             return;
         disposed = true;
+        io.Dispose();
         logger.CallbackObserved -= OnCallback;
     }
 
@@ -60,12 +63,12 @@ public sealed class InputRecorder : IDisposable
                 Values: evt.IntValues);
             var line = JsonSerializer.Serialize(entry, JsonOpts);
             var path = Path.Combine(inputsDir, $"inputs-{DateTime.UtcNow:yyyyMMdd}.ndjson");
-            lock (writerLock)
+            io.TryEnqueue(() =>
             {
                 using var w = new StreamWriter(new FileStream(
                     path, FileMode.Append, FileAccess.Write, FileShare.Read));
                 w.WriteLine(line);
-            }
+            });
         }
         catch
         {

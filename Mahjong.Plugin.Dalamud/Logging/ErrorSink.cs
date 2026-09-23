@@ -15,7 +15,8 @@ public sealed class ErrorSink : IDisposable
     };
 
     private readonly string errorsDir;
-    private readonly object writerLock = new();
+    private readonly BackgroundIoWorker io = new();
+    public Task FlushAsync() => io.FlushAsync();
     private bool disposed;
     private long sequence;
 
@@ -37,6 +38,7 @@ public sealed class ErrorSink : IDisposable
         if (disposed)
             return;
         disposed = true;
+        io.Dispose();
         try
         { AppDomain.CurrentDomain.UnhandledException -= OnUnhandledException; }
         catch { }
@@ -96,12 +98,12 @@ public sealed class ErrorSink : IDisposable
         {
             var line = JsonSerializer.Serialize(entry, JsonOpts);
             var path = Path.Combine(errorsDir, $"errors-{DateTime.UtcNow:yyyyMMdd}.ndjson");
-            lock (writerLock)
+            io.TryEnqueue(() =>
             {
                 using var w = new StreamWriter(new FileStream(
                     path, FileMode.Append, FileAccess.Write, FileShare.Read));
                 w.WriteLine(line);
-            }
+            });
         }
         catch { }
     }

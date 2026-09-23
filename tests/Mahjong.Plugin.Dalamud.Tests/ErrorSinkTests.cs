@@ -27,15 +27,17 @@ public class ErrorSinkTests
     }
 
     [Fact]
-    public void RecordException_appends_an_ndjson_line()
+    public async Task RecordException_appends_an_ndjson_line()
     {
         using var tmp = new TempDir();
         using var sink = new ErrorSink(tmp.Path);
 
         sink.RecordException("TestContext", new InvalidOperationException("boom"));
 
+        await sink.FlushAsync();
         var files = Directory.GetFiles(sink.ErrorsDir, "errors-*.ndjson");
         Assert.Single(files);
+        await sink.FlushAsync();
         var contents = File.ReadAllText(files[0]);
         Assert.Contains("\"sev\":\"error\"", contents);
         Assert.Contains("\"ctx\":\"TestContext\"", contents);
@@ -44,14 +46,16 @@ public class ErrorSinkTests
     }
 
     [Fact]
-    public void RecordWarning_appends_a_warn_severity_line()
+    public async Task RecordWarning_appends_a_warn_severity_line()
     {
         using var tmp = new TempDir();
         using var sink = new ErrorSink(tmp.Path);
 
         sink.RecordWarning("Probe", "sigscan returned 0 hits");
 
+        await sink.FlushAsync();
         var files = Directory.GetFiles(sink.ErrorsDir, "errors-*.ndjson");
+        await sink.FlushAsync();
         var contents = File.ReadAllText(files[0]);
         Assert.Contains("\"sev\":\"warn\"", contents);
         Assert.Contains("\"msg\":\"sigscan returned 0 hits\"", contents);
@@ -59,19 +63,20 @@ public class ErrorSinkTests
     }
 
     [Fact]
-    public void RecordException_is_a_noop_for_null_exception()
+    public async Task RecordException_is_a_noop_for_null_exception()
     {
         using var tmp = new TempDir();
         using var sink = new ErrorSink(tmp.Path);
 
         sink.RecordException("ctx", null!);
 
+        await sink.FlushAsync();
         var files = Directory.GetFiles(sink.ErrorsDir, "errors-*.ndjson");
         Assert.Empty(files);
     }
 
     [Fact]
-    public void Multiple_records_increment_the_sequence_number()
+    public async Task Multiple_records_increment_the_sequence_number()
     {
         using var tmp = new TempDir();
         using var sink = new ErrorSink(tmp.Path);
@@ -80,7 +85,9 @@ public class ErrorSinkTests
         sink.RecordWarning("b", "second");
         sink.RecordWarning("c", "third");
 
+        await sink.FlushAsync();
         var files = Directory.GetFiles(sink.ErrorsDir, "errors-*.ndjson");
+        await sink.FlushAsync();
         var lines = File.ReadAllLines(files[0]);
         Assert.Equal(3, lines.Length);
         Assert.Contains("\"seq\":1", lines[0]);
@@ -89,7 +96,7 @@ public class ErrorSinkTests
     }
 
     [Fact]
-    public void Records_after_dispose_are_dropped()
+    public async Task Records_after_dispose_are_dropped()
     {
         using var tmp = new TempDir();
         var sink = new ErrorSink(tmp.Path);
@@ -98,12 +105,13 @@ public class ErrorSinkTests
         sink.RecordException("ctx", new Exception("after dispose"));
         sink.RecordWarning("ctx", "after dispose");
 
+        await sink.FlushAsync();
         var files = Directory.GetFiles(sink.ErrorsDir, "errors-*.ndjson");
         Assert.Empty(files);
     }
 
     [Fact]
-    public void Inner_exception_message_is_captured()
+    public async Task Inner_exception_message_is_captured()
     {
         using var tmp = new TempDir();
         using var sink = new ErrorSink(tmp.Path);
@@ -112,7 +120,9 @@ public class ErrorSinkTests
         var outer = new InvalidOperationException("the outer", inner);
         sink.RecordException("ctx", outer);
 
+        await sink.FlushAsync();
         var files = Directory.GetFiles(sink.ErrorsDir, "errors-*.ndjson");
+        await sink.FlushAsync();
         var contents = File.ReadAllText(files[0]);
         Assert.Contains("\"inner\":", contents);
         Assert.Contains("the inner", contents);

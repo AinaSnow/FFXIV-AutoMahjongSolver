@@ -20,6 +20,26 @@ public class MatchArchiveWriterTests
         LastModelEvalMilliseconds: 8.5);
 
     [Fact]
+    public async Task Truncated_log_is_marked_incomplete_and_decision_health_survives()
+    {
+        using var tmp = new TempDir();
+        string game = Path.Combine(tmp.Path, "game.ndjson");
+        File.WriteAllLines(game, [
+            """{"e":"decision","source":"mortal","elapsed_ms":12}""",
+            """{"e":"decision","source":"local-fallback","elapsed_ms":24}""",
+            """{"e":"action""" ]);
+        using var writer = new MatchArchiveWriter(tmp.Path, new StubPluginLog());
+        string archive = Assert.IsType<string>(await writer.FinalizeSessionAsync([game], Stats));
+        using var doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(archive,"summary.json")));
+        Assert.True(doc.RootElement.GetProperty("packet_write_failed").GetBoolean());
+        var health = doc.RootElement.GetProperty("decision_health");
+        Assert.Equal(18, health.GetProperty("mean_ms").GetDouble());
+        Assert.Equal(24, health.GetProperty("p95_ms").GetDouble());
+        Assert.Equal(1, health.GetProperty("malformed_lines").GetInt32());
+        Assert.Equal(1, health.GetProperty("sources").GetProperty("mortal").GetInt32());
+    }
+
+    [Fact]
     public void Finalize_copies_game_logs_and_writes_packet_and_summary_data()
     {
         using var tmp = new TempDir();
@@ -51,7 +71,7 @@ public class MatchArchiveWriterTests
 
         using var summary = JsonDocument.Parse(File.ReadAllText(Path.Combine(archive, "summary.json")));
         var root = summary.RootElement;
-        Assert.Equal(2, root.GetProperty("schema_version").GetInt32());
+        Assert.Equal(3, root.GetProperty("schema_version").GetInt32());
         Assert.Equal(1, root.GetProperty("packet_count").GetInt32());
         Assert.Equal(1, root.GetProperty("hand_count").GetInt32());
         Assert.Equal(1, root.GetProperty("settled_hands").GetInt32());
@@ -155,6 +175,34 @@ public class MatchArchiveWriterTests
         Assert.Equal(2, Directory.GetDirectories(writer.RootDir).Length);
         Assert.Equal(1, ReadSummary(first).GetProperty("hand_count").GetInt32());
         Assert.Equal(1, ReadSummary(second).GetProperty("hand_count").GetInt32());
+    }
+
+    [Fact]
+    public async Task Retention_preserves_legacy_and_active_directories()
+    {
+        using var tmp = new TempDir();
+        using var writer = new MatchArchiveWriter(tmp.Path, new StubPluginLog(), retention: () => (30, 1));
+        await writer.FlushAsync();
+        string legacy=Path.Combine(writer.RootDir,"match-legacy"), active=Path.Combine(writer.RootDir,"match-active");
+        Directory.CreateDirectory(legacy); Directory.CreateDirectory(active);
+        File.WriteAllText(Path.Combine(legacy,"summary.json"),"{}");
+        writer.RecordPacket(HandStartPacket(0,[25000,25000,25000,25000]));
+        string first=(await writer.FinalizeSessionAsync([],Stats))!;
+        writer.RecordPacket(HandStartPacket(0,[25000,25000,25000,25000]));
+        string second=(await writer.FinalizeSessionAsync([],Stats))!;
+        Assert.False(Directory.Exists(first)); Assert.True(Directory.Exists(second));
+        Assert.True(Directory.Exists(legacy)); Assert.True(Directory.Exists(active));
+    }
+
+    [Fact]
+    public async Task Unwritable_archive_does_not_throw_into_the_game_thread()
+    {
+        using var tmp = new TempDir();
+        File.WriteAllText(Path.Combine(tmp.Path,"match-archives"),"occupied by file");
+        using var writer = new MatchArchiveWriter(tmp.Path,new StubPluginLog());
+        writer.RecordPacket(HandStartPacket(0,[25000,25000,25000,25000]));
+        await writer.FinalizeSessionAsync([],Stats);
+        await writer.FlushAsync();
     }
 
     private static CapturedMahjongPacket HandStartPacket(int selfSeat, int[] relativeScores)

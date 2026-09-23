@@ -1,3 +1,4 @@
+using Mahjong.Plugin.Dalamud.Logging;
 using System;
 using System.Globalization;
 using System.IO;
@@ -18,7 +19,7 @@ public sealed class NullSigprobeLog : ISigprobeLog
     public void Record(string sigName, string pattern, nint matchAddress, double elapsedMs, bool success, string? errorMessage = null) { }
 }
 
-public sealed class SigprobeLog : ISigprobeLog
+public sealed class SigprobeLog : ISigprobeLog, IDisposable
 {
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -26,9 +27,11 @@ public sealed class SigprobeLog : ISigprobeLog
     };
 
     private readonly string sigprobesDir;
-    private readonly object writerLock = new();
+    private readonly BackgroundIoWorker io = new();
+    public Task FlushAsync() => io.FlushAsync();
     private long sequence;
 
+    public void Dispose() => io.Dispose();
     public string SigprobesDir => sigprobesDir;
 
     public SigprobeLog(string pluginConfigDirectory)
@@ -57,12 +60,12 @@ public sealed class SigprobeLog : ISigprobeLog
                 Error: errorMessage);
             var line = JsonSerializer.Serialize(entry, JsonOpts);
             var path = Path.Combine(sigprobesDir, $"sigprobes-{DateTime.UtcNow:yyyyMMdd}.ndjson");
-            lock (writerLock)
+            io.TryEnqueue(() =>
             {
                 using var w = new StreamWriter(new FileStream(
                     path, FileMode.Append, FileAccess.Write, FileShare.Read));
                 w.WriteLine(line);
-            }
+            });
         }
         catch
         {

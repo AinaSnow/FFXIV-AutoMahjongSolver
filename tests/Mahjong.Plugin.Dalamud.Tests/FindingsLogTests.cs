@@ -40,7 +40,7 @@ public class FindingsLogTests
     }
 
     [Fact]
-    public void Record_with_data_writes_an_ndjson_line()
+    public async Task Record_with_data_writes_an_ndjson_line()
     {
         using var tmp = new TempDir();
         using var errors = new ErrorSink(tmp.Path);
@@ -52,8 +52,10 @@ public class FindingsLogTests
             ["count"] = 3,
         });
 
+        await sink.FlushAsync();
         var files = Directory.GetFiles(sink.FindingsDir, "findings-*.ndjson");
         Assert.Single(files);
+        await sink.FlushAsync();
         var contents = File.ReadAllText(files[0]);
         Assert.Contains("\"kind\":\"variant_match\"", contents);
         Assert.Contains("\"addon\":\"Emj\"", contents);
@@ -61,7 +63,7 @@ public class FindingsLogTests
     }
 
     [Fact]
-    public void Record_with_note_writes_an_ndjson_line()
+    public async Task Record_with_note_writes_an_ndjson_line()
     {
         using var tmp = new TempDir();
         using var errors = new ErrorSink(tmp.Path);
@@ -69,14 +71,16 @@ public class FindingsLogTests
 
         sink.Record("sigscan_hit", "found at 0xDEADBEEF");
 
+        await sink.FlushAsync();
         var files = Directory.GetFiles(sink.FindingsDir, "findings-*.ndjson");
+        await sink.FlushAsync();
         var contents = File.ReadAllText(files[0]);
         Assert.Contains("\"kind\":\"sigscan_hit\"", contents);
         Assert.Contains("\"note\":\"found at 0xDEADBEEF\"", contents);
     }
 
     [Fact]
-    public void Empty_kind_is_dropped()
+    public async Task Empty_kind_is_dropped()
     {
         using var tmp = new TempDir();
         using var errors = new ErrorSink(tmp.Path);
@@ -85,12 +89,13 @@ public class FindingsLogTests
         sink.Record("", new Dictionary<string, object?>());
         sink.Record(null!, "note");
 
+        await sink.FlushAsync();
         var files = Directory.GetFiles(sink.FindingsDir, "findings-*.ndjson");
         Assert.Empty(files);
     }
 
     [Fact]
-    public void Records_after_dispose_are_dropped()
+    public async Task Records_after_dispose_are_dropped()
     {
         using var tmp = new TempDir();
         using var errors = new ErrorSink(tmp.Path);
@@ -99,12 +104,13 @@ public class FindingsLogTests
 
         sink.Record("kind", "note");
 
+        await sink.FlushAsync();
         var files = Directory.GetFiles(sink.FindingsDir, "findings-*.ndjson");
         Assert.Empty(files);
     }
 
     [Fact]
-    public void Path_like_strings_in_data_are_scrubbed()
+    public async Task Path_like_strings_in_data_are_scrubbed()
     {
         using var tmp = new TempDir();
         using var errors = new ErrorSink(tmp.Path);
@@ -116,6 +122,7 @@ public class FindingsLogTests
             ["count"] = 2,
         });
 
+        await sink.FlushAsync();
         var contents = File.ReadAllText(Directory.GetFiles(sink.FindingsDir, "findings-*.ndjson")[0]);
         Assert.DoesNotContain(@"C:\\Users\\xelda", contents);
         Assert.DoesNotContain(@"\\Users\\", contents);
@@ -123,7 +130,7 @@ public class FindingsLogTests
     }
 
     [Fact]
-    public void Path_like_note_is_scrubbed()
+    public async Task Path_like_note_is_scrubbed()
     {
         using var tmp = new TempDir();
         using var errors = new ErrorSink(tmp.Path);
@@ -131,6 +138,7 @@ public class FindingsLogTests
 
         sink.Record("layouts_load_fail", @"/home/lux/.xlcore/installedPlugins/Mahjong.Plugin.Dalamud/0.1.0.0/layouts");
 
+        await sink.FlushAsync();
         var contents = File.ReadAllText(Directory.GetFiles(sink.FindingsDir, "findings-*.ndjson")[0]);
         Assert.DoesNotContain("/home/lux", contents);
         Assert.DoesNotContain(@"\\home\\lux", contents);
@@ -138,7 +146,7 @@ public class FindingsLogTests
     }
 
     [Fact]
-    public void Non_path_strings_are_left_alone()
+    public async Task Non_path_strings_are_left_alone()
     {
         using var tmp = new TempDir();
         using var errors = new ErrorSink(tmp.Path);
@@ -150,13 +158,14 @@ public class FindingsLogTests
             ["variants"] = new[] { "Emj", "EmjL" },
         });
 
+        await sink.FlushAsync();
         var contents = File.ReadAllText(Directory.GetFiles(sink.FindingsDir, "findings-*.ndjson")[0]);
         Assert.Contains("\"addon\":\"Emj\"", contents);
         Assert.Contains("\"variants\":[\"Emj\",\"EmjL\"]", contents);
     }
 
     [Fact]
-    public void Sequence_numbers_are_monotonic_per_instance()
+    public async Task Sequence_numbers_are_monotonic_per_instance()
     {
         using var tmp = new TempDir();
         using var errors = new ErrorSink(tmp.Path);
@@ -166,7 +175,9 @@ public class FindingsLogTests
         sink.Record("b", "2");
         sink.Record("c", "3");
 
+        await sink.FlushAsync();
         var files = Directory.GetFiles(sink.FindingsDir, "findings-*.ndjson");
+        await sink.FlushAsync();
         var lines = File.ReadAllLines(files[0]);
         Assert.Equal(3, lines.Length);
         Assert.Contains("\"seq\":1", lines[0]);

@@ -23,7 +23,8 @@ internal sealed class FindingsLog : IFindingsLog, IDisposable
 
     private readonly ErrorSink errors;
     private readonly string findingsDir;
-    private readonly object writerLock = new();
+    private readonly BackgroundIoWorker io = new();
+    public Task FlushAsync() => io.FlushAsync();
     private long sequence;
     private bool disposed;
 
@@ -40,7 +41,7 @@ internal sealed class FindingsLog : IFindingsLog, IDisposable
         catch { }
     }
 
-    public void Dispose() => disposed = true;
+    public void Dispose() { disposed = true; io.Dispose(); }
 
     public void Record(string kind, IReadOnlyDictionary<string, object?> data)
     {
@@ -73,12 +74,12 @@ internal sealed class FindingsLog : IFindingsLog, IDisposable
             entry = ScrubPaths(entry);
             var line = JsonSerializer.Serialize(entry, JsonOpts);
             var path = Path.Combine(findingsDir, $"findings-{DateTime.UtcNow:yyyyMMdd}.ndjson");
-            lock (writerLock)
+            io.TryEnqueue(() =>
             {
                 using var w = new StreamWriter(new FileStream(
                     path, FileMode.Append, FileAccess.Write, FileShare.Read));
                 w.WriteLine(line);
-            }
+            });
         }
         catch (Exception ex)
         {

@@ -1,3 +1,4 @@
+using Mahjong.Plugin.Dalamud.Logging;
 using System;
 using System.Globalization;
 using System.IO;
@@ -26,7 +27,8 @@ public sealed class InputEventLogger : IDisposable
     private readonly MahjongAddon addon;
     private readonly string logPath;
     private readonly string capturePath;
-    private StreamWriter? writer;
+    private bool logOpen;
+    private readonly BackgroundIoWorker io = new();
     private bool disposed;
     private unsafe Hook<FireCallbackDelegate>? fireCallbackHook;
 
@@ -118,8 +120,7 @@ public sealed class InputEventLogger : IDisposable
         fireCallbackHook?.Disable();
         fireCallbackHook?.Dispose();
         fireCallbackHook = null;
-        writer?.Flush();
-        writer?.Dispose();
+        io.Dispose();
     }
 
     public string LogPath => logPath;
@@ -135,19 +136,11 @@ public sealed class InputEventLogger : IDisposable
         pendingCaptureLabel = null;
     }
 
-    public void OpenLog()
+    public void OpenLog() => logOpen = true;
+    public void CloseLog() => logOpen = false;
+    private void WriteLog(string line)
     {
-        writer ??= new StreamWriter(new FileStream(logPath, FileMode.Append, FileAccess.Write, FileShare.Read))
-        {
-            AutoFlush = true,
-        };
-    }
-
-    public void CloseLog()
-    {
-        writer?.Flush();
-        writer?.Dispose();
-        writer = null;
+        if (logOpen) io.TryEnqueue(() => File.AppendAllText(logPath, line + Environment.NewLine));
     }
 
     private unsafe bool FireCallbackDetour(AtkUnitBase* addon, uint valueCount, AtkValue* values, byte close)
@@ -250,7 +243,7 @@ public sealed class InputEventLogger : IDisposable
                     sb.Append(']');
                 }
 
-                writer?.WriteLine(sb.ToString());
+                WriteLog(sb.ToString());
             }
         }
         catch (Exception ex)
@@ -335,7 +328,7 @@ public sealed class InputEventLogger : IDisposable
             sb.Append(']');
         }
 
-        writer?.WriteLine(sb.ToString());
+        WriteLog(sb.ToString());
     }
 
     private void WriteCaptureEntry(
@@ -363,7 +356,8 @@ public sealed class InputEventLogger : IDisposable
             sb.AppendLine($"  ... +{atkCount - atkValues.Length} more");
 
         sb.AppendLine();
-        File.AppendAllText(capturePath, sb.ToString());
+        string capture = sb.ToString();
+        io.TryEnqueue(() => File.AppendAllText(capturePath, capture));
         log.Info(
             $"[capture] recorded label={label} (result={result}) → {capturePath}");
     }

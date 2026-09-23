@@ -17,7 +17,8 @@ public sealed class DiscardTracker : IDisposable
 
     private readonly IDiscardCapture capture;
     private readonly string discardsDir;
-    private readonly object writerLock = new();
+    private readonly Mahjong.Plugin.Dalamud.Logging.BackgroundIoWorker io = new();
+    public Task FlushAsync() => io.FlushAsync();
     private long sequence;
     private bool disposed;
 
@@ -42,6 +43,7 @@ public sealed class DiscardTracker : IDisposable
             return;
         disposed = true;
         capture.DiscardObserved -= OnDiscard;
+        io.Dispose();
     }
 
     private void OnDiscard(DiscardEvent evt)
@@ -60,12 +62,12 @@ public sealed class DiscardTracker : IDisposable
                 Tile: evt.Tile.ToString());
             var line = JsonSerializer.Serialize(entry, JsonOpts);
             var path = Path.Combine(discardsDir, $"discards-{DateTime.UtcNow:yyyyMMdd}.ndjson");
-            lock (writerLock)
+            io.TryEnqueue(() =>
             {
                 using var w = new StreamWriter(new FileStream(
                     path, FileMode.Append, FileAccess.Write, FileShare.Read));
                 w.WriteLine(line);
-            }
+            });
         }
         catch
         {

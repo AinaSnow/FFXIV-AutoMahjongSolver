@@ -19,7 +19,7 @@ namespace Mahjong.Plugin.Dalamud.Logging;
 /// </summary>
 public sealed class MatchArchiveWriter : IDisposable
 {
-    private const int SchemaVersion = 2;
+    private const int SchemaVersion = 3;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -45,34 +45,41 @@ public sealed class MatchArchiveWriter : IDisposable
     private int[]? lastPacketHandStartScores;
     private bool packetWriteFailed;
     private bool disposed;
+    private readonly BackgroundIoWorker io;
+    private readonly bool ownsIo;
+    private readonly Func<(int Days, long Bytes)> retention;
+    public Task FlushAsync() => io.FlushAsync();
 
-    public MatchArchiveWriter(string pluginConfigDir, IPluginLog log)
+    public MatchArchiveWriter(string pluginConfigDir, IPluginLog log, BackgroundIoWorker? io = null, Func<(int Days, long Bytes)>? retention = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(pluginConfigDir);
         ArgumentNullException.ThrowIfNull(log);
         this.log = log;
+        this.io = io ?? new BackgroundIoWorker();
+        ownsIo = io is null;
+        this.retention = retention ?? (() => (30, 1L << 30));
         rootDir = Path.Combine(pluginConfigDir, "match-archives");
-        Directory.CreateDirectory(rootDir);
+        this.io.TryEnqueue(() => Directory.CreateDirectory(rootDir));
+
     }
 
     public string RootDir => rootDir;
 
-    public string? CurrentDirectory
-    {
-        get
-        {
-            lock (sync)
-                return currentDir;
-        }
-    }
+    public string? CurrentDirectory => currentDir;
 
     /// <summary>Called after capture dequeue, never from the receive detour.</summary>
     public void RecordPacket(CapturedMahjongPacket packet)
     {
+        if (disposed) return;
+        // Capture owns the original immutable payload; copy defensively for callers/tests.
+        var copy = packet with { Payload = packet.Payload.ToArray() };
+        io.TryEnqueue(() => RecordPacketCore(copy));
+    }
+
+    private void RecordPacketCore(CapturedMahjongPacket packet)
+    {
         lock (sync)
         {
-            if (disposed)
-                return;
 
             TrackPacketHand(packet);
             if (packetWriteFailed)
@@ -103,7 +110,17 @@ public sealed class MatchArchiveWriter : IDisposable
     /// Copies this table session's per-hand logs and seals the archive with a summary.
     /// Returns the archive directory, or <see langword="null"/> when no match data existed.
     /// </summary>
-    public string? FinalizeSession(
+    public Task<string?> FinalizeSessionAsync(IReadOnlyList<string> gamePaths, MatchArchiveMortalStats mortalStats)
+    {
+        var paths = gamePaths.ToArray();
+        return io.RunAfterWritesAsync(() => FinalizeSessionCore(paths, mortalStats));
+    }
+
+    // Synchronous compatibility entry for offline consumers. Runtime uses FinalizeSessionAsync.
+    public string? FinalizeSession(IReadOnlyList<string> gamePaths, MatchArchiveMortalStats mortalStats) =>
+        FinalizeSessionAsync(gamePaths, mortalStats).GetAwaiter().GetResult();
+
+    private string? FinalizeSessionCore(
         IReadOnlyList<string> gamePaths,
         MatchArchiveMortalStats mortalStats)
     {
@@ -112,8 +129,6 @@ public sealed class MatchArchiveWriter : IDisposable
 
         lock (sync)
         {
-            if (disposed)
-                return null;
 
             var existingGames = gamePaths
                 .Where(File.Exists)
@@ -123,10 +138,11 @@ public sealed class MatchArchiveWriter : IDisposable
             if (currentDir is null && existingGames.Length == 0)
                 return null;
 
-            EnsureSession(DateTimeOffset.UtcNow);
-            string completedDir = currentDir!;
+            string completedDir = currentDir ?? rootDir;
             try
             {
+                EnsureSession(DateTimeOffset.UtcNow);
+                completedDir = currentDir!;
                 string archivedGamesDir = Path.Combine(completedDir, "games");
                 Directory.CreateDirectory(archivedGamesDir);
                 var copiedNames = new List<string>(existingGames.Length);
@@ -151,7 +167,7 @@ public sealed class MatchArchiveWriter : IDisposable
                 }
                 settledHands = Math.Min(handCount, settledHands);
                 int? ourScore = metrics.FinalScores is { Length: 4 } ? metrics.FinalScores[0] : null;
-                int? ourRank = ourScore is not null
+                int? ourRank = ourScore is not null && metrics.FinalScores!.Count(score => score == ourScore.Value) == 1
                     ? 1 + metrics.FinalScores!.Count(score => score > ourScore.Value)
                     : null;
                 var summary = new MatchArchiveSummary(
@@ -159,7 +175,7 @@ public sealed class MatchArchiveWriter : IDisposable
                     StartedAtUtc: startedAtUtc!.Value.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
                     CompletedAtUtc: DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
                     PacketCount: packetCount,
-                    PacketWriteFailed: packetWriteFailed,
+                    PacketWriteFailed: packetWriteFailed || io.Failures > 0 || metrics.MalformedLines > 0,
                     GameFiles: copiedNames.ToArray(),
                     HandCount: handCount,
                     SettledHands: settledHands,
@@ -170,10 +186,14 @@ public sealed class MatchArchiveWriter : IDisposable
                     ActionCount: metrics.ActionCount,
                     FailedActions: metrics.FailedActions,
                     TimeoutFallbacks: metrics.TimeoutFallbacks,
-                    Mortal: mortalStats);
+                    Mortal: mortalStats,
+                    DecisionHealth: new { sources = metrics.Sources, mean_ms = metrics.MeanMs, p95_ms = metrics.P95Ms, malformed_lines = metrics.MalformedLines, io_failures = io.Failures });
                 File.WriteAllText(
                     Path.Combine(completedDir, "summary.json"),
                     JsonSerializer.Serialize(summary, JsonOpts));
+                File.WriteAllText(Path.Combine(completedDir, "managed-complete.json"),
+                    JsonSerializer.Serialize(new { version = 1, incomplete = packetWriteFailed || io.Failures > 0 || metrics.MalformedLines > 0 }));
+                ApplyRetention(completedDir);
                 log.Information(
                     $"[MatchArchive] Saved local match archive: {completedDir} " +
                     $"(games={copiedNames.Count}, packets={packetCount}, decisions={metrics.DecisionCount}).");
@@ -181,6 +201,8 @@ public sealed class MatchArchiveWriter : IDisposable
             }
             catch (Exception ex)
             {
+                try { if (currentDir is not null) File.WriteAllText(Path.Combine(currentDir, "incomplete.json"),
+                    JsonSerializer.Serialize(new { reason = ex.GetType().Name, message = ex.Message })); } catch { }
                 log.Error($"[MatchArchive] finalize failed for {completedDir}: {ex.Message}");
                 return completedDir;
             }
@@ -200,8 +222,30 @@ public sealed class MatchArchiveWriter : IDisposable
 
     public void Dispose()
     {
-        lock (sync)
-            disposed = true;
+        disposed = true;
+        if (ownsIo) io.Dispose();
+        // Queued writes finish after disposal; callers stop producing before closing the queue.
+    }
+
+    private void ApplyRetention(string justCompleted)
+    {
+        var limits = retention();
+        var root = new DirectoryInfo(rootDir);
+        var archives = root.EnumerateDirectories("match-*")
+            .Where(d => d.Parent?.FullName == root.FullName && !d.Attributes.HasFlag(FileAttributes.ReparsePoint))
+            .Where(d => File.Exists(Path.Combine(d.FullName, "managed-complete.json")))
+            .Where(d => !d.EnumerateFileSystemInfos("*", SearchOption.AllDirectories).Any(f => f.Attributes.HasFlag(FileAttributes.ReparsePoint)))
+            .Select(d => new { Dir = d, End = File.GetLastWriteTimeUtc(Path.Combine(d.FullName, "managed-complete.json")),
+                Size = d.EnumerateFiles("*", SearchOption.AllDirectories).Sum(f => f.Length) })
+            .OrderBy(a => a.End).ToArray();
+        long total = archives.Sum(a => a.Size);
+        foreach (var archive in archives)
+        {
+            if (archive.Dir.FullName == justCompleted) continue;
+            if (archive.End >= DateTime.UtcNow.AddDays(-Math.Max(1, limits.Days)) && total <= Math.Max(1, limits.Bytes)) continue;
+            archive.Dir.Delete(recursive: true);
+            total -= archive.Size;
+        }
     }
 
     private void EnsureSession(DateTimeOffset timestamp)
@@ -279,6 +323,9 @@ public sealed class MatchArchiveWriter : IDisposable
         int actions = 0;
         int failedActions = 0;
         int timeoutFallbacks = 0;
+        int malformedLines = 0;
+        var sources = new Dictionary<string,int>();
+        var times = new List<double>();
 
         foreach (string path in paths)
         {
@@ -319,6 +366,9 @@ public sealed class MatchArchiveWriter : IDisposable
 
                         case "decision":
                             decisions++;
+                            string source = root.TryGetProperty("source", out var src) && src.ValueKind == JsonValueKind.String ? src.GetString()! : "legacy";
+                            sources[source] = sources.GetValueOrDefault(source) + 1;
+                            if (root.TryGetProperty("elapsed_ms", out var elapsed) && elapsed.ValueKind == JsonValueKind.Number && elapsed.TryGetDouble(out var ms) && double.IsFinite(ms) && ms >= 0) times.Add(ms);
                             if (root.TryGetProperty("why", out var why)
                                 && why.ValueKind == JsonValueKind.String
                                 && why.GetString()?.Contains("timeout", StringComparison.OrdinalIgnoreCase) == true)
@@ -336,11 +386,13 @@ public sealed class MatchArchiveWriter : IDisposable
                 }
                 catch (JsonException)
                 {
+                    malformedLines++;
                     // A partially-written final line should not prevent the rest of the match from being archived.
                 }
             }
         }
 
+        times.Sort();
         return new ArchiveMetrics(
             handStarts,
             settledHands,
@@ -348,7 +400,8 @@ public sealed class MatchArchiveWriter : IDisposable
             decisions,
             actions,
             failedActions,
-            timeoutFallbacks);
+            timeoutFallbacks, sources, times.Count == 0 ? null : times.Average(),
+            times.Count == 0 ? null : times[(int)Math.Ceiling(times.Count * .95) - 1], malformedLines);
     }
 
     private static int[]? TryReadScores(JsonElement element)
@@ -384,7 +437,8 @@ public sealed class MatchArchiveWriter : IDisposable
         [property: JsonPropertyName("action_count")] int ActionCount,
         [property: JsonPropertyName("failed_actions")] int FailedActions,
         [property: JsonPropertyName("timeout_fallbacks")] int TimeoutFallbacks,
-        [property: JsonPropertyName("mortal")] MatchArchiveMortalStats Mortal);
+        [property: JsonPropertyName("mortal")] MatchArchiveMortalStats Mortal,
+        [property: JsonPropertyName("decision_health")] object DecisionHealth);
 
     private sealed record ArchiveMetrics(
         int HandStarts,
@@ -393,7 +447,7 @@ public sealed class MatchArchiveWriter : IDisposable
         int DecisionCount,
         int ActionCount,
         int FailedActions,
-        int TimeoutFallbacks);
+        int TimeoutFallbacks, Dictionary<string,int> Sources, double? MeanMs, double? P95Ms, int MalformedLines);
 }
 
 public sealed record MatchArchiveMortalStats(

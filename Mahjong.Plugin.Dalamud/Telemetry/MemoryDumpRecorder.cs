@@ -47,7 +47,8 @@ public sealed class MemoryDumpRecorder : IDisposable
     private readonly ErrorSink errors;
     private readonly string memdumpsDir;
     private readonly HashSet<string> seenHashes = new();
-    private readonly object writerLock = new();
+    private readonly BackgroundIoWorker io = new();
+    public Task FlushAsync() => io.FlushAsync();
     private string? currentPath;
     private long currentBytes;
     private long sequence;
@@ -74,7 +75,7 @@ public sealed class MemoryDumpRecorder : IDisposable
         catch { }
     }
 
-    public void Dispose() => disposed = true;
+    public void Dispose() { disposed = true; io.Dispose(); }
 
     /// <summary>"state-change" is gated on AtkValuesCount; "input-pre" / "input-post" bypass the gate.</summary>
     public unsafe void Record(string reason)
@@ -272,7 +273,7 @@ public sealed class MemoryDumpRecorder : IDisposable
     private void WriteEntry(MemDumpEntry entry)
     {
         var line = JsonSerializer.Serialize(entry, JsonOpts);
-        lock (writerLock)
+        io.TryEnqueue(() =>
         {
             if (currentPath is null || currentBytes >= FileRolloverBytes)
                 RollFile();
@@ -287,7 +288,7 @@ public sealed class MemoryDumpRecorder : IDisposable
             {
                 errors.RecordException("MemoryDumpRecorder.WriteEntry", ex);
             }
-        }
+        });
     }
 
     private void RollFile()
