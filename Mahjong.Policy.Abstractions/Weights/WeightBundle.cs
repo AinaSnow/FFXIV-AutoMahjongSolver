@@ -10,7 +10,7 @@ public sealed record WeightBundle(
     PlacementWeights Placement,
     int SchemaVersion = WeightBundle.CurrentSchemaVersion)
 {
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
 
     public static WeightBundle Default { get; } = new(
         Discard: DiscardWeights.Default,

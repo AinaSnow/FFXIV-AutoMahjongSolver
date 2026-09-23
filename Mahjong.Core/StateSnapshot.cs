@@ -15,8 +15,10 @@ public sealed record SeatView(
     bool Ippatsu,
     bool IsTenpaiCalled,
     int DiscardCount = 0,
-    IReadOnlyList<bool>? DiscardIsRed = null)
+    IReadOnlyList<bool>? DiscardIsRed = null,
+    IReadOnlyList<bool>? DiscardWasCalled = null)
 {
+    public IReadOnlyList<bool> DiscardWasCalled { get; init; } = DiscardWasCalled is null ? new bool[Discards.Count] : [.. DiscardWasCalled];
     public IReadOnlyList<Tile> Discards { get; init; } = [.. Discards];
     public IReadOnlyList<bool> DiscardIsTedashi { get; init; } = [.. DiscardIsTedashi];
     public IReadOnlyList<Meld> Melds { get; init; } = [.. Melds];
@@ -26,7 +28,7 @@ public sealed record SeatView(
 
 /// <summary>
 /// Immutable table state from our perspective. <see cref="SchemaVersion"/> is bumped on any
-/// shape change; the aggregator rejects mismatched snapshots. Seats: 0=E, 1=S, 2=W, 3=N.
+/// shape change; the aggregator rejects mismatched snapshots. Live seats: 0=self; seat wind is stored separately in SeatWind.
 /// </summary>
 /// <param name="SeatInfoKnown">
 /// False when OurSeat/RoundWind are defaults — yakuhai-on-winds must gate on this since an
@@ -66,9 +68,18 @@ public sealed record StateSnapshot(
     int AkaDora = 0,
     int AddonStateCode = -1,
     IReadOnlyList<bool>? HandIsRed = null,
-    SnapshotObservationFlags Observations = SnapshotObservationFlags.None)
+    SnapshotObservationFlags Observations = SnapshotObservationFlags.None,
+    int? SeatWind = null,
+    int? Kyoku = null,
+    int? ScheduledRounds = null,
+    long HandId = 0,
+    long Revision = 0,
+    bool PublicStateConsistent = true)
 {
-    public const int CurrentSchemaVersion = 5;
+    public const int CurrentSchemaVersion = 6;
+
+    // Legacy offline callers use absolute indexes; live state supplies SeatWind explicitly.
+    public int EffectiveSeatWind => SeatWind ?? OurSeat;
 
     public IReadOnlyList<Tile> Hand { get; init; } = [.. Hand];
     public IReadOnlyList<bool> HandIsRed { get; init; } =

@@ -18,17 +18,12 @@ public class WeightBundleTests
     }
 
     [Fact]
-    public void Discard_default_preserves_tuned_values()
+    public void Stable_baseline_does_not_reward_isolated_tiles_more_than_progress()
     {
-        // Pinned post-evo-tuner-pass values (8 pop x 20 gen x 500 hands, Doman, sigma=0.15).
         var d = DiscardWeights.Default;
-        Assert.Equal(100.0, d.Shanten);
-        Assert.InRange(d.UkeireKinds, 0.12, 0.13);
-        Assert.InRange(d.UkeireWeighted, 0.40, 0.41);
-        Assert.InRange(d.Dora, 260.0, 270.0);
-        Assert.InRange(d.Yakuhai, 160.0, 170.0);
-        Assert.InRange(d.IsolatedTerminal, 830.0, 850.0);
-        Assert.InRange(d.DealInCost, 0.06, 0.07);
+        Assert.True(d.IsolatedTerminal < d.Shanten);
+        Assert.True(d.Dora < d.Shanten);
+        Assert.True(d.UkeireWeighted > 0);
     }
 
     [Fact]

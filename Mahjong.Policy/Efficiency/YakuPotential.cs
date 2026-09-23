@@ -106,7 +106,7 @@ public static class YakuPotential
 
     private static double ScoreYakuhai(IReadOnlyList<int> closed, IReadOnlyList<Meld> melds, StateSnapshot state)
     {
-        int seatWindId = 27 + state.OurSeat;
+        int seatWindId = 27 + state.EffectiveSeatWind;
         int roundWindId = 27 + state.RoundWind;
 
         double best = 0;

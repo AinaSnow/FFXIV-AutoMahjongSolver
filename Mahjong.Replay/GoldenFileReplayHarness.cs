@@ -27,11 +27,12 @@ public static class GoldenFileReplayHarness
         if (kyokus.Length == 0)
             throw new InvalidDataException($"Tenhou log {tenhouJsonPath} contains no kyokus");
 
-        var result = TenhouReplay.ReplaySeat(kyokus[0], policy, seat);
-        var entries = new ReplayDecisionEntry[result.Decisions.Length];
-        for (int i = 0; i < result.Decisions.Length; i++)
+        var results = kyokus.Select(k => TenhouReplay.ReplaySeat(k, policy, seat)).ToArray();
+        var decisions = results.SelectMany(r => r.Decisions).ToArray();
+        var entries = new ReplayDecisionEntry[decisions.Length];
+        for (int i = 0; i < decisions.Length; i++)
         {
-            var d = result.Decisions[i];
+            var d = decisions[i];
             entries[i] = new ReplayDecisionEntry(
                 Turn: d.TurnIndex,
                 Actual: d.ActualDiscard.ShortName,
@@ -42,9 +43,9 @@ public static class GoldenFileReplayHarness
         return new ReplaySnapshot(
             Source: Path.GetFileName(tenhouJsonPath),
             Seat: seat,
-            TotalDecisions: result.TotalDecisions,
-            Matches: result.Matches,
-            Accuracy: Math.Round(result.Accuracy, 4),
+            TotalDecisions: decisions.Length,
+            Matches: decisions.Count(d => d.Matched),
+            Accuracy: Math.Round((decisions.Length == 0 ? 0d : (double)decisions.Count(d => d.Matched) / decisions.Length), 4),
             Decisions: entries);
     }
 
@@ -72,7 +73,10 @@ public static class GoldenFileReplayHarness
         bool updateMode = Environment.GetEnvironmentVariable(UpdateEnvVar) == "1";
         var existing = LoadGolden(snapshotPath);
 
-        if (updateMode || existing is null)
+        if (!updateMode && existing is null)
+            throw new FileNotFoundException("Missing replay golden; explicit UPDATE_REPLAY_SNAPSHOTS=1 required", snapshotPath);
+
+        if (updateMode)
         {
             WriteGolden(snapshotPath, actual);
             return new GoldenFileResult(
@@ -81,7 +85,7 @@ public static class GoldenFileReplayHarness
                 Expected: existing);
         }
 
-        bool matches = ReplaySnapshot.Equal(existing, actual);
+        bool matches = ReplaySnapshot.Equal(existing!, actual);
         return new GoldenFileResult(
             Status: matches ? GoldenFileStatus.Match : GoldenFileStatus.Mismatch,
             Actual: actual,

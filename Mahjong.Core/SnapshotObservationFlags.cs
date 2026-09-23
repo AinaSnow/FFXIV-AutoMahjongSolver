@@ -16,4 +16,9 @@ public enum SnapshotObservationFlags : ushort
     PublicTedashi = 1 << 4,
     OpponentMelds = 1 << 5,
     OpponentRiichi = 1 << 6,
+    RoundContext = 1 << 7,
+    Honba = 1 << 8,
+    RiichiSticks = 1 << 9,
+    Dora = 1 << 10,
+    Wall = 1 << 11,
 }

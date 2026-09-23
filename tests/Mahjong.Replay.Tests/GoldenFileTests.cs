@@ -8,11 +8,21 @@ public class GoldenFileTests
     public static IEnumerable<object[]> ReplayFixtures()
     {
         var dir = RepoPathResolver.Resolve("data", "replays");
-        if (!Directory.Exists(dir))
-            yield break;
+        if (!Directory.Exists(dir) || !Directory.EnumerateFiles(dir, "*.tenhou.json").Any())
+            throw new InvalidDataException("Replay fixtures must not be empty");
 
         foreach (var path in Directory.EnumerateFiles(dir, "*.tenhou.json"))
             yield return new object[] { Path.GetFileName(path) };
+    }
+
+    [Fact]
+    public void Missing_golden_is_an_error_and_does_not_create_a_file()
+    {
+        if (Environment.GetEnvironmentVariable("UPDATE_REPLAY_SNAPSHOTS") == "1") return;
+        var source = Path.Combine(RepoPathResolver.Resolve("data", "replays"), "synthetic-east-1.tenhou.json");
+        var missing = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".json");
+        Assert.Throws<FileNotFoundException>(() => GoldenFileReplayHarness.VerifyOrUpdate(source, missing, new EfficiencyPolicy()));
+        Assert.False(File.Exists(missing));
     }
 
     [Theory]

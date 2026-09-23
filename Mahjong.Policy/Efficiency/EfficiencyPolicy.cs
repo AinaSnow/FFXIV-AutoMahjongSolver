@@ -6,7 +6,7 @@ using Mahjong.Rules.Rulesets;
 
 namespace Mahjong.Policy.Efficiency;
 
-public sealed class EfficiencyPolicy : IPolicy
+public sealed class EfficiencyPolicy : IAnalyzablePolicy
 {
     private readonly IOpponentModel opponentModel;
     private readonly IDiscardPolicy discard;
@@ -55,8 +55,27 @@ public sealed class EfficiencyPolicy : IPolicy
         : this(template.opponentModel, template.discard, template.call, template.riichi, template.pushFold, template.ruleSet)
     { }
 
-    public ActionChoice Choose(StateSnapshot state)
+    public ActionChoice Choose(StateSnapshot state) => Analyze(state).Choice;
+
+    public PolicyEvaluation Analyze(StateSnapshot state)
     {
+        ArgumentNullException.ThrowIfNull(state);
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
+        var choice = ChooseCore(state, out var candidates);
+        if (choice.DiscardTile is { } tile)
+        {
+            var selected = candidates.FirstOrDefault(c => c.Discard == tile);
+            choice = choice with { DiscardIsRed = selected.IsRed };
+        }
+        return new PolicyEvaluation(choice, candidates) { HandId = state.HandId, Revision = state.Revision,
+            ElapsedMilliseconds = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds };
+    }
+
+    private ActionChoice ChooseCore(StateSnapshot state, out ScoredDiscard[] candidates)
+    {
+        candidates = [];
+        if (!state.PublicStateConsistent)
+            return ActionChoice.Pass("public-state-incomplete: waiting for a consistent observation");
         var legal = state.Legal;
 
         // Gate Tsumo on MinHan: addon flag alone softlocks Doman yakuless wins (#51).
@@ -90,6 +109,7 @@ public sealed class EfficiencyPolicy : IPolicy
         try
         {
             scored = discard.Score(state);
+            candidates = scored;
         }
         catch (ArgumentException ex)
         {
@@ -158,21 +178,13 @@ public sealed class EfficiencyPolicy : IPolicy
         return new ActionChoice(kind, Call: cand, Reasoning: $"call: {reason.Display}", Steps: steps);
     }
 
-    /// <summary>
-    /// Pauses suggestions when hand+meld arithmetic ≠ 14 (typically a call MeldTracker
-    /// couldn't reconstruct). Must use <see cref="Meld.TileCount"/>, not melds.Count*3 —
-    /// kans count 4 and a per-kan undercount left those hands stuck in fallback forever.
-    /// </summary>
     private static ActionChoice? TsumogiriFallback(StateSnapshot state)
     {
-        int meldTiles = 0;
-        for (int i = 0; i < state.OurMelds.Count; i++)
-            meldTiles += state.OurMelds[i].TileCount;
-        int totalTiles = state.Hand.Count + meldTiles;
-        if (totalTiles == 14 || state.Hand.Count == 0)
+        var hand = Hand.FromTiles(state.Hand, state.OurMelds);
+        if (hand.TotalShantenTileCount == 14)
             return null;
         return ActionChoice.Pass(
-            $"hand state out of sync — pausing hints (closed={state.Hand.Count}, meld-tiles={meldTiles}; expected 14)");
+            $"hand state out of sync - waiting for draw (closed={hand.ClosedTileCount}, melds={hand.OpenMelds.Count}; expected 14 structural tiles)");
     }
 
     private static string FormatDiscardSummary(ScoredDiscard best) =>
@@ -201,7 +213,7 @@ public sealed class EfficiencyPolicy : IPolicy
             IsIppatsu: state.OurIppatsu,
             IsHaitei: state.WallRemaining == 0,
             RoundWindTileId: TileIds.FirstWind + state.RoundWind,
-            SeatWindTileId: TileIds.FirstWind + state.OurSeat,
+            SeatWindTileId: TileIds.FirstWind + state.EffectiveSeatWind,
             DoraIndicators: state.DoraIndicators,
             UraDoraIndicators: state.UraDoraIndicators,
             IsDealer: state.OurSeat == state.DealerSeat,

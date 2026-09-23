@@ -16,6 +16,8 @@ public class PlacementAdjusterTests
             Scores = scores,
             WallRemaining = wall,
             RoundWind = roundWind,
+            Kyoku = 4, ScheduledRounds = 2,
+            Observations = SnapshotObservationFlags.RoundContext,
             OurSeat = ourSeat,
             Seats = seats,
         };

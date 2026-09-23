@@ -23,7 +23,8 @@ public sealed record ActionChoice(
     Tile? DiscardTile = null,
     MeldCandidate? Call = null,
     string Reasoning = "",
-    IReadOnlyList<Reason>? Steps = null)
+    IReadOnlyList<Reason>? Steps = null,
+    bool? DiscardIsRed = null)
 {
     public IReadOnlyList<Reason> ReasonSteps => Steps ?? [];
 

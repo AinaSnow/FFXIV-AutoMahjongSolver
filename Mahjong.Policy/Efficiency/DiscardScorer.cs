@@ -25,13 +25,19 @@ public static class DiscardScorer
         // copies overstates ukeire after discards, calls, dora reveals, and
         // the current hand are already known.
         var effectiveWall = wall ?? BuildVisibleWall(state);
-        var ukeire = UkeireEnumerator.Enumerate(hand, effectiveWall);
+        var ukeire = UkeireEnumerator.Enumerate(hand, effectiveWall)
+            .Where(u => state.Legal.DiscardableTiles.Count == 0 || state.Legal.DiscardableTiles.Contains(u.Discard)).ToArray();
         var result = new ScoredDiscard[ukeire.Length];
 
         for (int i = 0; i < ukeire.Length; i++)
         {
             var u = ukeire[i];
-            int doraRetained = CountDora(hand, u.Discard, state.DoraIndicators);
+            bool redKnown = state.Observations.HasFlag(SnapshotObservationFlags.HandRedIdentity);
+            bool discardRed = redKnown && Enumerable.Range(0, state.Hand.Count)
+                .Where(index => state.Hand[index] == u.Discard)
+                .All(index => index < state.HandIsRed.Count && state.HandIsRed[index]);
+            int doraRetained = CountDora(hand, u.Discard, state.DoraIndicators)
+                + (redKnown ? Math.Max(0, state.AkaDora - (discardRed ? 1 : 0)) : 0);
             int yakuhaiRetained = CountYakuhai(hand, u.Discard, 27 + state.RoundWind, state);
             double yakuPotential = YakuPotential.Score(hand, u.Discard, state);
 
@@ -60,10 +66,17 @@ public static class DiscardScorer
             result[i] = new ScoredDiscard(
                 u.Discard, score, u.ShantenAfter,
                 u.AcceptedKinds.Length, u.WeightedCount,
-                doraRetained, yakuhaiRetained, dealInCost, yakuPotential);
+                doraRetained, yakuhaiRetained, dealInCost, yakuPotential, redKnown ? discardRed : null);
         }
 
-        Array.Sort(result, (a, b) => b.Score.CompareTo(a.Score));
+        // Offensive efficiency is the stable baseline. Folding may regress shanten.
+        Array.Sort(result, (a, b) =>
+        {
+            int shanten = a.ShantenAfter.CompareTo(b.ShantenAfter);
+            if (shanten != 0) return shanten;
+            int score = b.Score.CompareTo(a.Score);
+            return score != 0 ? score : a.Discard.Id.CompareTo(b.Discard.Id);
+        });
         return result;
     }
 
@@ -75,7 +88,7 @@ public static class DiscardScorer
         return new Hand(counts, state.OurMelds);
     }
 
-    private static Wall BuildVisibleWall(StateSnapshot state)
+    public static Wall BuildVisibleWall(StateSnapshot state)
     {
         var seen = new int[Tile.Count34];
 
@@ -94,8 +107,8 @@ public static class DiscardScorer
         for (int seatIndex = 0; seatIndex < state.Seats.Count; seatIndex++)
         {
             var seat = state.Seats[seatIndex];
-            foreach (var tile in seat.Discards)
-                Add(tile);
+            for (int i = 0; i < seat.Discards.Count; i++)
+                if (i >= seat.DiscardWasCalled.Count || !seat.DiscardWasCalled[i]) Add(seat.Discards[i]);
 
             // OurMelds is the authoritative self-side meld list. Avoid
             // counting the same melds twice when Seats[OurSeat] mirrors it.
@@ -150,7 +163,7 @@ public static class DiscardScorer
 
     private static int CountYakuhai(Hand hand, Tile removed, int roundWindTileId, StateSnapshot state)
     {
-        int seatWindTileId = 27 + state.OurSeat;
+        int seatWindTileId = 27 + state.EffectiveSeatWind;
         int total = 0;
         for (int id = 27; id < Tile.Count34; id++)
         {

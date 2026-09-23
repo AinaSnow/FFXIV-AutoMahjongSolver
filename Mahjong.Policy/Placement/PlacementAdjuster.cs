@@ -60,5 +60,7 @@ public sealed class PlacementAdjuster : IPlacementPolicy
 
     /// <summary>Approximate; we don't yet have a reliable final-hand flag.</summary>
     public static bool IsLastHand(StateSnapshot state)
-        => state.RoundWind == 1 && state.WallRemaining <= 10;
+        => state.ScheduledRounds is > 0 && state.Kyoku == 4
+            && state.RoundWind == state.ScheduledRounds.Value - 1
+            && state.Observations.HasFlag(SnapshotObservationFlags.RoundContext);
 }

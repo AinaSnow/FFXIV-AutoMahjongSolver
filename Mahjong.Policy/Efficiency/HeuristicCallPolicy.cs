@@ -133,7 +133,8 @@ public sealed class HeuristicCallPolicy : ICallPolicy
         if (HasReachableToitoi(counts, state, thisCall)) han += 2;
         if (HasReachableSanshokuDoujun(counts, state, thisCall)) han++;
         if (HasReachableIttsu(counts, state, thisCall)) han++;
-        han += RetainedDoraHan(counts, state, thisCall, doraRule);
+        // Dora increases payout only after at least one yaku is reachable.
+        if (han > 0) han += RetainedDoraHan(counts, state, thisCall, doraRule);
         return han;
     }
 
@@ -332,7 +333,7 @@ public sealed class HeuristicCallPolicy : ICallPolicy
             return true;
         if (!t.IsWind || !state.SeatInfoKnown)
             return false;
-        int seatWindId = TileIds.FirstWind + state.OurSeat;
+        int seatWindId = TileIds.FirstWind + state.EffectiveSeatWind;
         int roundWindId = TileIds.FirstWind + state.RoundWind;
         return t.Id == seatWindId || t.Id == roundWindId;
     }
@@ -341,7 +342,7 @@ public sealed class HeuristicCallPolicy : ICallPolicy
     {
         if (!state.SeatInfoKnown)
             return false;
-        int seatWindId = TileIds.FirstWind + state.OurSeat;
+        int seatWindId = TileIds.FirstWind + state.EffectiveSeatWind;
         int roundWindId = TileIds.FirstWind + state.RoundWind;
         return id == seatWindId || id == roundWindId;
     }

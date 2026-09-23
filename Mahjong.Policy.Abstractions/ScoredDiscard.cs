@@ -9,4 +9,5 @@ public readonly record struct ScoredDiscard(
     int DoraRetained,
     int YakuhaiRetained,
     double DealInCost,
-    double YakuPotential = 0.0);
+    double YakuPotential = 0.0,
+    bool? IsRed = null);
