@@ -141,9 +141,7 @@ class PolicyEngine:
             elif kind == "Discard":
                 tile = decision["tile"]
                 if tile not in legal["discards"]:
-                    tile = next((x for x in legal["discards"] if x.rstrip("r")==tile.rstrip("r")),None)
-                if tile is None:
-                    raise RuntimeError("policy selected illegal discard")
+                    raise RuntimeError(f"policy selected illegal discard or wrong red identity: {tile}")
                 result = dict(type="dahai",actor=player,pai=tile,tsumogiri=events[-1]["type"]=="tsumo" and events[-1].get("actor")==0 and tile==game.state.last_self_tsumo())
             elif kind == "Pass":
                 result = dict(type="none")

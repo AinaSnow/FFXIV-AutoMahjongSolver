@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 import tempfile
 sys.path[:0]=[str(Path(__file__).resolve().parents[1]),str(Path(__file__).resolve().parents[1]/"evaluation")]
 from calibrate import fit
@@ -39,6 +40,12 @@ class BridgeTests(unittest.TestCase):
         group=dict(candidate=[dict(rank=1,score=40000)]*4,baseline=[dict(rank=4,score=10000)]*4)
         self.assertFalse(report([group],"acceptance")["promotion_statistics_pass"])
         self.assertEqual(len(set(SPLITS.values())),3)
+
+    def test_smoke_opponent_cannot_satisfy_promotion_gate(self):
+        group=dict(candidate=[dict(rank=1,score=40000)]*4,baseline=[dict(rank=4,score=10000)]*4)
+        with patch("arena.paired_interval",return_value=[-1,-0.5]):
+            self.assertFalse(report([group]*1000,"acceptance","tsumogiri")["promotion_statistics_pass"])
+            self.assertTrue(report([group]*1000,"acceptance","mortal")["promotion_statistics_pass"])
 
 class CalibrationTests(unittest.TestCase):
     def test_validation_and_acceptance_rows_are_rejected(self):
