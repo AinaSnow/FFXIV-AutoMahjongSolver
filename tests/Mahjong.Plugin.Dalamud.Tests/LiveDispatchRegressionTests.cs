@@ -53,7 +53,7 @@ public class LiveDispatchRegressionTests
         using var temp = new TempDir();
         string game = Path.Combine(temp.Path, "game.ndjson");
         await File.WriteAllLinesAsync(game, [
-            """{"e":"action","action_id":1,"kind":"Tsumo","result":"Ok"}""",
+            """{"t":"2026-09-23T08:39:14.938Z","e":"action","action_id":1,"kind":"Tsumo","result":"Ok"}""",
             """{"e":"action-outcome","action_id":1,"status":"timeout"}""",
             """{"e":"action","action_id":2,"kind":"Tsumo","result":"Ok"}""",
             """{"e":"action-outcome","action_id":2,"status":"external-input"}""",
@@ -65,6 +65,7 @@ public class LiveDispatchRegressionTests
         string path = Assert.IsType<string>(await writer.FinalizeSessionAsync([game], stats));
         using var summary = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(path,"summary.json")));
         var root = summary.RootElement;
+        Assert.Equal(DateTimeOffset.Parse("2026-09-23T08:39:14.938Z"), DateTimeOffset.Parse(root.GetProperty("started_at_utc").GetString()!));
         Assert.Equal(2, root.GetProperty("action_count").GetInt32());
         Assert.Equal(1, root.GetProperty("failed_actions").GetInt32());
         var health = root.GetProperty("execution_health");

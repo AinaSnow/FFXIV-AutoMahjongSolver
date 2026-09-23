@@ -18,6 +18,7 @@ public sealed class StateAggregator : IDisposable
     public PolicyEvaluation? ShadowEvaluation { get; private set; }
     private long revision;
     private long uiHandId = 1;
+    private readonly UiHandBoundaryTracker uiBoundary = new();
     public PolicyEvaluation? LastLocalEvaluation { get; private set; }
     private PolicyEvaluation? searchBaseline;
     public event Action<PolicyEvaluation, PolicyEvaluation>? ShadowCompared;
@@ -102,6 +103,11 @@ public sealed class StateAggregator : IDisposable
         var next = reader.TryBuildSnapshot();
         if (next is null)
         {
+            if (!reader.LastObservation.Present && uiBoundary.HandsObserved > 0)
+            {
+                uiBoundary.Reset();
+                uiHandId++;
+            }
             // Addon gone (player left the table) — drop cached state so the UI reverts to the "waiting" empty state.
             if (Latest is not null)
             {
@@ -109,7 +115,6 @@ public sealed class StateAggregator : IDisposable
                 LastLocalEvaluation = null;
                 LastEvaluation = null;
                 ShadowEvaluation = null;
-                uiHandId++;
                 Latest = null;
                 LastScored = null;
                 LastChoice = null;
@@ -121,7 +126,7 @@ public sealed class StateAggregator : IDisposable
         if (next.SchemaVersion != StateSnapshot.CurrentSchemaVersion)
             return;
 
-        if (next.HandId == 0 && Latest is { } previous && next.WallRemaining > previous.WallRemaining + 5 && next.Hand.Count >= 13)
+        if (uiBoundary.Observe(next) && uiBoundary.HandsObserved > 1 && next.HandId == 0)
             uiHandId++;
         next = Enrich(next);
         int hash = ComputeContentHash(next);

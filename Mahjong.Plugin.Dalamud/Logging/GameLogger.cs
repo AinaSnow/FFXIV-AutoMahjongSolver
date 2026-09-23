@@ -35,7 +35,9 @@ public sealed class GameLogger : IDisposable
     private string? currentPath;
     private int handSeq;
     public long LastActionId { get; private set; }
-    private int lastWall = -1;
+    private readonly UiHandBoundaryTracker handBoundary = new();
+    private int[]? lastKnownScores;
+    private bool finalScoresObserved, handSettled;
     private int? lastStateHash;
     private int[]? lastHandStartScores;
     private bool disposed;
@@ -127,7 +129,10 @@ public sealed class GameLogger : IDisposable
             sessionPaths.Clear();
             handSeq = 0;
             LastActionId = 0;
-            lastWall = -1;
+            handBoundary.Reset();
+            lastKnownScores = null;
+            finalScoresObserved = false;
+            handSettled = false;
             lastStateHash = null;
             lastDecisionKey = null;
             lastHandStartScores = null;
@@ -154,6 +159,12 @@ public sealed class GameLogger : IDisposable
         try
         {
             MaybeRollHand(snap);
+            if (currentPath is null) return;
+            if (UiHandBoundaryTracker.ScoresKnown(snap.Scores)) lastKnownScores = snap.Scores.ToArray();
+            // State 27 with an empty hand is the observed final score screen. A result animation
+            // alone (29/32) does not prove score memory has been updated.
+            finalScoresObserved |= snap.Hand.Count == 0 && snap.AddonStateCode == 27
+                && UiHandBoundaryTracker.ScoresKnown(snap.Scores);
             WriteLine(JsonSerializer.Serialize(BuildStateEvent(snap), JsonOpts));
             if (aggregator?.LastScorerError is {} error) WriteLine(JsonSerializer.Serialize(new { e="policy-error", reason=error, hand_id=snap.HandId, revision=snap.Revision }, JsonOpts));
         }
@@ -258,30 +269,15 @@ public sealed class GameLogger : IDisposable
     internal static bool ShouldRecordPolicyDecision(Configuration config) =>
         !config.MortalEnabled || !config.AutomationArmed || config.SuggestionOnly;
 
-    /// <summary>Roll only on wall-jump-up AND hand at deal-shape count (0/13/14); mid-hand jumps are read glitches.</summary>
+    /// <summary>Only complete hands with known scores may open a new log; settle the preceding file first.</summary>
     private void MaybeRollHand(StateSnapshot snap)
     {
-        bool firstRoll = currentPath is null;
-        bool wallJumpUp = !firstRoll && snap.WallRemaining > lastWall + 5;
-        if (!firstRoll && !wallJumpUp)
-        {
-            lastWall = snap.WallRemaining;
-            return;
-        }
-        // Wall jumped but hand isn't deal-shape — retain lastWall so the next tick re-attempts the roll.
-        if (wallJumpUp && snap.Hand.Count != 0 && snap.Hand.Count != 13 && snap.Hand.Count != 14)
-            return;
-        lastWall = snap.WallRemaining;
-
-        // Write hand-end into the new file so each next-hand boundary carries the prior settlement.
-        var previousStartScores = lastHandStartScores;
-        bool emitHandEnd = !firstRoll && previousStartScores is not null;
-
+        if (!handBoundary.Observe(snap)) return;
+        if (currentPath is not null && !handSettled && lastHandStartScores is not null)
+            EmitHandEnd(lastHandStartScores, snap.Scores);
         RollWriter();
-
-        if (emitHandEnd)
-            EmitHandEnd(previousStartScores!, snap.Scores);
-
+        handSettled = false;
+        finalScoresObserved = false;
         var startScores = snap.Scores.ToArray();
         lastHandStartScores = startScores;
         var start = new HandStartEvent(
@@ -297,6 +293,16 @@ public sealed class GameLogger : IDisposable
             Observations: (int)snap.Observations,
             Scores: startScores);
         WriteLine(JsonSerializer.Serialize(start, JsonOpts));
+    }
+
+    internal void CompleteSession()
+    {
+        if (currentPath is null || handSettled || lastHandStartScores is null) return;
+        if (finalScoresObserved && lastKnownScores is not null)
+            EmitHandEnd(lastHandStartScores, lastKnownScores);
+        else
+            WriteLine(JsonSerializer.Serialize(new { t = Now(), e = "hand-incomplete", reason = "no-observed-settlement" }, JsonOpts));
+        handSettled = true;
     }
 
     private void EmitHandEnd(IReadOnlyList<int> scoresBefore, IReadOnlyList<int> scoresAfter)
@@ -372,6 +378,8 @@ public sealed class GameLogger : IDisposable
     private static int ComputeContentHash(StateSnapshot snap)
     {
         var h = new HashCode();
+        h.Add(snap.AddonStateCode);
+        h.Add(snap.HandId);
         h.Add(snap.WallRemaining);
         h.Add(snap.TurnIndex);
         h.Add((int)snap.Legal.Flags);
@@ -501,7 +509,8 @@ public sealed class GameLogger : IDisposable
         [property: JsonPropertyName("winner")] int? Winner,
         [property: JsonPropertyName("loser")] int? Loser,
         [property: JsonPropertyName("deltas")] int[] Deltas,
-        [property: JsonPropertyName("scores_after")] int[] ScoresAfter);
+        [property: JsonPropertyName("scores_after")] int[] ScoresAfter,
+        [property: JsonPropertyName("result_inferred")] bool ResultInferred = true);
 
     private sealed record StateEvent(
         [property: JsonPropertyName("t")] string T,

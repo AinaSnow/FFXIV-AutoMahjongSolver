@@ -41,11 +41,16 @@ internal sealed unsafe class RawPacketCapture(IGameInteropProvider interop) : ID
         try
         {
             if (PacketDispatcher.StaticVirtualTablePointer is null) throw new InvalidOperationException("Receive vtable unavailable");
+            nint entry = (nint)PacketDispatcher.StaticVirtualTablePointer->OnReceivePacket;
+            using var process = Process.GetCurrentProcess();
+            var module = process.MainModule ?? throw new InvalidOperationException("Game module unavailable");
+            if (!IsGameCodeAddress(entry, module.BaseAddress, module.ModuleMemorySize))
+                throw new InvalidOperationException("Receive entry is outside the game module (possibly a previous vtable hook). Fully restart the game before capturing.");
             // The 2026-09-23 live capture proved the vtable-slot tap observed no calls.
             // Intercept the function entry so direct calls are covered as well.
             if (!HookSetup.TryEnable(ref hook,
                 () => interop.HookFromAddress<ReceiveDelegate>(
-                    (nint)PacketDispatcher.StaticVirtualTablePointer->OnReceivePacket, Receive),
+                    entry, Receive),
                 current => { original = current.Original; current.Enable(); }, out var failure))
             {
                 failed = true;
@@ -78,6 +83,9 @@ internal sealed unsafe class RawPacketCapture(IGameInteropProvider interop) : ID
         }
         finally { callOriginal(dispatcher, target, ipc); }
     }
+
+    internal static bool IsGameCodeAddress(nint entry, nint moduleBase, int moduleSize) =>
+        moduleBase > 0 && moduleSize > 0 && entry >= moduleBase && (nuint)(entry - moduleBase) < (nuint)moduleSize;
 
     internal static bool TryReadHeader(ReadOnlySpan<byte> header, uint target, out int size, out ushort opcode)
     {

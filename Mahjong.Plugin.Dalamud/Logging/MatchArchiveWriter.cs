@@ -155,6 +155,7 @@ public sealed class MatchArchiveWriter : IDisposable
                 }
 
                 var metrics = Analyze(existingGames);
+                if (metrics.FirstObservedAt is { } first && first < startedAtUtc) startedAtUtc = first;
                 int handCount = packetHandCount > 0
                     ? packetHandCount
                     : Math.Max(metrics.HandStarts, metrics.SettledHands);
@@ -319,6 +320,7 @@ public sealed class MatchArchiveWriter : IDisposable
 
     private static ArchiveMetrics Analyze(IReadOnlyList<string> paths)
     {
+        DateTimeOffset? firstObservedAt = null;
         int handStarts = 0;
         int settledHands = 0;
         int[]? finalScores = null;
@@ -342,6 +344,9 @@ public sealed class MatchArchiveWriter : IDisposable
                 {
                     using var doc = JsonDocument.Parse(line);
                     var root = doc.RootElement;
+                    if (root.TryGetProperty("t", out var time) && time.ValueKind == JsonValueKind.String
+                        && DateTimeOffset.TryParse(time.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var observed)
+                        && (firstObservedAt is null || observed < firstObservedAt)) firstObservedAt = observed;
                     if (!root.TryGetProperty("e", out var eventType))
                         continue;
                     switch (eventType.GetString())
@@ -415,7 +420,7 @@ public sealed class MatchArchiveWriter : IDisposable
             actions,
             failedActions,
             timeoutFallbacks, sources, times.Count == 0 ? null : times.Average(),
-            times.Count == 0 ? null : times[(int)Math.Ceiling(times.Count * .95) - 1], malformedLines, outcomes);
+            times.Count == 0 ? null : times[(int)Math.Ceiling(times.Count * .95) - 1], malformedLines, outcomes, firstObservedAt);
     }
 
     private static int[]? TryReadScores(JsonElement element)
@@ -463,7 +468,7 @@ public sealed class MatchArchiveWriter : IDisposable
         int DecisionCount,
         int ActionCount,
         int FailedActions,
-        int TimeoutFallbacks, Dictionary<string,int> Sources, double? MeanMs, double? P95Ms, int MalformedLines, Dictionary<string, int> Outcomes);
+        int TimeoutFallbacks, Dictionary<string,int> Sources, double? MeanMs, double? P95Ms, int MalformedLines, Dictionary<string, int> Outcomes, DateTimeOffset? FirstObservedAt);
 }
 
 public sealed record MatchArchiveMortalStats(

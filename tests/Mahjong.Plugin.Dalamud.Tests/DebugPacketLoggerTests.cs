@@ -252,6 +252,16 @@ public class DebugPacketLoggerTests
     public void Capture_health_requires_observed_packets(long packets, long rejects, int seconds, string expected) =>
         Assert.Equal(expected, DebugPacketSession.DescribeProgress(packets, rejects, TimeSpan.FromSeconds(seconds)));
 
+    [Theory]
+    [InlineData(0x1000, 0x1000, 0x100, true)]
+    [InlineData(0x10ff, 0x1000, 0x100, true)]
+    [InlineData(0x1100, 0x1000, 0x100, false)]
+    [InlineData(0x0fff, 0x1000, 0x100, false)]
+    [InlineData(0x80000, 0x1000, 0x100, false)]
+    [InlineData(0x1000, 0x1000, 0, false)]
+    public void Old_forwarding_thunks_outside_the_game_are_not_used_as_receive_entries(int entry, int moduleBase, int size, bool expected) =>
+        Assert.Equal(expected, RawPacketCapture.IsGameCodeAddress(entry, moduleBase, size));
+
     [Fact]
     public void Debug_capture_is_opt_in_for_existing_configuration()
     {

@@ -14,7 +14,7 @@ public class GameLoggerDedupTests
 
     private static StateSnapshot SampleSnap(
         int wallRemaining,
-        int handCount = 0,
+        int handCount = 14,
         int[]? scores = null,
         bool firstTileRed = false)
     {
@@ -91,15 +91,15 @@ public class GameLoggerDedupTests
         var config = new DalamudConfigService(_ => { }, new Configuration());
         using var logger = new GameLogger(config, new StubPluginLog(), tmp.Path);
 
-        logger.OnStateChanged(SampleSnap(70, handCount: 1));
-        logger.OnStateChanged(SampleSnap(70, handCount: 1, firstTileRed: true));
+        logger.OnStateChanged(SampleSnap(70, handCount: 14));
+        logger.OnStateChanged(SampleSnap(70, handCount: 14, firstTileRed: true));
 
         await logger.FlushAsync();
         var file = Assert.Single(Directory.GetFiles(logger.GamesDir, "game-*.ndjson"));
         var lines = File.ReadAllLines(file);
         Assert.Equal(3, lines.Length);
         Assert.Contains("\"obs\":2", lines[^1]);
-        Assert.Contains("\"hand_red\":[true]", lines[^1]);
+        Assert.Contains("\"hand_red\":[true,false", lines[^1]);
     }
 
     // Regression: MaybeRollHand must reject upward wall jumps at mid-hand counts so transient reads don't produce truncated files.
@@ -121,9 +121,9 @@ public class GameLoggerDedupTests
         Assert.Equal(2, files.Length);
     }
 
-    // Regression: hand-end for the prior hand is written into the new hand's file at the next boundary.
+    // Settlement belongs to the prior hand; empty transition frames cannot open a new file.
     [Fact]
-    public async Task Hand_roll_emits_hand_end_with_score_delta_into_new_file()
+    public async Task Hand_roll_settles_prior_file_before_starting_next_hand()
     {
         using var tmp = new TempDir();
         var config = new DalamudConfigService(_ => { }, new Configuration());
@@ -139,15 +139,16 @@ public class GameLoggerDedupTests
 
         var hand1 = File.ReadAllLines(files[0]);
         Assert.Contains("\"e\":\"hand-start\"", hand1[0]);
-        Assert.DoesNotContain(hand1, l => l.Contains("\"e\":\"hand-end\""));
+        var end = hand1[^1];
+        Assert.Contains("\"e\":\"hand-end\"", end);
 
         var hand2 = File.ReadAllLines(files[1]);
-        Assert.Contains("\"e\":\"hand-end\"", hand2[0]);
-        Assert.Contains("\"kind\":\"tsumo\"", hand2[0]);
-        Assert.Contains("\"winner\":0", hand2[0]);
-        Assert.Contains("\"deltas\":[8000,-2000,-4000,-2000]", hand2[0]);
-        Assert.Contains("\"scores_after\":[33000,23000,21000,23000]", hand2[0]);
-        Assert.Contains("\"e\":\"hand-start\"", hand2[1]);
+        Assert.Contains("\"e\":\"hand-end\"", end);
+        Assert.Contains("\"kind\":\"tsumo\"", end);
+        Assert.Contains("\"winner\":0", end);
+        Assert.Contains("\"deltas\":[8000,-2000,-4000,-2000]", end);
+        Assert.Contains("\"scores_after\":[33000,23000,21000,23000]", end);
+        Assert.Contains("\"e\":\"hand-start\"", hand2[0]);
     }
 
     [Fact]

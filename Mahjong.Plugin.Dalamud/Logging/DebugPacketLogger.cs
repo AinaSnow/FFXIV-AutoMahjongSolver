@@ -8,6 +8,8 @@ public sealed class DebugPacketLogger : IDisposable
     private readonly RawPacketCapture source;
     private readonly AutoPacketRecorder recorder;
     private readonly IFramework framework;
+    private readonly IPluginLog? log;
+    private string? warnedPath, warnedHookError;
     private readonly Func<bool> enabled, present;
     private readonly Func<MatchArchiveEnvironment> environment;
     public string DirectoryPath => recorder.DirectoryPath;
@@ -21,8 +23,9 @@ public sealed class DebugPacketLogger : IDisposable
     private bool disposed, recordingEnabled, tablePresent;
 
     public DebugPacketLogger(IGameInteropProvider interop, IFramework framework, string configDirectory,
-        Func<bool> enabled, Func<bool> present, Func<MatchArchiveEnvironment> environment)
+        Func<bool> enabled, Func<bool> present, Func<MatchArchiveEnvironment> environment, IPluginLog? log = null)
     {
+        this.log = log;
         this.framework=framework; this.enabled=enabled; this.present=present; this.environment=environment;
         recorder = new AutoPacketRecorder(configDirectory);
         source = new RawPacketCapture(interop);
@@ -38,10 +41,25 @@ public sealed class DebugPacketLogger : IDisposable
         source.SetEnabled(active);
         bool captureEnabled = active && source.IsEnabled;
         bool visible = present();
-        if (captureEnabled == recordingEnabled && visible == tablePresent) return;
-        recorder.Update(captureEnabled, visible, environment());
-        recordingEnabled = captureEnabled;
-        tablePresent = visible;
+        if (captureEnabled != recordingEnabled || visible != tablePresent)
+        {
+            recorder.Update(captureEnabled, visible, environment());
+            recordingEnabled = captureEnabled;
+            tablePresent = visible;
+        }
+        if (!active) { warnedHookError = null; return; }
+        if (source.Error is { } error && error != warnedHookError)
+        {
+            warnedHookError = error;
+            log?.Warning($"[PacketDebug] {error}");
+        }
+        if (recorder.IsRecording && recorder.Latest is { } session
+            && session.Written == 0 && session.Progress.StartsWith("Capture", StringComparison.Ordinal)
+            && warnedPath != session.Path)
+        {
+            warnedPath = session.Path;
+            log?.Warning($"[PacketDebug] {session.Progress}. Saved=0; this capture cannot validate the protocol. File: {session.Path}");
+        }
     }
 
     public void Dispose()

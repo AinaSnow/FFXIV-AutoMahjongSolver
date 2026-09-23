@@ -160,7 +160,7 @@ public sealed class Plugin : IDalamudPlugin
         DebugPackets = new DebugPacketLogger(GameInterop, Framework, configDir,
             () => Configuration.DebugAutoPacketLogging, () => AddonReader.LastObservation.Present,
             () => new MatchArchiveEnvironment(NetworkCapture.GameVersion, AddonReader.ActiveLayout?.Name,
-                NetworkCapture.ProtocolVerified, NetworkCapture.ProtocolStatus, typeof(Plugin).Module.ModuleVersionId.ToString()));
+                NetworkCapture.ProtocolVerified, NetworkCapture.ProtocolStatus, typeof(Plugin).Module.ModuleVersionId.ToString()), Log);
         PublicState = new PublicStateTracker(NetworkCapture, Framework, AddonReader, Log, MatchArchive.RecordPacket);
         Aggregator = new StateAggregator(AddonReader, Framework, Policy, PublicState.Merge, () => Configuration);
         EventLogger = new InputEventLogger(
@@ -253,6 +253,7 @@ public sealed class Plugin : IDalamudPlugin
     private void ArchiveCurrentMatch()
     {
         AutoPlay?.CancelForTableExit();
+        GameLogger.CompleteSession();
         _ = MatchArchive.FinalizeSessionAsync(
             GameLogger.SnapshotSessionPaths(),
             new MatchArchiveMortalStats(

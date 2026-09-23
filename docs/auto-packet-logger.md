@@ -38,3 +38,5 @@ node tools/audit-debug-packets.mjs "C:\path\to\capture.ndjson" 2026.09.15.0000.0
 入桌后先显示 Waiting for first packet，5 秒仍无数据即显示 Capture stalled；有读取拒绝则显示包头失败。零包文件的 stream_complete 为 false，并带 no_packets=true。下一次只需先短时验证 Saved 是否增长，当前客户端实际包头仍需验证。
 
 `[DiscardCapture] using addon-poll strategy` 是正常的信息日志。旧版本的 `sigscan recorded for telemetry` 文案已改为本地诊断，不存在远程上传。
+
+从虚表 Hook 版本升级到接收入口版本时，请完整退出并重启游戏。Dalamud 的函数指针 Hook 卸载后可能保留转发槽位，而其 FollowJmp 只追踪跳转指令，不会追踪以 movabs 开头的该转发桩。新版拒绝把游戏模块之外的指针当作接收入口，并给出完整重启提示；不自动修改其他插件的 Hook。入桌后五秒无包会在设置和本地日志中报告一次。
