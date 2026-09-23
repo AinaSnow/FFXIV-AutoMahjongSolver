@@ -232,6 +232,27 @@ public class DebugPacketLoggerTests
     }
 
     [Fact]
+    public async Task Zero_packet_capture_cannot_claim_completeness()
+    {
+        using var temp = new TempDir();
+        var session = new DebugPacketSession(Path.Combine(temp.Path, "empty.ndjson"), EnvironmentInfo);
+        session.Close("left-table");
+        await Finish(session);
+        var footer = Read(session.Path)[^1];
+        Assert.True(footer.GetProperty("no_packets").GetBoolean());
+        Assert.False(footer.GetProperty("stream_complete").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData(0, 0, 0, "Waiting for first packet")]
+    [InlineData(0, 0, 5, "Capture stalled: no packets observed")]
+    [InlineData(0, 4, 5, "Capture failed: packet headers rejected")]
+    [InlineData(1, 0, 6, "Recording")]
+    [InlineData(1, 2, 6, "Recording with rejected packets")]
+    public void Capture_health_requires_observed_packets(long packets, long rejects, int seconds, string expected) =>
+        Assert.Equal(expected, DebugPacketSession.DescribeProgress(packets, rejects, TimeSpan.FromSeconds(seconds)));
+
+    [Fact]
     public void Debug_capture_is_opt_in_for_existing_configuration()
     {
         var configuration = JsonSerializer.Deserialize<Configuration>("{\"Version\":3}");

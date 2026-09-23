@@ -17,7 +17,7 @@ public sealed class DebugPacketLogger : IDisposable
     public long Rejected => source.RejectedPackets;
     public string Status => !enabled() ? "Off" : source.Error ?? recorder.Latest?.Error ??
         (!source.IsEnabled ? "Waiting for capture hook" :
-        recorder.IsRecording ? "Recording" : present() && recorder.Latest is {} last ? last.Status : "Armed; waiting for mahjong table");
+        recorder.IsRecording ? recorder.Latest!.Progress : present() && recorder.Latest is {} last ? last.Status : "Armed; waiting for mahjong table");
     private bool disposed, recordingEnabled, tablePresent;
 
     public DebugPacketLogger(IGameInteropProvider interop, IFramework framework, string configDirectory,

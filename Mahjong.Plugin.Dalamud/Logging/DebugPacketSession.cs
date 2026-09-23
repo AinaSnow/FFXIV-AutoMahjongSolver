@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
@@ -10,6 +11,13 @@ public sealed class DebugPacketSession
     private readonly Channel<RawReceivedPacket> queue;
     private readonly object gate = new();
     private readonly long maxBytes;
+    private readonly long startedAt = Stopwatch.GetTimestamp();
+    public string Progress => DescribeProgress(Written, Rejected, Stopwatch.GetElapsedTime(startedAt));
+
+    internal static string DescribeProgress(long written, long rejected, TimeSpan elapsed) =>
+        written > 0 ? (rejected > 0 ? "Recording with rejected packets" : "Recording") :
+        rejected > 0 ? "Capture failed: packet headers rejected" :
+        elapsed >= TimeSpan.FromSeconds(5) ? "Capture stalled: no packets observed" : "Waiting for first packet";
     private bool accepting = true;
     private string reason = "recording";
     private long written, dropped, rejected, bytes;
@@ -73,7 +81,7 @@ public sealed class DebugPacketSession
         {
             using var writer = factory(Path);
             await WriteLine(writer, JsonSerializer.Serialize(new { e="capture-start", schema_version=1,
-                t=DateTimeOffset.UtcNow, environment, capture="raw-zone-receive", protocol_inference=false,
+                t=DateTimeOffset.UtcNow, environment, capture="raw-zone-receive", hook_mode="function-entry", protocol_inference=false,
                 pre_roll_seconds=2, pre_roll_max_packets=256, max_file_bytes=maxBytes,
                 opening_boundary_verified=false }));
             bool limited = false;
@@ -99,7 +107,7 @@ public sealed class DebugPacketSession
             }
             await WriteLine(writer,JsonSerializer.Serialize(new { e="capture-end", t=DateTimeOffset.UtcNow,
                 reason, packets=Written, dropped=Dropped, rejected=Rejected, last_rejection=lastRejection,
-                stream_complete=Dropped==0 && Rejected==0 && !limited }));
+                no_packets=Written==0, stream_complete=Written>0 && Dropped==0 && Rejected==0 && !limited }));
             await writer.FlushAsync();
         }
         catch (Exception ex)

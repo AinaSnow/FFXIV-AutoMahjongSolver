@@ -41,11 +41,11 @@ internal sealed unsafe class RawPacketCapture(IGameInteropProvider interop) : ID
         try
         {
             if (PacketDispatcher.StaticVirtualTablePointer is null) throw new InvalidOperationException("Receive vtable unavailable");
-            // Hook the vtable slot, not the code target. Dalamud's pointer-variable hook uses
-            // an absolute thunk and does not require Reloaded's +/-2 GiB allocation window.
+            // The 2026-09-23 live capture proved the vtable-slot tap observed no calls.
+            // Intercept the function entry so direct calls are covered as well.
             if (!HookSetup.TryEnable(ref hook,
-                () => interop.HookFromFunctionPointerVariable<ReceiveDelegate>(
-                    (nint)(&PacketDispatcher.StaticVirtualTablePointer->OnReceivePacket), Receive),
+                () => interop.HookFromAddress<ReceiveDelegate>(
+                    (nint)PacketDispatcher.StaticVirtualTablePointer->OnReceivePacket, Receive),
                 current => { original = current.Original; current.Enable(); }, out var failure))
             {
                 failed = true;

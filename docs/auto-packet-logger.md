@@ -33,6 +33,8 @@ node tools/audit-debug-packets.mjs "C:\path\to\capture.ndjson" 2026.09.15.0000.0
 
 插件现在在诊断页显示 FireCallback 的可用状态，失败时明确停用手动 Arm-and-click 捕获，并清理初始化未完成的 Hook。UI 生命周期日志、读牌与录包保持各自状态；缺失的点击回调、input-pre/input-post 快照不会伪装成已经采集。完整退出并重启游戏可能恢复地址空间条件，单纯重载插件未必有效；本次改动不保证修复 Dalamud 的底层分配失败。
 
-自动 packet logger 改为通过 Dalamud 的 `HookFromFunctionPointerVariable` 接管 OnReceivePacket 虚表槽位。该实现使用绝对跳转，不依赖 Reloaded 的近地址跳转分配路径；不切换已被当前 Dalamud 移除的 MinHook 后端。依据是 [Dalamud 的指针 Hook 实现](https://github.com/goatcorp/Dalamud/blob/master/Dalamud/Hooking/Internal/FunctionPointerVariableHook.cs)。实际虚调用覆盖范围和当前客户端包头仍需实机确认：重载新构建，打开录包，入桌后确认 Saved 增长、Read rejects 不持续增加。
+2026-09-23 实机证据表明虚表槽位 Hook 全场零回调，该方案已撤回。自动 packet logger 恢复拦截 OnReceivePacket 函数入口，覆盖绕过虚表槽位的调用；若 Dalamud 无法分配入口 Hook，会明确显示初始化失败，不再回退到已证实无效的槽位方案。仍不切换已移除的 MinHook 后端。
+
+入桌后先显示 Waiting for first packet，5 秒仍无数据即显示 Capture stalled；有读取拒绝则显示包头失败。零包文件的 stream_complete 为 false，并带 no_packets=true。下一次只需先短时验证 Saved 是否增长，当前客户端实际包头仍需验证。
 
 `[DiscardCapture] using addon-poll strategy` 是正常的信息日志。旧版本的 `sigscan recorded for telemetry` 文案已改为本地诊断，不存在远程上传。
