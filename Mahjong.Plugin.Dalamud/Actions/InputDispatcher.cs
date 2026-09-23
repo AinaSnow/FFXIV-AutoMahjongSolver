@@ -82,7 +82,19 @@ public sealed class InputDispatcher
     /// click. AutoPlayLoop reads this to annotate <c>dispatch_attempted</c>
     /// findings so the next stall is unambiguous in the corpus.
     /// </summary>
-    public string LastDiscardPath { get; private set; } = "(none)";
+    private string lastDiscardPath = "(none)";
+    public string LastDispatchPath { get; private set; } = "(none)";
+    public string LastDiscardPath
+    {
+        get => lastDiscardPath;
+        private set { lastDiscardPath = value; LastDispatchPath = value; }
+    }
+
+    // Live evidence: 2026-09-23 state=6 self-draw [11,0] changed state to 19;
+    // SelectItem did not. Keep the existing riichi/list flow separate.
+    internal static bool UseClassicCallPath(int state, int callPrompt, int selfDeclare,
+        ActionKind? action, bool hasLabels) => state == callPrompt || hasLabels
+        || state == selfDeclare && action == ActionKind.Tsumo;
 
     /// <summary>
     /// Discard the tile at the given closed-hand slot (0..13). Slot 13 = last-drawn tile.
@@ -280,8 +292,9 @@ public sealed class InputDispatcher
     /// expected to have verified the modal-visibility gate before dispatching —
     /// that's the real "should we click" predicate.</para>
     /// </summary>
-    public unsafe DispatchResult DispatchCallOption(int option)
+    public unsafe DispatchResult DispatchCallOption(int option, ActionKind? action = null)
     {
+        LastDispatchPath = "call-unavailable";
         if (!addon.TryGet(out var unit, out _))
             return DispatchResult.AddonNotFound;
         if (!unit->IsVisible)
@@ -310,20 +323,23 @@ public sealed class InputDispatcher
         // (pon/chi/ron) because SelectItem doesn't fire the addon-level opcode-11
         // callback the button-row handler expects. Distinguishing the two cases
         // restores state-15 behavior while keeping the state-6/28 fix.
-        if (ReadStateCode(unit) == CallPromptCode || HasClassicButtonLabels(unit))
+        if (UseClassicCallPath(ReadStateCode(unit), CallPromptCode, SelfDeclareListCode, action, HasClassicButtonLabels(unit)))
         {
             var values = stackalloc AtkValue[2];
+            LastDispatchPath = $"call:opcode-11(option={option})";
             values[0].SetInt(11);
             values[1].SetInt(option);
             unit->FireCallback(2, values, true);
             return DispatchResult.Ok;
         }
 
+        LastDispatchPath = $"call:list-select(option={option})";
         if (TryDispatchListItemClick(unit, option))
             return DispatchResult.Ok;
 
         // Fallback if the shell isn't a list widget either — keep the legacy
         // FireCallback path so we don't silently drop the dispatch.
+        LastDispatchPath = $"call:opcode-11-fallback(option={option})";
         var fallback = stackalloc AtkValue[2];
         fallback[0].SetInt(11);
         fallback[1].SetInt(option);
@@ -470,6 +486,7 @@ public sealed class InputDispatcher
     /// </summary>
     public unsafe DispatchResult DispatchChiVariant(int variantIndex)
     {
+        LastDispatchPath = $"chi:opcode-12(option={variantIndex})";
         if (!addon.TryGet(out var unit, out _))
             return DispatchResult.AddonNotFound;
         if (!unit->IsVisible)
@@ -485,6 +502,7 @@ public sealed class InputDispatcher
     /// <summary>Dismisses the post-hand agari/draw result modal. Routes through ReceiveEvent(ButtonClick) rather than FireCallback — the captured `[14]` was the addon's notification *after* the click, not the trigger; firing it directly landed the addon in stuck state-32 (2026-05-26).</summary>
     public unsafe DispatchResult DispatchHandResultNext()
     {
+        LastDispatchPath = "hand-result:button-click";
         if (!addon.TryGet(out var unit, out _))
             return DispatchResult.AddonNotFound;
         if (!unit->IsVisible)

@@ -74,7 +74,7 @@ public class MatchArchiveWriterTests
 
         using var summary = JsonDocument.Parse(File.ReadAllText(Path.Combine(archive, "summary.json")));
         var root = summary.RootElement;
-        Assert.Equal(3, root.GetProperty("schema_version").GetInt32());
+        Assert.Equal(4, root.GetProperty("schema_version").GetInt32());
         Assert.Equal(1, root.GetProperty("packet_count").GetInt32());
         Assert.Equal(1, root.GetProperty("hand_count").GetInt32());
         Assert.Equal(1, root.GetProperty("settled_hands").GetInt32());

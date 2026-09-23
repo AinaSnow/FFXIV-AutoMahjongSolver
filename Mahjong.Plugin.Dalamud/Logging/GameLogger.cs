@@ -15,7 +15,7 @@ namespace Mahjong.Plugin.Dalamud.Logging;
 
 public sealed class GameLogger : IDisposable
 {
-    public const int SchemaVersion = 4;
+    public const int SchemaVersion = 5;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -34,6 +34,7 @@ public sealed class GameLogger : IDisposable
 
     private string? currentPath;
     private int handSeq;
+    public long LastActionId { get; private set; }
     private int lastWall = -1;
     private int? lastStateHash;
     private int[]? lastHandStartScores;
@@ -125,6 +126,7 @@ public sealed class GameLogger : IDisposable
             currentPath = null;
             sessionPaths.Clear();
             handSeq = 0;
+            LastActionId = 0;
             lastWall = -1;
             lastStateHash = null;
             lastDecisionKey = null;
@@ -211,6 +213,7 @@ public sealed class GameLogger : IDisposable
             var evt = new ActionEvent(
                 T: Now(),
                 E: "action",
+                ActionId: ++LastActionId,
                 HandId: aggregator?.Latest?.HandId,
                 Revision: aggregator?.Latest?.Revision,
                 Kind: kind.ToString(),
@@ -224,6 +227,13 @@ public sealed class GameLogger : IDisposable
         {
             log.Error($"GameLogger action-write error: {ex.Message}");
         }
+    }
+
+    public void RecordActionOutcome(long actionId, string label, string status, string path)
+    {
+        if (!configService.Current.EnableGameLogging || disposed) return;
+        WriteLine(JsonSerializer.Serialize(new { t = Now(), e = "action-outcome", action_id = actionId,
+            label, status, path }, JsonOpts));
     }
 
     public void RecordDecision(ActionChoice choice, string source)
@@ -511,6 +521,7 @@ public sealed class GameLogger : IDisposable
         [property: JsonPropertyName("seats")] SeatDto[] Seats);
 
     private sealed record ActionEvent(
+        [property: JsonPropertyName("action_id")] long ActionId,
         [property: JsonPropertyName("t")] string T,
         [property: JsonPropertyName("e")] string E,
         [property: JsonPropertyName("hand_id")] long? HandId,

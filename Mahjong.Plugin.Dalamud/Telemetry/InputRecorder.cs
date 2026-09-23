@@ -60,7 +60,8 @@ public sealed class InputRecorder : IDisposable
                 ValueCount: evt.ValueCount,
                 Close: evt.Close,
                 Result: evt.Result,
-                Values: evt.IntValues);
+                Values: evt.IntValues,
+                Source: evt.IsAutomated ? "automation" : "external-or-game");
             var line = JsonSerializer.Serialize(entry, JsonOpts);
             var path = Path.Combine(inputsDir, $"inputs-{DateTime.UtcNow:yyyyMMdd}.ndjson");
             io.TryEnqueue(() =>
@@ -82,5 +83,6 @@ public sealed class InputRecorder : IDisposable
         [property: JsonPropertyName("count")] uint ValueCount,
         [property: JsonPropertyName("close")] bool Close,
         [property: JsonPropertyName("result")] bool Result,
-        [property: JsonPropertyName("values")] int?[] Values);
+        [property: JsonPropertyName("values")] int?[] Values,
+        [property: JsonPropertyName("source")] string Source);
 }

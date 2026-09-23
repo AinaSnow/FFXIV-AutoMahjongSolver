@@ -19,7 +19,7 @@ namespace Mahjong.Plugin.Dalamud.Logging;
 /// </summary>
 public sealed class MatchArchiveWriter : IDisposable
 {
-    private const int SchemaVersion = 3;
+    private const int SchemaVersion = 4;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -189,6 +189,7 @@ public sealed class MatchArchiveWriter : IDisposable
                     TimeoutFallbacks: metrics.TimeoutFallbacks,
                     Mortal: mortalStats,
                     Environment: environment,
+                    ExecutionHealth: new { outcomes = metrics.Outcomes, missing_outcomes = Math.Max(0, metrics.ActionCount - metrics.Outcomes.Values.Sum() - (metrics.FailedActions - metrics.Outcomes.GetValueOrDefault("timeout"))), success_requires = "state change with synchronous automated callback; not server confirmation" },
                     DecisionHealth: new { sources = metrics.Sources, mean_ms = metrics.MeanMs, p95_ms = metrics.P95Ms, malformed_lines = metrics.MalformedLines, io_failures = io.Failures });
                 File.WriteAllText(
                     Path.Combine(completedDir, "summary.json"),
@@ -326,6 +327,8 @@ public sealed class MatchArchiveWriter : IDisposable
         int failedActions = 0;
         int timeoutFallbacks = 0;
         int malformedLines = 0;
+        var outcomes = new Dictionary<string, int>();
+        var outcomeIds = new HashSet<long>();
         var sources = new Dictionary<string,int>();
         var times = new List<double>();
 
@@ -377,6 +380,15 @@ public sealed class MatchArchiveWriter : IDisposable
                                 timeoutFallbacks++;
                             break;
 
+                        case "action-outcome":
+                            if (!root.TryGetProperty("action_id", out var actionId) || !actionId.TryGetInt64(out long id)
+                                || !root.TryGetProperty("status", out var status) || status.ValueKind != JsonValueKind.String
+                                || !outcomeIds.Add(id)) break;
+                            string outcome = status.GetString()!;
+                            outcomes[outcome] = outcomes.GetValueOrDefault(outcome) + 1;
+                            if (outcome == "timeout") failedActions++;
+                            break;
+
                         case "action":
                             actions++;
                             if (root.TryGetProperty("result", out var result)
@@ -403,7 +415,7 @@ public sealed class MatchArchiveWriter : IDisposable
             actions,
             failedActions,
             timeoutFallbacks, sources, times.Count == 0 ? null : times.Average(),
-            times.Count == 0 ? null : times[(int)Math.Ceiling(times.Count * .95) - 1], malformedLines);
+            times.Count == 0 ? null : times[(int)Math.Ceiling(times.Count * .95) - 1], malformedLines, outcomes);
     }
 
     private static int[]? TryReadScores(JsonElement element)
@@ -441,7 +453,8 @@ public sealed class MatchArchiveWriter : IDisposable
         [property: JsonPropertyName("timeout_fallbacks")] int TimeoutFallbacks,
         [property: JsonPropertyName("mortal")] MatchArchiveMortalStats Mortal,
         [property: JsonPropertyName("environment")] MatchArchiveEnvironment? Environment,
-        [property: JsonPropertyName("decision_health")] object DecisionHealth);
+        [property: JsonPropertyName("decision_health")] object DecisionHealth,
+        [property: JsonPropertyName("execution_health")] object ExecutionHealth);
 
     private sealed record ArchiveMetrics(
         int HandStarts,
@@ -450,7 +463,7 @@ public sealed class MatchArchiveWriter : IDisposable
         int DecisionCount,
         int ActionCount,
         int FailedActions,
-        int TimeoutFallbacks, Dictionary<string,int> Sources, double? MeanMs, double? P95Ms, int MalformedLines);
+        int TimeoutFallbacks, Dictionary<string,int> Sources, double? MeanMs, double? P95Ms, int MalformedLines, Dictionary<string, int> Outcomes);
 }
 
 public sealed record MatchArchiveMortalStats(

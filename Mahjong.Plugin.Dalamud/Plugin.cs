@@ -252,6 +252,7 @@ public sealed class Plugin : IDalamudPlugin
 
     private void ArchiveCurrentMatch()
     {
+        AutoPlay?.CancelForTableExit();
         _ = MatchArchive.FinalizeSessionAsync(
             GameLogger.SnapshotSessionPaths(),
             new MatchArchiveMortalStats(

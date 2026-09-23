@@ -87,6 +87,7 @@ public sealed class AutoPlayLoop : IDisposable
         plugin.Aggregator.Changed += OnSnapshotChanged;
         framework.Update += OnUpdate;
         plugin.ConfigService.Changed += OnConfigurationChanged;
+        plugin.EventLogger.CallbackObserved += OnInputCallback;
     }
 
     public void Dispose()
@@ -96,13 +97,26 @@ public sealed class AutoPlayLoop : IDisposable
         disposed = true;
         CancelPending();
         plugin.ConfigService.Changed -= OnConfigurationChanged;
+        plugin.EventLogger.CallbackObserved -= OnInputCallback;
         framework.Update -= OnUpdate;
         plugin.Aggregator.Changed -= OnSnapshotChanged;
     }
 
+    internal void CancelForTableExit() => CancelPending();
+
     private void OnConfigurationChanged(Configuration _) => CancelPending();
+    private void OnInputCallback(InputCallbackEvent input)
+    {
+        if (input.IsAutomated || input.IntValues.Length == 0) return;
+        // Includes manual clicks and callbacks from other code: neither proves our dispatch worked.
+        if (input.IntValues[0] is not (7 or 8 or 9 or 10 or 11 or 12 or 14 or 17 or -2)) return;
+        CompletePendingOutcome("external-input", plugin.Aggregator.Latest);
+        CancelPending();
+    }
+
     private void CancelPending()
     {
+        CompletePendingOutcome("cancelled", plugin.Aggregator.Latest);
         dispatchGeneration++;
         fsm.CompleteDispatch(); fsm.ClearContext(); fsm.ClearRiichiConfirm();
         pendingTerminalWin = null; terminalWinConfirmation.Reset(); hasMortalWait = false;
@@ -367,22 +381,25 @@ public sealed class AutoPlayLoop : IDisposable
             ["tile"] = tile?.ToString(),
             ["slot"] = slot,
             ["state"] = state,
-            ["path"] = plugin.Dispatcher.LastDiscardPath,
+            ["path"] = plugin.Dispatcher.LastDispatchPath,
             ["cur_state"] = snap?.AddonStateCode,
             ["cur_hand"] = snap?.Hand.Count,
             ["cur_melds"] = snap?.OurMelds.Count,
             ["cur_legal"] = snap?.Legal.Flags.ToString(),
         });
 
-        if (snap is not null)
+        CompletePendingOutcome("superseded", snap);
+        if (snap is not null && result == InputDispatcher.DispatchResult.Ok)
         {
             pendingOutcome = new PendingDispatchOutcome(
+                ActionId: plugin.GameLogger.LastActionId,
+                CallbackObserved: AutomationInputScope.CallbackObserved,
                 Label: label,
                 DispatchedAt: clock.UtcNow,
                 StateAtDispatch: snap.AddonStateCode,
                 HandAtDispatch: snap.Hand.Count,
                 MeldsAtDispatch: snap.OurMelds.Count,
-                LastDispatchPath: plugin.Dispatcher.LastDiscardPath);
+                LastDispatchPath: plugin.Dispatcher.LastDispatchPath);
         }
     }
 
@@ -392,6 +409,8 @@ public sealed class AutoPlayLoop : IDisposable
     private static readonly TimeSpan DelayedDispatchOutcomeWindow = TimeSpan.FromSeconds(5);
 
     private readonly record struct PendingDispatchOutcome(
+        long ActionId,
+        bool CallbackObserved,
         string Label,
         DateTime DispatchedAt,
         int StateAtDispatch,
@@ -449,7 +468,7 @@ public sealed class AutoPlayLoop : IDisposable
             ["melds"] = snap.OurMelds.Count,
             ["legal"] = legal.ToString(),
             ["elapsed_ms"] = (int)elapsed.TotalMilliseconds,
-            ["last_dispatch_path"] = plugin.Dispatcher.LastDiscardPath,
+            ["last_dispatch_path"] = plugin.Dispatcher.LastDispatchPath,
             ["last_action"] = LastActionDescription,
             ["hand_raw"] = rawSlots,
             ["tile_texture_base"] = activeTextureBase,
@@ -457,7 +476,7 @@ public sealed class AutoPlayLoop : IDisposable
         log.Warning(
             $"[AutoPlayLoop] STUCK at state={snap.AddonStateCode} hand={snap.Hand.Count} " +
             $"melds={snap.OurMelds.Count} legal={legal} for {(int)elapsed.TotalSeconds}s. " +
-            $"Last dispatch: {LastActionDescription} (path={plugin.Dispatcher.LastDiscardPath}). " +
+            $"Last dispatch: {LastActionDescription} (path={plugin.Dispatcher.LastDispatchPath}). " +
             $"Manual click required.");
         log.Warning($"[AutoPlayLoop] STUCK hand-array dump: {handDump}");
         stuckEmitted = true;
@@ -507,39 +526,27 @@ public sealed class AutoPlayLoop : IDisposable
             DispatchOutcomeWindowFor(pending.Label);
 
         if (stateChanged)
-        {
-            plugin.FindingsLog?.Record("dispatch_outcome", new Dictionary<string, object?>
-            {
-                ["label"] = pending.Label,
-                ["commit"] = true,
-                ["path"] = pending.LastDispatchPath,
-                ["state_at_dispatch"] = pending.StateAtDispatch,
-                ["hand_at_dispatch"] = pending.HandAtDispatch,
-                ["melds_at_dispatch"] = pending.MeldsAtDispatch,
-                ["state_after"] = snap?.AddonStateCode,
-                ["hand_after"] = snap?.Hand.Count,
-                ["melds_after"] = snap?.OurMelds.Count,
-                ["elapsed_ms"] = (int)(clock.UtcNow - pending.DispatchedAt).TotalMilliseconds,
-            });
-            pendingOutcome = null;
-        }
+            CompletePendingOutcome(pending.CallbackObserved ? "state-changed" : "unconfirmed-state-change", snap);
         else if (windowExpired)
+            CompletePendingOutcome("timeout", snap);
+    }
+
+    private void CompletePendingOutcome(string status, StateSnapshot? snap)
+    {
+        if (pendingOutcome is not { } pending) return;
+        pendingOutcome = null;
+        bool? commit = status == "state-changed" ? true : status == "unconfirmed-state-change" ? null : false;
+        plugin.FindingsLog?.Record("dispatch_outcome", new Dictionary<string, object?>
         {
-            plugin.FindingsLog?.Record("dispatch_outcome", new Dictionary<string, object?>
-            {
-                ["label"] = pending.Label,
-                ["commit"] = false,
-                ["path"] = pending.LastDispatchPath,
-                ["state_at_dispatch"] = pending.StateAtDispatch,
-                ["hand_at_dispatch"] = pending.HandAtDispatch,
-                ["melds_at_dispatch"] = pending.MeldsAtDispatch,
-                ["state_after"] = snap?.AddonStateCode,
-                ["hand_after"] = snap?.Hand.Count,
-                ["melds_after"] = snap?.OurMelds.Count,
-                ["elapsed_ms"] = (int)(clock.UtcNow - pending.DispatchedAt).TotalMilliseconds,
-            });
-            pendingOutcome = null;
-        }
+            ["action_id"] = pending.ActionId, ["label"] = pending.Label, ["commit"] = commit,
+            ["status"] = status, ["automatic_callback_observed"] = pending.CallbackObserved,
+            ["path"] = pending.LastDispatchPath, ["state_at_dispatch"] = pending.StateAtDispatch,
+            ["hand_at_dispatch"] = pending.HandAtDispatch, ["melds_at_dispatch"] = pending.MeldsAtDispatch,
+            ["state_after"] = snap?.AddonStateCode, ["hand_after"] = snap?.Hand.Count,
+            ["melds_after"] = snap?.OurMelds.Count,
+            ["elapsed_ms"] = (int)(clock.UtcNow - pending.DispatchedAt).TotalMilliseconds,
+        });
+        plugin.GameLogger.RecordActionOutcome(pending.ActionId, pending.Label, status, pending.LastDispatchPath);
     }
 
     internal static TimeSpan DispatchOutcomeWindowFor(string label) =>
@@ -632,6 +639,7 @@ public sealed class AutoPlayLoop : IDisposable
                     || (plugin.Aggregator.Latest?.HandId ?? 0) != scheduledHand
                     || (plugin.Aggregator.Latest?.Revision ?? 0) != scheduledRevision)
                     return;
+                using var inputScope = AutomationInputScope.Enter();
                 body();
             }
             catch (Exception ex)
@@ -846,7 +854,7 @@ public sealed class AutoPlayLoop : IDisposable
                 DispatchPolicyChoice(snap, choice);
             log.Info(
                 $"[AutoPlayLoop] discard body done: {LastActionDescription} " +
-                $"path={plugin.Dispatcher.LastDiscardPath}");
+                $"path={plugin.Dispatcher.LastDispatchPath}");
         });
     }
 
@@ -1281,7 +1289,8 @@ public sealed class AutoPlayLoop : IDisposable
 
     private void DispatchAccept(StateSnapshot snap, ActionChoice choice, LegalActions legal, bool acceptRiichiPopup, Tile? riichiProbeTile, string riichiReason)
     {
-        // Every accept flows through opcode 11 / SelectItem (DispatchCallOption auto-routes by popup shape). The dedicated Tsumo opcode-9 path no-opped at state-6 SelfDeclareList because that popup is a list widget — the corpus capture of opcode 9 was the addon's internal callback fired *after* SelectItem ran, not a click-equivalent payload.
+        // Route using both action and popup state: current self-draw uses the observed opcode-11
+        // path, while riichi and other list prompts retain SelectItem.
         var loggedKind = acceptRiichiPopup ? ActionKind.Riichi : choice.Kind;
         int acceptIndex = acceptRiichiPopup
             ? ComputeAcceptIndex(ActionKind.Riichi, legal, choice.Call)
@@ -1294,7 +1303,7 @@ public sealed class AutoPlayLoop : IDisposable
         if (isTerminalWin && !isTerminalConfirmation)
             terminalWinConfirmation.Begin(loggedKind, snap, now);
 
-        var result2 = plugin.Dispatcher.DispatchCallOption(acceptIndex);
+        var result2 = plugin.Dispatcher.DispatchCallOption(acceptIndex, loggedKind);
         string label = acceptRiichiPopup ? "riichi-confirm" : choice.Kind.ToString().ToLowerInvariant();
         LastActionDescription = $"auto-{label}[opt={acceptIndex}] → {result2}";
         plugin.GameLogger.RecordAction(

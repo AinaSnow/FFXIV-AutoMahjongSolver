@@ -1,3 +1,4 @@
+using Mahjong.Plugin.Dalamud.Actions;
 using Mahjong.Plugin.Dalamud.Hooks;
 using Mahjong.Plugin.Dalamud.Logging;
 using System;
@@ -177,6 +178,8 @@ public sealed class InputEventLogger : IDisposable
         }
 
         // Call original FIRST so game logic is unaffected regardless of logger state.
+        if (addon != null && this.addon.IsKnownAddon(addon->NameString))
+            AutomationInputScope.ObserveCallback();
         bool result = fireCallbackHook!.Original(addon, valueCount, values, close);
 
         if (CallbackObserved is { } observers
@@ -191,7 +194,8 @@ public sealed class InputEventLogger : IDisposable
                     ValueCount: valueCount,
                     Close: close != 0,
                     Result: result,
-                    IntValues: ints));
+                    IntValues: ints,
+                    IsAutomated: AutomationInputScope.IsActive));
             }
             catch (Exception ex)
             {
@@ -425,7 +429,8 @@ public sealed record InputCallbackEvent(
     uint ValueCount,
     bool Close,
     bool Result,
-    int?[] IntValues);
+    int?[] IntValues,
+    bool IsAutomated = false);
 
 public sealed record CallPromptEvent(
     DateTime ObservedAtUtc,
