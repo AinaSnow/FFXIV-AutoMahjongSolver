@@ -35,6 +35,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mahjong.Plugin.Game.Tests",
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mahjong.Plugin.Dalamud.Tests", "tests\Mahjong.Plugin.Dalamud.Tests\Mahjong.Plugin.Dalamud.Tests.csproj", "{6F369FE3-F1A1-454F-AE14-51AAD6FD6505}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mahjong.Policy.Mjai", "Mahjong.Policy.Mjai\Mahjong.Policy.Mjai.csproj", "{0BF4F809-9E9D-438C-B7E0-EA42C0BFCE39}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -225,6 +227,18 @@ Global
 		{6F369FE3-F1A1-454F-AE14-51AAD6FD6505}.Release|Any CPU.Build.0 = Release|Any CPU
 		{6F369FE3-F1A1-454F-AE14-51AAD6FD6505}.Release|x86.ActiveCfg = Release|Any CPU
 		{6F369FE3-F1A1-454F-AE14-51AAD6FD6505}.Release|x86.Build.0 = Release|Any CPU
+		{0BF4F809-9E9D-438C-B7E0-EA42C0BFCE39}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{0BF4F809-9E9D-438C-B7E0-EA42C0BFCE39}.Debug|x64.Build.0 = Debug|Any CPU
+		{0BF4F809-9E9D-438C-B7E0-EA42C0BFCE39}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0BF4F809-9E9D-438C-B7E0-EA42C0BFCE39}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0BF4F809-9E9D-438C-B7E0-EA42C0BFCE39}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{0BF4F809-9E9D-438C-B7E0-EA42C0BFCE39}.Debug|x86.Build.0 = Debug|Any CPU
+		{0BF4F809-9E9D-438C-B7E0-EA42C0BFCE39}.Release|x64.ActiveCfg = Release|Any CPU
+		{0BF4F809-9E9D-438C-B7E0-EA42C0BFCE39}.Release|x64.Build.0 = Release|Any CPU
+		{0BF4F809-9E9D-438C-B7E0-EA42C0BFCE39}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0BF4F809-9E9D-438C-B7E0-EA42C0BFCE39}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0BF4F809-9E9D-438C-B7E0-EA42C0BFCE39}.Release|x86.ActiveCfg = Release|Any CPU
+		{0BF4F809-9E9D-438C-B7E0-EA42C0BFCE39}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

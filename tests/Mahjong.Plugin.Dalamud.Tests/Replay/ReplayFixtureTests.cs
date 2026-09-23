@@ -18,8 +18,8 @@ public class ReplayFixtureTests
 {
     public static IEnumerable<object[]> AllFixtures()
     {
-        if (!Directory.Exists(TestPaths.FixturesDir))
-            yield break;
+        if (!Directory.Exists(TestPaths.FixturesDir) || !Directory.EnumerateFiles(TestPaths.FixturesDir, "*.json", SearchOption.AllDirectories).Any())
+            throw new InvalidDataException("UI replay fixtures must not be empty");
         foreach (var (path, _) in FixtureLoader.LoadAll(TestPaths.FixturesDir))
             yield return new object[] { Path.GetFileNameWithoutExtension(path) };
     }

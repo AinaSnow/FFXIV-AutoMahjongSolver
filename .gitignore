@@ -35,3 +35,7 @@ data/weights/
 *.env
 .secrets
 *.secrets
+
+# Local evaluation logs and dependency downloads
+artifacts/
+__pycache__/

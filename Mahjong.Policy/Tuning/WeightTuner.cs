@@ -37,7 +37,7 @@ public sealed class WeightTuner
         DiscardWeights FinalWeights,
         List<TuningStep> Steps);
 
-    /// <summary>Candidate plays seats 0/2; baseline plays 1/3. Ruleset defaults to <see cref="RiichiRuleSet"/>.</summary>
+    /// <summary>Fast logic smoke test only. Dealer rotates; formal tuning uses the paired libriichi arena.</summary>
     public static EvaluationResult Evaluate(
         DiscardWeights candidate,
         DiscardWeights baseline,

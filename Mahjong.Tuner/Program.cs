@@ -20,6 +20,12 @@ public static class Program
         System.Globalization.CultureInfo.DefaultThreadCurrentCulture =
             System.Globalization.CultureInfo.InvariantCulture;
 
+        if (!args.Contains("--logic-smoke"))
+        {
+            Console.Error.WriteLine("Formal strategy evaluation uses tools/evaluation/arena.py. This incomplete simulator requires --logic-smoke.");
+            return 2;
+        }
+        args = args.Where(a => a != "--logic-smoke").ToArray();
         bool useRiichi = args.Contains("--riichi");
         args = args.Where(a => a != "--riichi").ToArray();
 

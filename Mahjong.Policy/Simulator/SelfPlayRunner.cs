@@ -50,7 +50,7 @@ public sealed class SelfPlayRunner
         var sim = new HandSimulator(rng, rules);
         for (int i = 0; i < hands; i++)
         {
-            var result = sim.Simulate(policies, dealer: dealer);
+            var result = sim.Simulate(policies, dealer: (dealer + i) % 4);
             totalTurns += result.TurnCount;
 
             for (int s = 0; s < 4; s++)

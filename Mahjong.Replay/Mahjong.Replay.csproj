@@ -20,6 +20,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../Mahjong.Plugin.Game/Mahjong.Plugin.Game.csproj" />
     <ProjectReference Include="..\Mahjong.Core\Mahjong.Core.csproj" />
     <ProjectReference Include="..\Mahjong.Policy.Abstractions\Mahjong.Policy.Abstractions.csproj" />
   </ItemGroup>
