@@ -9,10 +9,23 @@ public sealed class StateAggregator : IDisposable
     private readonly AddonEmjReader reader;
     private readonly IFramework framework;
     private readonly IPolicy? policy;
+    private readonly Func<StateSnapshot, StateSnapshot>? merge;
     private bool disposed;
+    private CancellationTokenSource? searchCancellation;
+    private Task<PolicyEvaluation>? search;
+    private long searchRevision;
+    private readonly Func<Configuration>? configuration;
+    public PolicyEvaluation? ShadowEvaluation { get; private set; }
+    private long revision;
+    private long uiHandId = 1;
+    public PolicyEvaluation? LastLocalEvaluation { get; private set; }
+    private PolicyEvaluation? searchBaseline;
+    public event Action<PolicyEvaluation, PolicyEvaluation>? ShadowCompared;
+    public PolicyEvaluation? LastEvaluation { get; private set; }
     private long lastRebuildTicks;
     private int lastContentHash;
     private bool hasContentHash;
+    private Configuration? analyzedConfiguration;
     private const long MinTickIntervalTicks = 160_000;
 
     public StateSnapshot? Latest { get; private set; }
@@ -27,14 +40,17 @@ public sealed class StateAggregator : IDisposable
     public string? LastScorerError { get; private set; }
 
     public event Action<StateSnapshot>? Changed;
+    public event Action<PolicyEvaluation>? DecisionPublished;
 
-    public StateAggregator(AddonEmjReader reader, IFramework framework, IPolicy? policy = null)
+    public StateAggregator(AddonEmjReader reader, IFramework framework, IPolicy? policy = null, Func<StateSnapshot, StateSnapshot>? merge = null, Func<Configuration>? configuration = null)
     {
         ArgumentNullException.ThrowIfNull(reader);
         ArgumentNullException.ThrowIfNull(framework);
         this.reader = reader;
         this.framework = framework;
         this.policy = policy;
+        this.merge = merge;
+        this.configuration = configuration;
 
         this.reader.ObservationChanged += OnObservationChanged;
         framework.Update += OnFrameworkUpdate;
@@ -45,6 +61,7 @@ public sealed class StateAggregator : IDisposable
         if (disposed)
             return;
         disposed = true;
+        searchCancellation?.Cancel();
 
         framework.Update -= OnFrameworkUpdate;
         reader.ObservationChanged -= OnObservationChanged;
@@ -59,6 +76,24 @@ public sealed class StateAggregator : IDisposable
             return;
         lastRebuildTicks = now;
         Rebuild();
+        if (search is { IsFaulted: true } failed)
+        {
+            LastScorerError = $"enhanced-policy-error:{failed.Exception?.GetBaseException().Message}";
+            search = null;
+        }
+        if (search is { IsCompletedSuccessfully: true } done && Latest is { } snapshot && snapshot.Revision == searchRevision)
+        {
+            search = null;
+            ShadowEvaluation = done.Result;
+            if (searchBaseline is {} baseline) ShadowCompared?.Invoke(baseline,done.Result);
+            if (configuration?.Invoke() is { EnhancedStrategy: true, EnhancedShadowOnly: false })
+            {
+                LastLocalEvaluation = done.Result;
+                LastEvaluation = done.Result; LastChoice = done.Result.Choice; LastScored = done.Result.Candidates.ToArray();
+                Changed?.Invoke(snapshot);
+                DecisionPublished?.Invoke(LastEvaluation);
+            }
+        }
     }
 
     private void Rebuild()
@@ -70,6 +105,11 @@ public sealed class StateAggregator : IDisposable
             // Addon gone (player left the table) — drop cached state so the UI reverts to the "waiting" empty state.
             if (Latest is not null)
             {
+                searchCancellation?.Cancel();
+                LastLocalEvaluation = null;
+                LastEvaluation = null;
+                ShadowEvaluation = null;
+                uiHandId++;
                 Latest = null;
                 LastScored = null;
                 LastChoice = null;
@@ -81,19 +121,30 @@ public sealed class StateAggregator : IDisposable
         if (next.SchemaVersion != StateSnapshot.CurrentSchemaVersion)
             return;
 
+        if (next.HandId == 0 && Latest is { } previous && next.WallRemaining > previous.WallRemaining + 5 && next.Hand.Count >= 13)
+            uiHandId++;
+        next = Enrich(next);
         int hash = ComputeContentHash(next);
-        if (hasContentHash && hash == lastContentHash)
+        var currentConfiguration = configuration?.Invoke();
+        if (hasContentHash && hash == lastContentHash && Equals(currentConfiguration, analyzedConfiguration))
             return;
+        analyzedConfiguration = currentConfiguration;
 
         lastContentHash = hash;
         hasContentHash = true;
+        next = next with { Revision = ++revision };
         Latest = next;
         RefreshPolicyCache(next);
         Changed?.Invoke(next);
+        if (LastEvaluation is not null) DecisionPublished?.Invoke(LastEvaluation);
     }
 
     private void RefreshPolicyCache(StateSnapshot snap)
     {
+        searchCancellation?.Cancel();
+        ShadowEvaluation = null;
+        LastLocalEvaluation = null;
+        LastEvaluation = null;
         LastScored = null;
         LastChoice = null;
         LastScorerError = null;
@@ -103,23 +154,67 @@ public sealed class StateAggregator : IDisposable
         if (snap.Legal.Flags == ActionFlags.None)
             return;
 
-        if (snap.Legal.Can(ActionFlags.Discard))
-        {
-            try
-            { LastScored = DiscardScorer.Score(snap); }
-            catch (Exception ex)
-            { LastScorerError = ex.Message; }
-        }
-
         try
-        { LastChoice = policy.Choose(snap); }
-        catch { }
+        {
+            LastEvaluation = policy is IAnalyzablePolicy analyzable
+                ? analyzable.Analyze(snap)
+                : new PolicyEvaluation(policy.Choose(snap), []);
+            LastScored = LastEvaluation.Candidates.ToArray();
+            LastLocalEvaluation = LastEvaluation;
+            LastChoice = LastEvaluation.Choice;
+            if (configuration?.Invoke() is { EnhancedStrategy: true, MortalEnabled: false } cfg)
+            {
+                searchCancellation = new CancellationTokenSource();
+                var token = searchCancellation.Token;
+                var baseline = LastEvaluation;
+                searchBaseline = baseline;
+                searchRevision = snap.Revision;
+                search = Task.Run(() => EnhancedSearch.Analyze(snap, baseline, TimeSpan.FromMilliseconds(Math.Clamp(cfg.SearchBudgetMs, 1, 500)), token, new Mahjong.Rules.Rulesets.DomanRuleSet(),
+                    string.IsNullOrWhiteSpace(cfg.CalibrationPath) ? null : RankCalibration.Load(cfg.CalibrationPath)));
+            }
+        }
+        catch (Exception ex)
+        {
+            LastScorerError = $"policy-error:{ex.GetType().Name}: {ex.Message}";
+            LastEvaluation = null;
+        }
+    }
+
+    public void PublishExternal(StateSnapshot snapshot, PolicyEvaluation evaluation)
+    {
+        if (Latest is not {} latest || ComputeContentHash(Enrich(snapshot)) != ComputeContentHash(latest)) return;
+        LastEvaluation = evaluation with { HandId = latest.HandId, Revision = latest.Revision };
+        LastChoice = LastEvaluation.Choice; LastScored = LastEvaluation.Candidates.ToArray(); LastScorerError = null;
+        DecisionPublished?.Invoke(LastEvaluation);
+    }
+
+    public StateSnapshot Enrich(StateSnapshot snapshot)
+    {
+        var merged = merge?.Invoke(snapshot) ?? snapshot;
+        return merged.HandId == 0 ? merged with { HandId = uiHandId } : merged;
+    }
+
+    public ActionChoice Choose(StateSnapshot snapshot)
+    {
+        snapshot = Enrich(snapshot);
+        if (Latest is { } latest && LastLocalEvaluation?.Choice is { } choice
+            && ComputeContentHash(latest) == ComputeContentHash(snapshot))
+            return choice;
+        return ActionChoice.Pass("state changed; waiting for shared analysis");
     }
 
     /// <summary>Content fingerprint; record equality reference-checks list fields and reports false on every fresh snapshot.</summary>
     internal static int ComputeContentHash(StateSnapshot snap)
     {
         var h = new HashCode();
+        h.Add(snap.HandId);
+        h.Add(snap.SeatWind);
+        h.Add(snap.Kyoku);
+        h.Add(snap.ScheduledRounds);
+        h.Add(snap.PublicStateConsistent);
+        h.Add(snap.SeatInfoKnown);
+        h.Add(snap.OurDoubleRiichi);
+        foreach (var t in snap.UraDoraIndicators) h.Add(t.Id);
         h.Add(snap.WallRemaining);
         h.Add(snap.TurnIndex);
         h.Add((int)snap.Legal.Flags);
@@ -161,6 +256,7 @@ public sealed class StateAggregator : IDisposable
                 h.Add(s.Discards[i].Id);
                 h.Add(i < s.DiscardIsRed.Count && s.DiscardIsRed[i]);
                 h.Add(i < s.DiscardIsTedashi.Count && s.DiscardIsTedashi[i]);
+                h.Add(i < s.DiscardWasCalled.Count && s.DiscardWasCalled[i]);
             }
             foreach (var m in s.Melds)
             {

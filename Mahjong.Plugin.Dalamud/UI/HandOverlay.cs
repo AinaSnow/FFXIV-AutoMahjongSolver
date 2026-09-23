@@ -96,6 +96,7 @@ public sealed class HandOverlay : IDisposable
         else
         {
             choice = plugin.Aggregator.LastChoice;
+            choiceIsRed = choice?.DiscardIsRed;
         }
         if (choice?.DiscardTile is null)
             return;

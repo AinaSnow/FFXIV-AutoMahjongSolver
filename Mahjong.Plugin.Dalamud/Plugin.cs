@@ -62,9 +62,11 @@ public sealed class Plugin : IDalamudPlugin
     public InputDispatcher Dispatcher { get; }
     public GameLogger GameLogger { get; }
     public MatchArchiveWriter MatchArchive { get; }
+    private readonly BackgroundIoWorker archiveIo = new();
     public AutoPlayLoop AutoPlay { get; }
     public MahjongNetworkCapture NetworkCapture { get; }
     public LiveMortalBridge MortalBridge { get; }
+    public PublicStateTracker PublicState { get; }
 
     public IDiscardCapture DiscardCapture { get; }
 
@@ -92,6 +94,7 @@ public sealed class Plugin : IDalamudPlugin
         {
             new ConfigMigratorV0ToV1(),
             new ConfigMigratorV1ToV2(),
+            new ConfigMigratorV2ToV3(),
         };
         var migrated = ConfigMigrationRunner.Run(
             loaded,
@@ -150,7 +153,11 @@ public sealed class Plugin : IDalamudPlugin
             FindingsLog, ClientState.ClientLanguage.ToString());
         // Accessor closes over AddonReader so state codes and the hand-array offset follow the active variant. Constructed after AddonReader so the closure resolves to the live profile by the time DispatchDiscard runs.
         Dispatcher = new InputDispatcher(mahjongAddon, () => AddonReader.ActiveLayout);
-        Aggregator = new StateAggregator(AddonReader, Framework, Policy);
+        MatchArchive = new MatchArchiveWriter(configDir, Log, archiveIo, () => (ConfigService.Current.ArchiveRetentionDays, ConfigService.Current.ArchiveMaxBytes));
+        NetworkCapture = new MahjongNetworkCapture(GameInterop, Log,
+            () => AddonReader.ActiveLayout?.Name, Path.Combine(pluginAssemblyDir, "protocols"));
+        PublicState = new PublicStateTracker(NetworkCapture, Framework, AddonReader, Log, MatchArchive.RecordPacket);
+        Aggregator = new StateAggregator(AddonReader, Framework, Policy, PublicState.Merge, () => Configuration);
         EventLogger = new InputEventLogger(
             AddonReader, AddonLifecycle, GameInterop, Log, mahjongAddon, configDir);
         AddonReader.EventLogger = EventLogger;
@@ -159,16 +166,14 @@ public sealed class Plugin : IDalamudPlugin
             Aggregator, ConfigService, Log, configDir,
             policyAccessor: () => Policy,
             eventLogger: EventLogger,
-            meldTrackerAccessor: () => MeldTracker.SerializeState());
-        MatchArchive = new MatchArchiveWriter(configDir, Log);
-        NetworkCapture = new MahjongNetworkCapture(GameInterop, Log);
+            meldTrackerAccessor: () => MeldTracker.SerializeState(), io: archiveIo, externalEnabled: () => MortalBridge?.Enabled == true);
         MortalBridge = new LiveMortalBridge(
             NetworkCapture,
             Framework,
             ConfigService,
             () => Aggregator.Latest,
-            Log,
-            packetObserver: MatchArchive.RecordPacket);
+            Log, runnerDirectory: pluginAssemblyDir);
+        MortalBridge.DecisionPublished += Aggregator.PublishExternal;
         AddonLifecycle.RegisterListener(
             AddonEvent.PreFinalize,
             mahjongAddon.KnownAddonNames,
@@ -233,6 +238,7 @@ public sealed class Plugin : IDalamudPlugin
     private void OnMahjongAddonPreFinalize(AddonEvent type, AddonArgs args)
     {
         ArchiveCurrentMatch();
+        PublicState.Reset();
         MortalBridge.ResetSessionStatistics();
         GameLogger.ResetSession();
         StrategyDiagnostics.ResetSession();
@@ -241,7 +247,7 @@ public sealed class Plugin : IDalamudPlugin
 
     private void ArchiveCurrentMatch()
     {
-        MatchArchive.FinalizeSession(
+        _ = MatchArchive.FinalizeSessionAsync(
             GameLogger.SnapshotSessionPaths(),
             new MatchArchiveMortalStats(
                 Status: MortalBridge.Status,
@@ -271,7 +277,9 @@ public sealed class Plugin : IDalamudPlugin
         DebugOverlay.Dispose();
         HandOverlay.Dispose();
         AutoPlay.Dispose();
+        MortalBridge.DecisionPublished -= Aggregator.PublishExternal;
         MortalBridge.Dispose();
+        PublicState.Dispose();
         NetworkCapture.Dispose();
         DiscardCaptureLogger.Dispose();
         DiscardTracker.Dispose();
@@ -279,6 +287,7 @@ public sealed class Plugin : IDalamudPlugin
         DiscardCapture.Dispose();
         GameLogger.Dispose();
         MatchArchive.Dispose();
+        archiveIo.Dispose();
         InputRecorder.Dispose();
         EventLogger.Dispose();
         Aggregator.Dispose();
@@ -287,6 +296,7 @@ public sealed class Plugin : IDalamudPlugin
         MemoryDumpRecorder.Dispose();
         (FindingsLog as IDisposable)?.Dispose();
         ErrorSink.Dispose();
+        (SigprobeLog as IDisposable)?.Dispose();
 
         // Services last — container singletons may still be touched by components disposed above.
         Services.Dispose();

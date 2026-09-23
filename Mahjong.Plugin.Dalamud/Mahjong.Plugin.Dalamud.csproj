@@ -46,6 +46,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include="..\data\protocols\*.json" Link="protocols\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Images\Icon.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -75,4 +76,5 @@
           Condition="Exists('$(ZipPath)') and Exists('$(IconPath)')" />
   </Target>
 
+  <ItemGroup><Content Include="../tools/mortal_runner.py" Link="mortal_runner.py" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
 </Project>

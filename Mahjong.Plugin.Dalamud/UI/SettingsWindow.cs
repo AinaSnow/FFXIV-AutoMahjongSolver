@@ -126,6 +126,24 @@ public sealed class SettingsWindow : Window, IDisposable
 
         ImGui.Dummy(new Vector2(0, 4));
 
+        using (Theme.BeginCard("settings-strategy"))
+        {
+            Theme.SectionHeader("Experimental strategy");
+            bool enhanced = cfg.EnhancedStrategy;
+            if (ImGui.Checkbox("Enable two-draw search", ref enhanced))
+                plugin.ConfigService.Update(c => c with { EnhancedStrategy = enhanced });
+            bool shadow = cfg.EnhancedShadowOnly;
+            if (ImGui.Checkbox("Shadow comparison only", ref shadow))
+                plugin.ConfigService.Update(c => c with { EnhancedShadowOnly = shadow });
+            Theme.Subtle("Experimental; no verified ranking improvement yet. Stable remains the default.");
+            int days = cfg.ArchiveRetentionDays;
+            if (ImGui.InputInt("Archive retention (days)", ref days))
+                plugin.ConfigService.Update(c => c with { ArchiveRetentionDays = Math.Clamp(days, 1, 3650) });
+            int mib = (int)(cfg.ArchiveMaxBytes / (1L << 20));
+            if (ImGui.InputInt("Archive limit (MiB)", ref mib))
+                plugin.ConfigService.Update(c => c with { ArchiveMaxBytes = (long)Math.Clamp(mib, 1, 1048576) << 20 });
+        }
+
         using (Theme.BeginCard("settings-mortal"))
         {
             Theme.SectionHeader("Mortal AI");

@@ -38,6 +38,11 @@ public sealed class GameLogger : IDisposable
     private int? lastStateHash;
     private int[]? lastHandStartScores;
     private bool disposed;
+    private readonly BackgroundIoWorker io;
+    private readonly bool ownsIo;
+    private readonly Func<bool>? externalEnabled;
+    private int? lastDecisionKey;
+    public Task FlushAsync() => io.FlushAsync();
 
     public string? CurrentPath => currentPath;
     public int HandSeq => handSeq;
@@ -50,7 +55,8 @@ public sealed class GameLogger : IDisposable
         string pluginConfigDir,
         Func<IPolicy>? policyAccessor = null,
         InputEventLogger? eventLogger = null,
-        Func<MeldTrackerStateDto>? meldTrackerAccessor = null)
+        Func<MeldTrackerStateDto>? meldTrackerAccessor = null,
+        BackgroundIoWorker? io = null, Func<bool>? externalEnabled = null)
     {
         ArgumentNullException.ThrowIfNull(aggregator);
         ArgumentNullException.ThrowIfNull(configService);
@@ -59,12 +65,18 @@ public sealed class GameLogger : IDisposable
         this.aggregator = aggregator;
         this.configService = configService;
         this.log = log;
+        this.externalEnabled = externalEnabled;
+        this.io = io ?? new BackgroundIoWorker();
+        ownsIo = io is null;
         this.policyAccessor = policyAccessor;
         this.eventLogger = eventLogger;
         this.meldTrackerAccessor = meldTrackerAccessor;
         gamesDir = Path.Combine(pluginConfigDir, "games");
-        Directory.CreateDirectory(gamesDir);
+        this.io.TryEnqueue(() => Directory.CreateDirectory(gamesDir));
+
         aggregator.Changed += OnStateChanged;
+        aggregator.DecisionPublished += OnDecisionPublished;
+        aggregator.ShadowCompared += OnShadowCompared;
         if (eventLogger is not null)
             eventLogger.CallPromptObserved += OnCallPromptObserved;
     }
@@ -81,10 +93,13 @@ public sealed class GameLogger : IDisposable
         aggregator = null;
         this.configService = configService;
         this.log = log;
+        io = new BackgroundIoWorker();
+        ownsIo = true;
         policyAccessor = null;
         eventLogger = null;
         gamesDir = Path.Combine(pluginConfigDir, "games");
-        Directory.CreateDirectory(gamesDir);
+        this.io.TryEnqueue(() => Directory.CreateDirectory(gamesDir));
+
     }
 
     public void Dispose()
@@ -93,9 +108,14 @@ public sealed class GameLogger : IDisposable
             return;
         disposed = true;
         if (aggregator is not null)
+        {
             aggregator.Changed -= OnStateChanged;
+            aggregator.DecisionPublished -= OnDecisionPublished;
+            aggregator.ShadowCompared -= OnShadowCompared;
+        }
         if (eventLogger is not null)
             eventLogger.CallPromptObserved -= OnCallPromptObserved;
+        if (ownsIo) io.Dispose();
     }
 
     internal void ResetSession()
@@ -107,6 +127,7 @@ public sealed class GameLogger : IDisposable
             handSeq = 0;
             lastWall = -1;
             lastStateHash = null;
+            lastDecisionKey = null;
             lastHandStartScores = null;
         }
     }
@@ -132,7 +153,7 @@ public sealed class GameLogger : IDisposable
         {
             MaybeRollHand(snap);
             WriteLine(JsonSerializer.Serialize(BuildStateEvent(snap), JsonOpts));
-            MaybeRecordDecision(snap);
+            if (aggregator?.LastScorerError is {} error) WriteLine(JsonSerializer.Serialize(new { e="policy-error", reason=error, hand_id=snap.HandId, revision=snap.Revision }, JsonOpts));
         }
         catch (Exception ex)
         {
@@ -140,30 +161,19 @@ public sealed class GameLogger : IDisposable
         }
     }
 
-    private void MaybeRecordDecision(StateSnapshot snap)
+    private void OnShadowCompared(PolicyEvaluation stable, PolicyEvaluation enhanced)
     {
-        if (policyAccessor is null || !ShouldRecordPolicyDecision(configService.Current))
-            return;
-        if (snap.Legal.Flags == ActionFlags.None)
-            return;
-        ActionChoice choice;
-        try
-        { choice = policyAccessor().Choose(snap); }
-        catch (Exception ex)
-        {
-            log.Error($"GameLogger decision-eval error: {ex.Message}");
-            return;
-        }
-        try
-        {
-            var tracker = meldTrackerAccessor?.Invoke();
-            WriteLine(JsonSerializer.Serialize(
-                BuildDecisionEvent(choice, tracker, "local-policy"), JsonOpts));
-        }
-        catch (Exception ex)
-        {
-            log.Error($"GameLogger decision-write error: {ex.Message}");
-        }
+        if (disposed || !configService.Current.EnableGameLogging) return;
+        WriteLine(JsonSerializer.Serialize(new { e="shadow-decision", hand_id=stable.HandId, revision=stable.Revision,
+            stable_kind=stable.Choice.Kind.ToString(), stable_tile=stable.Choice.DiscardTile?.Id,
+            enhanced_kind=enhanced.Choice.Kind.ToString(), enhanced_tile=enhanced.Choice.DiscardTile?.Id,
+            reason=enhanced.Choice.Reasoning, elapsed_ms=enhanced.ElapsedMilliseconds }, JsonOpts));
+    }
+
+    private void OnDecisionPublished(PolicyEvaluation evaluation)
+    {
+        if (evaluation.Source != "mortal" && (externalEnabled?.Invoke() ?? configService.Current.MortalEnabled)) return;
+        RecordDecision(evaluation.Choice, evaluation.Source);
     }
 
     private void OnCallPromptObserved(CallPromptEvent evt)
@@ -201,6 +211,8 @@ public sealed class GameLogger : IDisposable
             var evt = new ActionEvent(
                 T: Now(),
                 E: "action",
+                HandId: aggregator?.Latest?.HandId,
+                Revision: aggregator?.Latest?.Revision,
                 Kind: kind.ToString(),
                 Tile: tile?.Id,
                 Slot: slot,
@@ -216,6 +228,9 @@ public sealed class GameLogger : IDisposable
 
     public void RecordDecision(ActionChoice choice, string source)
     {
+        int key = HashCode.Combine(aggregator?.Latest?.HandId, aggregator?.Latest?.Revision, choice.Kind, choice.DiscardTile, choice.DiscardIsRed, source, choice.Reasoning);
+        if (lastDecisionKey == key) return;
+        lastDecisionKey = key;
         if (!configService.Current.EnableGameLogging || disposed)
             return;
         try
@@ -335,21 +350,13 @@ public sealed class GameLogger : IDisposable
     /// <summary>Open-write-close per line so diagnostics and local archive tooling can read live files.</summary>
     private void WriteLine(string line)
     {
-        if (currentPath is null)
-            return;
-        lock (writerLock)
-        {
-            try
-            {
-                using var w = new StreamWriter(new FileStream(
-                    currentPath, FileMode.Append, FileAccess.Write, FileShare.Read));
-                w.WriteLine(line);
-            }
-            catch (Exception ex)
-            {
-                log.Error($"GameLogger write error: {ex.Message}");
-            }
-        }
+        var path = currentPath;
+        if (path is null) return;
+        io.TryEnqueue(() => {
+            Directory.CreateDirectory(gamesDir);
+            using var writer = new StreamWriter(new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.Read));
+            writer.WriteLine(line);
+        });
     }
 
     private static int ComputeContentHash(StateSnapshot snap)
@@ -403,11 +410,16 @@ public sealed class GameLogger : IDisposable
         return h.ToHashCode();
     }
 
-    private static DecisionEvent BuildDecisionEvent(
+    private DecisionEvent BuildDecisionEvent(
         ActionChoice choice, MeldTrackerStateDto? tracker, string source) => new(
         T: Now(),
         E: "decision",
         Source: source,
+        HandId: aggregator?.Latest?.HandId ?? 0,
+        Revision: aggregator?.Latest?.Revision ?? 0,
+        IsRed: choice.DiscardIsRed,
+        Complete: aggregator?.Latest?.PublicStateConsistent ?? false,
+        ElapsedMs: aggregator?.LastEvaluation?.ElapsedMilliseconds,
         Kind: choice.Kind.ToString(),
         Tile: choice.DiscardTile?.Id,
         CallKind: choice.Call?.Kind.ToString(),
@@ -501,6 +513,8 @@ public sealed class GameLogger : IDisposable
     private sealed record ActionEvent(
         [property: JsonPropertyName("t")] string T,
         [property: JsonPropertyName("e")] string E,
+        [property: JsonPropertyName("hand_id")] long? HandId,
+        [property: JsonPropertyName("revision")] long? Revision,
         [property: JsonPropertyName("kind")] string Kind,
         [property: JsonPropertyName("tile")] int? Tile,
         [property: JsonPropertyName("slot")] int? Slot,
@@ -511,6 +525,11 @@ public sealed class GameLogger : IDisposable
         [property: JsonPropertyName("t")] string T,
         [property: JsonPropertyName("e")] string E,
         [property: JsonPropertyName("source")] string Source,
+        [property: JsonPropertyName("hand_id")] long HandId,
+        [property: JsonPropertyName("revision")] long Revision,
+        [property: JsonPropertyName("is_red")] bool? IsRed,
+        [property: JsonPropertyName("complete")] bool Complete,
+        [property: JsonPropertyName("elapsed_ms")] double? ElapsedMs,
         [property: JsonPropertyName("kind")] string Kind,
         [property: JsonPropertyName("tile")] int? Tile,
         [property: JsonPropertyName("call_kind")] string? CallKind,

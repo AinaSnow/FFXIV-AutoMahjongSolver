@@ -26,7 +26,7 @@ public sealed class LiveMortalBridge : IDisposable
     private readonly MjaiEventJournal journal = new();
 
     private MahjongPacketMjaiDecoder decoder = new();
-    private MortalProcessClient? client;
+    private IMortalProcessClient? client;
     private MortalProcessSettings? activeSettings;
     private DateTime lastStartAttemptUtc = DateTime.MinValue;
     private bool awaitingReachDiscard;
@@ -53,6 +53,9 @@ public sealed class LiveMortalBridge : IDisposable
     private int latestUiDiscardCount = -1;
     private int lastCandidateCorrectionKey;
     private bool disposed;
+    private long observedDrops;
+    private readonly MonotonicClock clock;
+    private readonly string? runnerDirectory;
 
     public LiveMortalBridge(
         MahjongNetworkCapture capture,
@@ -60,13 +63,15 @@ public sealed class LiveMortalBridge : IDisposable
         IConfigService<Configuration> configService,
         Func<StateSnapshot?> snapshotAccessor,
         IPluginLog log,
-        Action<CapturedMahjongPacket>? packetObserver = null)
+        Action<CapturedMahjongPacket>? packetObserver = null, TimeProvider? timeProvider = null, string? runnerDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(capture);
         ArgumentNullException.ThrowIfNull(framework);
         ArgumentNullException.ThrowIfNull(configService);
         ArgumentNullException.ThrowIfNull(snapshotAccessor);
         ArgumentNullException.ThrowIfNull(log);
+        this.runnerDirectory = runnerDirectory;
+        clock = new MonotonicClock(timeProvider);
         this.capture = capture;
         this.framework = framework;
         this.configService = configService;
@@ -76,7 +81,9 @@ public sealed class LiveMortalBridge : IDisposable
         framework.Update += OnFrameworkUpdate;
     }
 
-    public bool Enabled => configService.Current.MortalEnabled;
+    public event Action<StateSnapshot, PolicyEvaluation>? DecisionPublished;
+
+    public bool Enabled => configService.Current.MortalEnabled && capture.ProtocolVerified;
 
     public bool IsRunning => client?.IsRunning == true;
 
@@ -166,6 +173,7 @@ public sealed class LiveMortalBridge : IDisposable
             if (TryMapDecision(reaction, decisionSnapshot, out choice, out bool? isRed))
             {
                 DecisionsMapped++;
+                choice = choice with { DiscardIsRed = isRed };
                 PublishRecommendation(snapshot, choice, isRed);
                 if (reaction.Type is "ankan" or "kakan" or "daiminkan")
                 {
@@ -277,6 +285,18 @@ public sealed class LiveMortalBridge : IDisposable
         if (disposed)
             return;
 
+        if (!capture.ProtocolVerified)
+        {
+            if (client is not null) Stop(capture.ProtocolStatus);
+            Status = capture.ProtocolStatus;
+            return;
+        }
+        if (capture.DroppedPackets != observedDrops)
+        {
+            observedDrops = capture.DroppedPackets;
+            QuarantineCurrentHand("Packet loss; waiting for next hand");
+        }
+        client?.Poll();
         var config = configService.Current;
         if (!config.MortalEnabled)
         {
@@ -309,7 +329,7 @@ public sealed class LiveMortalBridge : IDisposable
         }
 
         long replayDeadline = Interlocked.Read(ref replayValidationDeadlineTicks);
-        if (replayDeadline > 0 && DateTime.UtcNow.Ticks > replayDeadline)
+        if (replayDeadline > 0 && clock.UtcNow.Ticks > replayDeadline)
             Interlocked.Exchange(ref replayValidationDeadlineTicks, 0);
 
         if (client is not null && !client.IsRunning)
@@ -328,7 +348,7 @@ public sealed class LiveMortalBridge : IDisposable
 
         if (client?.IsRunning != true)
         {
-            if (DateTime.UtcNow - lastStartAttemptUtc < RestartBackoff)
+            if (clock.UtcNow - lastStartAttemptUtc < RestartBackoff)
                 return;
             Start(settings);
         }
@@ -534,10 +554,10 @@ public sealed class LiveMortalBridge : IDisposable
 
     private void Start(MortalProcessSettings settings)
     {
-        lastStartAttemptUtc = DateTime.UtcNow;
+        lastStartAttemptUtc = clock.UtcNow;
         try
         {
-            var next = new MortalProcessClient(log);
+            var next = new MortalProcessClient(log, runnerDirectory);
             next.ReactionReceived += OnReactionReceived;
             next.Exited += OnProcessExited;
             next.Start(settings);
@@ -556,7 +576,7 @@ public sealed class LiveMortalBridge : IDisposable
             }
             Interlocked.Exchange(
                 ref replayValidationDeadlineTicks,
-                replayed > 0 ? DateTime.UtcNow.Add(ReplayValidationWindow).Ticks : 0);
+                replayed > 0 ? clock.UtcNow.Add(ReplayValidationWindow).Ticks : 0);
             Status = replayed == 0
                 ? "Running (model may still be loading)"
                 : $"Running (replayed {replayed} MJAI events)";
@@ -618,7 +638,7 @@ public sealed class LiveMortalBridge : IDisposable
     private void OnProcessExited(int? exitCode)
     {
         long replayDeadline = Interlocked.Read(ref replayValidationDeadlineTicks);
-        bool failedDuringReplayValidation = replayDeadline > 0 && DateTime.UtcNow.Ticks <= replayDeadline;
+        bool failedDuringReplayValidation = replayDeadline > 0 && clock.UtcNow.Ticks <= replayDeadline;
         if (failedDuringReplayValidation)
             replayCrashDetected = true;
         Status = failedDuringReplayValidation
@@ -1250,6 +1270,7 @@ public sealed class LiveMortalBridge : IDisposable
             recommendationKey = key;
             hasRecommendation = true;
         }
+        DecisionPublished?.Invoke(snapshot, new PolicyEvaluation(choice, []) { Source = "mortal", HandId = snapshot.HandId, Revision = snapshot.Revision, ElapsedMilliseconds = LastModelEvalMilliseconds });
     }
 
     private void ClearRecommendation()

@@ -45,6 +45,9 @@ public sealed class AutoPlayLoop : IDisposable
     private readonly TerminalWinConfirmationTracker terminalWinConfirmation =
         new(TerminalWinSuppressionWindow);
     private bool disposed;
+    private readonly MonotonicClock clock;
+    private readonly IGameActionScheduler scheduler;
+    private long dispatchGeneration;
     private string? lastSkipReason;
     private DateTime? handResultFirstSeenAt;
     private bool handResultDispatchedThisInstance;
@@ -69,18 +72,21 @@ public sealed class AutoPlayLoop : IDisposable
     private int HandResultStateCode =>
         plugin.AddonReader.ActiveLayout?.StateCodes.HandResult ?? DefaultHandResultStateCode;
 
-    public AutoPlayLoop(Plugin plugin, IFramework framework, IPluginLog log, MahjongAddon addon)
+    public AutoPlayLoop(Plugin plugin, IFramework framework, IPluginLog log, MahjongAddon addon, TimeProvider? timeProvider = null, IGameActionScheduler? scheduler = null)
     {
         ArgumentNullException.ThrowIfNull(plugin);
         ArgumentNullException.ThrowIfNull(framework);
         ArgumentNullException.ThrowIfNull(log);
         ArgumentNullException.ThrowIfNull(addon);
+        clock = new MonotonicClock(timeProvider);
+        this.scheduler = scheduler ?? new FrameworkActionScheduler(framework);
         this.plugin = plugin;
         this.framework = framework;
         this.log = log;
         this.addon = addon;
         plugin.Aggregator.Changed += OnSnapshotChanged;
         framework.Update += OnUpdate;
+        plugin.ConfigService.Changed += OnConfigurationChanged;
     }
 
     public void Dispose()
@@ -88,8 +94,18 @@ public sealed class AutoPlayLoop : IDisposable
         if (disposed)
             return;
         disposed = true;
+        CancelPending();
+        plugin.ConfigService.Changed -= OnConfigurationChanged;
         framework.Update -= OnUpdate;
         plugin.Aggregator.Changed -= OnSnapshotChanged;
+    }
+
+    private void OnConfigurationChanged(Configuration _) => CancelPending();
+    private void CancelPending()
+    {
+        dispatchGeneration++;
+        fsm.CompleteDispatch(); fsm.ClearContext(); fsm.ClearRiichiConfirm();
+        pendingTerminalWin = null; terminalWinConfirmation.Reset(); hasMortalWait = false;
     }
 
     private void OnSnapshotChanged(StateSnapshot snapshot)
@@ -100,12 +116,12 @@ public sealed class AutoPlayLoop : IDisposable
             return;
         }
 
-        terminalWinConfirmation.Observe(snapshot, DateTime.UtcNow);
+        terminalWinConfirmation.Observe(snapshot, clock.UtcNow);
         if ((snapshot.Legal.Flags & (ActionFlags.Ron | ActionFlags.Tsumo)) == 0)
             return;
 
         pendingTerminalWin = snapshot;
-        pendingTerminalWinObservedAt = DateTime.UtcNow;
+        pendingTerminalWinObservedAt = clock.UtcNow;
     }
 
     private unsafe void OnUpdate(IFramework fw)
@@ -113,6 +129,7 @@ public sealed class AutoPlayLoop : IDisposable
         if (disposed)
             return;
 
+        if (!plugin.AddonReader.LastObservation.Present) CancelPending();
         if (!IsAutomationArmed())
         {
             pendingTerminalWin = null;
@@ -147,7 +164,7 @@ public sealed class AutoPlayLoop : IDisposable
         }
 
         // StateAggregator subscribed first and has already produced the current frame's snapshot.
-        var snap = ResolvePendingTerminalWin(plugin.Aggregator.Latest, DateTime.UtcNow);
+        var snap = ResolvePendingTerminalWin(plugin.Aggregator.Latest, clock.UtcNow);
 
         // Runs before the snapshot-null guard so the windowExpired path still emits commit=false on transient nulls.
         CheckPendingDispatchOutcome(snap);
@@ -178,7 +195,7 @@ public sealed class AutoPlayLoop : IDisposable
         bool isTerminalWinPrompt =
             (snap.Legal.Flags & (ActionFlags.Ron | ActionFlags.Tsumo)) != 0;
         bool isTerminalWinConfirmation = terminalWinConfirmation.TryGetConfirmation(
-            snap, DateTime.UtcNow, out var terminalWinKind);
+            snap, clock.UtcNow, out var terminalWinKind);
         int flags = (int)snap.Legal.Flags;
 
         // Riichi-confirm latch is hand-scoped via ObserveWall — popup signature drops mid-hand and clearing per-tick would let the loop redeclare riichi 20+ times in one hand.
@@ -196,7 +213,7 @@ public sealed class AutoPlayLoop : IDisposable
         if (isCallPrompt
             && isTerminalWinPrompt
             && terminalWinDispatchedAt is { } winAt
-            && DateTime.UtcNow - winAt < TerminalWinSuppressionWindow)
+            && clock.UtcNow - winAt < TerminalWinSuppressionWindow)
         {
             EmitSkipReason("terminal win already dispatched",
                 state: state, hand: snap.Hand.Count, flags: flags);
@@ -205,7 +222,7 @@ public sealed class AutoPlayLoop : IDisposable
 
         if (isCallPrompt
             && isTerminalWinPrompt
-            && terminalWinConfirmation.IsAwaitingTransition(snap, DateTime.UtcNow))
+            && terminalWinConfirmation.IsAwaitingTransition(snap, clock.UtcNow))
         {
             EmitSkipReason("terminal win initial selection dispatched; awaiting confirmation",
                 state: state, hand: snap.Hand.Count, flags: flags);
@@ -213,7 +230,7 @@ public sealed class AutoPlayLoop : IDisposable
         }
 
         if (!isTerminalWinConfirmation
-            && fsm.ShouldSuppressForContext(context, DateTime.UtcNow))
+            && fsm.ShouldSuppressForContext(context, clock.UtcNow))
         {
             EmitSkipReason($"suppressed for context (state={context.State} hand={context.Hand})",
                 state: state, hand: snap.Hand.Count, flags: flags);
@@ -319,7 +336,7 @@ public sealed class AutoPlayLoop : IDisposable
     {
         if (plugin.Configuration.MortalEnabled)
         {
-            plugin.GameLogger.RecordDecision(choice, source);
+            plugin.GameLogger.RecordDecision(choice, plugin.MortalBridge.TryGetRecommendation(plugin.Aggregator.Enrich(snap), out _, out _) ? "mortal" : "local-fallback");
             plugin.StrategyDiagnostics.RecordFinalDecision(choice);
         }
 
@@ -362,7 +379,7 @@ public sealed class AutoPlayLoop : IDisposable
         {
             pendingOutcome = new PendingDispatchOutcome(
                 Label: label,
-                DispatchedAt: DateTime.UtcNow,
+                DispatchedAt: clock.UtcNow,
                 StateAtDispatch: snap.AddonStateCode,
                 HandAtDispatch: snap.Hand.Count,
                 MeldsAtDispatch: snap.OurMelds.Count,
@@ -410,7 +427,7 @@ public sealed class AutoPlayLoop : IDisposable
             stuckStateCode = snap.AddonStateCode;
             stuckHandCount = snap.Hand.Count;
             stuckLegal = legal;
-            stuckSince = DateTime.UtcNow;
+            stuckSince = clock.UtcNow;
             stuckEmitted = false;
             return;
         }
@@ -418,7 +435,7 @@ public sealed class AutoPlayLoop : IDisposable
         if (stuckEmitted)
             return;
 
-        var elapsed = DateTime.UtcNow - stuckSince;
+        var elapsed = clock.UtcNow - stuckSince;
         if (elapsed < StuckStateThreshold)
             return;
 
@@ -487,7 +504,7 @@ public sealed class AutoPlayLoop : IDisposable
             (snap.AddonStateCode != pending.StateAtDispatch
              || snap.Hand.Count != pending.HandAtDispatch
              || snap.OurMelds.Count != pending.MeldsAtDispatch);
-        bool windowExpired = DateTime.UtcNow - pending.DispatchedAt >
+        bool windowExpired = clock.UtcNow - pending.DispatchedAt >
             DispatchOutcomeWindowFor(pending.Label);
 
         if (stateChanged)
@@ -503,7 +520,7 @@ public sealed class AutoPlayLoop : IDisposable
                 ["state_after"] = snap?.AddonStateCode,
                 ["hand_after"] = snap?.Hand.Count,
                 ["melds_after"] = snap?.OurMelds.Count,
-                ["elapsed_ms"] = (int)(DateTime.UtcNow - pending.DispatchedAt).TotalMilliseconds,
+                ["elapsed_ms"] = (int)(clock.UtcNow - pending.DispatchedAt).TotalMilliseconds,
             });
             pendingOutcome = null;
         }
@@ -520,7 +537,7 @@ public sealed class AutoPlayLoop : IDisposable
                 ["state_after"] = snap?.AddonStateCode,
                 ["hand_after"] = snap?.Hand.Count,
                 ["melds_after"] = snap?.OurMelds.Count,
-                ["elapsed_ms"] = (int)(DateTime.UtcNow - pending.DispatchedAt).TotalMilliseconds,
+                ["elapsed_ms"] = (int)(clock.UtcNow - pending.DispatchedAt).TotalMilliseconds,
             });
             pendingOutcome = null;
         }
@@ -541,7 +558,7 @@ public sealed class AutoPlayLoop : IDisposable
     {
         if (!fsm.IsDispatchInFlight)
             return true;
-        if (fsm.TryRecoverFromStuckDispatch(DateTime.UtcNow))
+        if (fsm.TryRecoverFromStuckDispatch(clock.UtcNow))
         {
             log.Warning("[AutoPlayLoop] resetting stuck actionPending");
             return true;
@@ -551,7 +568,7 @@ public sealed class AutoPlayLoop : IDisposable
 
     private void HandleChiVariantSelect(DispatchContext context)
     {
-        if (fsm.ShouldSuppressForContext(context, DateTime.UtcNow))
+        if (fsm.ShouldSuppressForContext(context, clock.UtcNow))
             return;
         ScheduleVariantAccept(context);
     }
@@ -568,7 +585,7 @@ public sealed class AutoPlayLoop : IDisposable
         LastObservedState = state;
         LastObservedHandCount = -1;
 
-        var now = DateTime.UtcNow;
+        var now = clock.UtcNow;
         handResultFirstSeenAt ??= now;
 
         if (handResultDispatchedThisInstance)
@@ -602,12 +619,20 @@ public sealed class AutoPlayLoop : IDisposable
 
     private void ScheduleAction(string label, DispatchContext context, int medianDelayMs, Action body)
     {
-        fsm.BeginDispatch(DateTime.UtcNow, context);
+        long generation = ++dispatchGeneration;
+        long scheduledHand = plugin.Aggregator.Latest?.HandId ?? 0;
+        long scheduledRevision = plugin.Aggregator.Latest?.Revision ?? 0;
+        var scheduledConfig = plugin.Configuration;
+        fsm.BeginDispatch(clock.UtcNow, context);
         var delay = HumanTiming.RandomDelay(medianMs: medianDelayMs);
-        _ = framework.RunOnTick(() =>
+        scheduler.Schedule(() =>
         {
             try
             {
+                if (generation != dispatchGeneration || disposed || !IsAutomationArmed() || !plugin.AddonReader.LastObservation.Present || plugin.Configuration != scheduledConfig
+                    || (plugin.Aggregator.Latest?.HandId ?? 0) != scheduledHand
+                    || (plugin.Aggregator.Latest?.Revision ?? 0) != scheduledRevision)
+                    return;
                 body();
             }
             catch (Exception ex)
@@ -617,7 +642,7 @@ public sealed class AutoPlayLoop : IDisposable
             }
             finally
             {
-                fsm.CompleteDispatch();
+                if (generation == dispatchGeneration) fsm.CompleteDispatch();
             }
         }, delay);
     }
@@ -787,7 +812,7 @@ public sealed class AutoPlayLoop : IDisposable
         ScheduleAction("discard", context, delayMs, () =>
         {
             var snap = ResolvePendingTerminalWin(
-                plugin.AddonReader.TryBuildSnapshot(), DateTime.UtcNow);
+                plugin.AddonReader.TryBuildSnapshot(), clock.UtcNow);
             int currentState = ReadStateCode();
             bool isTerminalWin = snap is not null
                 && (snap.Legal.Flags & (ActionFlags.Ron | ActionFlags.Tsumo)) != 0;
@@ -839,7 +864,7 @@ public sealed class AutoPlayLoop : IDisposable
         ScheduleAction("call", context, delayMs, () =>
         {
             var snap = ResolvePendingTerminalWin(
-                plugin.AddonReader.TryBuildSnapshot(), DateTime.UtcNow);
+                plugin.AddonReader.TryBuildSnapshot(), clock.UtcNow);
             int currentState = ReadStateCode();
             if (snap is null)
             {
@@ -881,11 +906,11 @@ public sealed class AutoPlayLoop : IDisposable
         ScheduleAction("terminal-win-confirm", context, TerminalWinConfirmationDelayMs, () =>
         {
             var snap = ResolvePendingTerminalWin(
-                plugin.AddonReader.TryBuildSnapshot(), DateTime.UtcNow);
+                plugin.AddonReader.TryBuildSnapshot(), clock.UtcNow);
             int currentState = ReadStateCode();
             if (snap is null
                 || !terminalWinConfirmation.TryGetConfirmation(
-                    snap, DateTime.UtcNow, out var currentKind)
+                    snap, clock.UtcNow, out var currentKind)
                 || currentKind != kind
                 || !plugin.Dispatcher.IsCallPromptVisible())
             {
@@ -1046,7 +1071,7 @@ public sealed class AutoPlayLoop : IDisposable
         bool? targetIsRed = plugin.MortalBridge.Enabled
             && plugin.MortalBridge.TryGetRecommendedDiscardRedIdentity(snap, choice, out bool mortalIsRed)
                 ? mortalIsRed
-                : null;
+                : choice.DiscardIsRed;
         int slot = plugin.AddonReader.FindAddonSlotOfTile(tile, targetIsRed);
         if (slot < 0)
         {
@@ -1102,7 +1127,7 @@ public sealed class AutoPlayLoop : IDisposable
         log.Info($"[AutoPlayLoop] call-prompt dispatch: {LastActionDescription}");
     }
 
-    /// <summary>For an initial Riichi popup, re-run policy against a synthetic Discard|Riichi snapshot so RiichiPolicy actually fires — the standard call branch skips Riichi.</summary>
+    /// <summary>Initial riichi acceptance uses the shared analysis; only the second confirmation uses the existing latch.</summary>
     private bool ResolveRiichiPopupAcceptance(StateSnapshot snap, ActionChoice choice, out Tile? probeTile, out string? probeReason)
     {
         probeReason = null;
@@ -1124,32 +1149,16 @@ public sealed class AutoPlayLoop : IDisposable
             return true;
         }
 
-        var probe = snap with
-        {
-            Legal = snap.Legal with
-            {
-                Flags = ActionFlags.Discard | ActionFlags.Riichi,
-            },
-        };
-        var verdict = plugin.Policy.Choose(probe);
-        if (verdict.Kind != ActionKind.Riichi)
-        {
-            probeReason = string.IsNullOrEmpty(verdict.Reasoning)
-                ? "riichi declined by policy"
-                : $"riichi declined: {verdict.Reasoning}";
-            return false;
-        }
-
-        probeTile = verdict.DiscardTile;
-        probeReason = string.IsNullOrEmpty(verdict.Reasoning) ? "riichi-accept" : verdict.Reasoning;
-        return true;
+        probeReason = $"riichi declined: {choice.Reasoning}";
+        return false;
     }
 
     private bool TryChoose(StateSnapshot snapshot, out ActionChoice choice)
     {
+        snapshot = plugin.Aggregator.Enrich(snapshot);
         if ((snapshot.Legal.Flags & (ActionFlags.Tsumo | ActionFlags.Ron)) != 0)
         {
-            var localChoice = plugin.Policy.Choose(snapshot);
+            var localChoice = plugin.Aggregator.Choose(snapshot);
             bool verifiedTsumo = localChoice.Kind == ActionKind.Tsumo
                 && snapshot.Legal.Can(ActionFlags.Tsumo);
             bool verifiedRon = localChoice.Kind == ActionKind.Ron
@@ -1177,7 +1186,7 @@ public sealed class AutoPlayLoop : IDisposable
             }
 
             int key = ComputeMortalDecisionKey(snapshot);
-            var now = DateTime.UtcNow;
+            var now = clock.UtcNow;
             if (!hasMortalWait || mortalWaitKey != key)
             {
                 mortalWaitKey = key;
@@ -1198,7 +1207,7 @@ public sealed class AutoPlayLoop : IDisposable
                 plugin.MortalBridge.HasAuthoritativeOpponentDiscard);
             var fallback = forceSafePass
                 ? ActionChoice.Pass("pass: no authoritative opponent discard")
-                : plugin.Policy.Choose(plugin.MortalBridge.NormalizeForLocalFallback(snapshot));
+                : plugin.Aggregator.Choose(plugin.MortalBridge.NormalizeForLocalFallback(snapshot));
             string detail = string.IsNullOrWhiteSpace(fallback.Reasoning)
                 ? "local policy"
                 : fallback.Reasoning;
@@ -1207,7 +1216,7 @@ public sealed class AutoPlayLoop : IDisposable
         }
 
         hasMortalWait = false;
-        choice = plugin.Policy.Choose(snapshot);
+        choice = plugin.Aggregator.Choose(snapshot);
         return true;
     }
 
@@ -1275,7 +1284,7 @@ public sealed class AutoPlayLoop : IDisposable
         int acceptIndex = acceptRiichiPopup
             ? ComputeAcceptIndex(ActionKind.Riichi, legal, choice.Call)
             : ComputeAcceptIndex(choice.Kind, legal, choice.Call);
-        var now = DateTime.UtcNow;
+        var now = clock.UtcNow;
         bool isTerminalWin = loggedKind is ActionKind.Ron or ActionKind.Tsumo;
         bool isTerminalConfirmation = isTerminalWin
             && terminalWinConfirmation.TryGetConfirmation(snap, now, out var pendingKind)
@@ -1325,7 +1334,7 @@ public sealed class AutoPlayLoop : IDisposable
         else if (isTerminalConfirmation
             && result2 == InputDispatcher.DispatchResult.Ok)
         {
-            terminalWinDispatchedAt = DateTime.UtcNow;
+            terminalWinDispatchedAt = clock.UtcNow;
             pendingTerminalWin = null;
             terminalWinConfirmation.Complete();
         }

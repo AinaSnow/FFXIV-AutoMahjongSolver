@@ -7,7 +7,7 @@ namespace Mahjong.Plugin.Dalamud;
 [Serializable]
 public sealed record Configuration : IPluginConfiguration
 {
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
 
     public int Version { get; set; } = CurrentSchemaVersion;
 
@@ -51,6 +51,13 @@ public sealed record Configuration : IPluginConfiguration
     public string MortalWorkingDirectory { get; init; } = "";
 
     public string MortalPythonExecutable { get; init; } = "python";
+
+    public int ArchiveRetentionDays { get; init; } = 30;
+    public long ArchiveMaxBytes { get; init; } = 1L << 30;
+    public bool EnhancedStrategy { get; init; } = false;
+    public bool EnhancedShadowOnly { get; init; } = true;
+    public string CalibrationPath { get; init; } = "";
+    public int SearchBudgetMs { get; init; } = 50;
 
     public bool EnableGameLogging { get; init; } = true;
 

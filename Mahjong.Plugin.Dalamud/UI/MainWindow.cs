@@ -285,6 +285,7 @@ public sealed class MainWindow : Window, IDisposable
             else
             {
                 choice = plugin.Aggregator.LastChoice;
+                choiceIsRed = choice?.DiscardIsRed;
             }
             string? scorerError = usesMortal ? null : plugin.Aggregator.LastScorerError;
             int highlightSlot = -1;
@@ -449,6 +450,7 @@ public sealed class MainWindow : Window, IDisposable
             Theme.Subtle("The tile is outlined in the mahjong window.");
         }
 
+        if (cfg.ShowSuggestionDetails && usesMortal) Theme.Subtle("Mortal did not provide candidate scores.");
         if (cfg.ShowSuggestionDetails && scored is not null)
         {
             ImGui.Dummy(new Vector2(0, 6));
