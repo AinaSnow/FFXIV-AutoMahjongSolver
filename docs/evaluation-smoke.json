@@ -1,0 +1,203 @@
+{
+  "purpose": "Infrastructure smoke only; not acceptance or evidence of increased win rate",
+  "manifest": {
+    "schema": 1,
+    "engine": "libriichi",
+    "engine_commit": "0cff2b52982be5b1163aa9a62fb01f03ce91e0d2",
+    "model_sha256": "0a88ddad649804d085491b5397d895f596b0e55f30632c549ea145bb44786563",
+    "split": "development",
+    "seed_start": 1000002,
+    "groups": 1,
+    "opponent": "mortal",
+    "rule_set": "libriichi",
+    "candidate": "enhanced",
+    "baseline": "stable",
+    "policy_build": {
+      "schema": 6,
+      "weights": 3,
+      "hashes": {
+        "Mahjong.Core.dll": "2CD7E6616FAFF77E90B3E61B438D3E69582C38566747D208A6B371652A618A90",
+        "Mahjong.Engine.dll": "8A20CFC27A0BC564CDE7D687AAC961BD573F34CA4D6A60CF4E8C164850779473",
+        "Mahjong.Plugin.Game.dll": "E07AC29A88BBA3B5664CFCE23525E5E8E283C717EBAB3C334F7C89E5F5470445",
+        "Mahjong.Policy.Abstractions.dll": "D8EA3E00628438FB40B5F0EB416460F70E8B883C0DB997751A3DF2EE76740ED3",
+        "Mahjong.Policy.dll": "3B53B87B3A85259FF2C641893B27F9977E44A8A346ED2632B88085373EA7B71F",
+        "Mahjong.Policy.Mjai.dll": "4AC569420256923032712C6E9FC7EB9BA7260699A75328D89C2F8C84CEF890EF",
+        "Mahjong.Rules.dll": "9D705CAFD60E8A03F5C3778A81E26BAE6076A03CF463399645699EA0DA229A83"
+      }
+    },
+    "calibration_path": null
+  },
+  "report": {
+    "groups": 1,
+    "matches": 8,
+    "split": "development",
+    "rank_delta": -0.25,
+    "rank_delta_95_ci": null,
+    "fourth_delta": -0.25,
+    "fourth_delta_95_ci": null,
+    "candidate": {
+      "average_rank": 3.75,
+      "first_rate": 0,
+      "fourth_rate": 0.75,
+      "average_score": 3550,
+      "average_score_delta": -21450,
+      "win_rate": 0.10810810810810811,
+      "deal_in_rate": 0.2972972972972973
+    },
+    "baseline": {
+      "average_rank": 4,
+      "first_rate": 0,
+      "fourth_rate": 1,
+      "average_score": 7375,
+      "average_score_delta": -17625,
+      "win_rate": 0.1388888888888889,
+      "deal_in_rate": 0.25
+    },
+    "promotion_statistics_pass": false,
+    "promotion_requires_clean_protocol_and_action_regressions": true,
+    "scope": "libriichi strategy results; not live-game win rate or execution reliability",
+    "rule_differences": [
+      "libriichi standard four-player hanchan; game client match length must be separately confirmed",
+      "Doman timing, UI prompts, call legality, abortive draws and placement/tie rules require live validation",
+      "No gameplay input latency or process timeout loss is simulated"
+    ]
+  },
+  "matches": [
+    {
+      "seed": 1000002,
+      "key": 42,
+      "candidate": [
+        {
+          "index": 2,
+          "seat": 2,
+          "scores": [
+            15900,
+            47100,
+            -1300,
+            38300
+          ],
+          "rank": 4,
+          "score": -1300,
+          "hands": 7,
+          "wins": 0,
+          "deal_ins": 3,
+          "score_delta": -26300
+        },
+        {
+          "index": 3,
+          "seat": 3,
+          "scores": [
+            34700,
+            15900,
+            30200,
+            19200
+          ],
+          "rank": 3,
+          "score": 19200,
+          "hands": 10,
+          "wins": 3,
+          "deal_ins": 2,
+          "score_delta": -5800
+        },
+        {
+          "index": 1,
+          "seat": 1,
+          "scores": [
+            7700,
+            -2000,
+            41000,
+            53300
+          ],
+          "rank": 4,
+          "score": -2000,
+          "hands": 9,
+          "wins": 0,
+          "deal_ins": 2,
+          "score_delta": -27000
+        },
+        {
+          "index": 0,
+          "seat": 0,
+          "scores": [
+            -1700,
+            16900,
+            40700,
+            44100
+          ],
+          "rank": 4,
+          "score": -1700,
+          "hands": 11,
+          "wins": 1,
+          "deal_ins": 4,
+          "score_delta": -26700
+        }
+      ],
+      "baseline": [
+        {
+          "index": 2,
+          "seat": 2,
+          "scores": [
+            15900,
+            47100,
+            -1300,
+            38300
+          ],
+          "rank": 4,
+          "score": -1300,
+          "hands": 7,
+          "wins": 0,
+          "deal_ins": 3,
+          "score_delta": -26300
+        },
+        {
+          "index": 1,
+          "seat": 1,
+          "scores": [
+            28400,
+            -3300,
+            17100,
+            57800
+          ],
+          "rank": 4,
+          "score": -3300,
+          "hands": 7,
+          "wins": 0,
+          "deal_ins": 3,
+          "score_delta": -28300
+        },
+        {
+          "index": 3,
+          "seat": 3,
+          "scores": [
+            32800,
+            20600,
+            27800,
+            18800
+          ],
+          "rank": 4,
+          "score": 18800,
+          "hands": 9,
+          "wins": 2,
+          "deal_ins": 1,
+          "score_delta": -6200
+        },
+        {
+          "index": 0,
+          "seat": 0,
+          "scores": [
+            15300,
+            27600,
+            33200,
+            23900
+          ],
+          "rank": 4,
+          "score": 15300,
+          "hands": 13,
+          "wins": 3,
+          "deal_ins": 2,
+          "score_delta": -9700
+        }
+      ]
+    }
+  ]
+}

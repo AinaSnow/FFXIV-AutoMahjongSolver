@@ -1,5 +1,7 @@
 # Roadmap
 
+Current implementation and outstanding acceptance work: [stability and strategy status](implementation-status.md). The historical shipped list below does not certify current client protocol layouts.
+
 The end goal is full intelligent automation across **all clients** (EU, NA, JP, OC): addon detection, tile reading, hint overlay, auto-discard, and full call acceptance (Pon / Chi / Kan / Riichi / Tsumo / Ron) at parity on every variant.
 
 ## Shipped
@@ -15,16 +17,16 @@ The end goal is full intelligent automation across **all clients** (EU, NA, JP, 
 - Riichi tsumogiri honors the policy's chosen discard (latched alongside the riichi-confirm flag) rather than the last-drawn tile
 - Akadora-aware scoring: red 5s in closed hand and open melds contribute to dora count
 - MeldTracker chi/pon/minkan inference from closed-hand deltas + opp-discard increments, with a 30-tick deferred-baseline retry to ride out memory-write races
-- Kan-aware TsumogiriFallback (each meld contributes its actual `TileCount`)
+- Kan-aware structural validation (every meld contributes three tiles, including all kan forms)
 - Self-AnKan tracked via `MeldTracker.Record` so suggestions don't pause for the rest of the hand
 - AutoPlayLoop FSM duplicate-fire guard (animation-gap `legal=None` ticks no longer clear the retry-cooldown context)
-- GameLogger writes hand-end events into the new hand-file so they survive concurrent telemetry uploads
+- GameLogger writes hand-end events into the new hand-file for local archive analysis
 - EfficiencyPolicy defensive guard catches DiscardScorer invariant exceptions on shanten-invalid mid-transition states
 - Per-dispatch chat-log annotation (`schedState`/`curState`/`path`) so regressions are one log line away
 - Plugin-layer replay-harness fixture corpus: pure `BuildSnapshotFromMemory` entry on `BaseEmjVariant`, JSON fixture schema with `AddonMemoryBuilder` for synthetic seeds, `tools/extract-fixture.mjs` for pulling fixtures from telemetry memdumps, CI gates on every JSON under `tests/Mahjong.Plugin.Dalamud.Tests/Replay/fixtures/` (Track 0 of the closed meta [#38](https://github.com/XeldarAlz/FFXIV-DomanMahjongSolver/issues/38))
 - LayoutProfile threading into `InputDispatcher`: state codes (`SelfDeclareList`, `OurTurnDiscard`) and hand-array offset routed through the active profile with safe defaults matching `data/layouts/{emj,emj_l}.json`; EmjL state-30 fixture covers the JSON-driven dispatch path ([#47](https://github.com/XeldarAlz/FFXIV-DomanMahjongSolver/issues/47))
-- Engine: shanten · ukeire · yaku · fu · scoring (116 tests)
-- Policy: efficiency · Bayesian opponent model · evolutionary weight tuner · Tenhou log parser (86 tests)
+- Engine: shanten · ukeire · yaku · fu · scoring
+- Policy: efficiency · Bayesian opponent model · evolutionary weight tuner · Tenhou log parser
 
 ## In progress
 

@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net8.0": {
+      "mahjong.core": {
+        "type": "Project"
+      },
+      "mahjong.rules": {
+        "type": "Project",
+        "dependencies": {
+          "Mahjong.Core": "[0.1.2.3, )"
+        }
+      }
+    }
+  }
+}

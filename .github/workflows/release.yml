@@ -53,23 +53,14 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '10.0.400'
 
-      - name: Download Dalamud dev build
+      - name: Install pinned Dalamud build
         shell: pwsh
-        # Track staging while API 15 / Patch 7.50 is in beta — the release
-        # channel is still API 14 and won't satisfy Dalamud.NET.Sdk 15.x.
-        # Revert to /latest.zip once Dalamud 15 GAs.
-        run: |
-          $dalamudUrl = "https://goatcorp.github.io/dalamud-distrib/stg/latest.zip"
-          $dalamudDir = "$env:AppData\XIVLauncher\addon\Hooks\dev"
-          New-Item -ItemType Directory -Force -Path $dalamudDir | Out-Null
-          Invoke-WebRequest -Uri $dalamudUrl -OutFile dalamud.zip
-          Expand-Archive -Path dalamud.zip -DestinationPath $dalamudDir -Force
-          Remove-Item dalamud.zip
+        run: ./tools/install-dalamud.ps1
 
       - name: Build (Release)
-        run: dotnet build Mahjong.Plugin.Dalamud.sln --configuration Release
+        run: dotnet build Mahjong.Plugin.Dalamud.sln --configuration Release -p:RestoreLockedMode=true
 
       - name: Run tests
         run: dotnet test Mahjong.Plugin.Dalamud.sln --configuration Release --no-build --logger "console;verbosity=normal"

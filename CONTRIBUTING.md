@@ -7,26 +7,20 @@ Thanks for taking an interest. This is a small solo project, but PRs are welcome
 ```bash
 git clone https://github.com/XeldarAlz/FFXIV-DomanMahjongSolver.git
 cd FFXIV-DomanMahjongSolver
-dotnet restore Mahjong.Plugin.Dalamud.sln
+dotnet restore Mahjong.Plugin.Dalamud.sln --locked-mode
 dotnet build   Mahjong.Plugin.Dalamud.sln
 dotnet test    Mahjong.Plugin.Dalamud.sln
 ```
 
-You need the .NET 10 SDK. The plugin requires Dalamud at runtime; CI pulls a Dalamud dev build automatically and that's enough to compile. See `.github/workflows/ci.yml` to reproduce CI locally.
+Use SDK 10.0.400 from `global.json`, plus the .NET 8 runtime for portable projects. Run `./tools/install-dalamud.ps1` on Windows to install the exact Dalamud build and verify hashes in `build/dependencies.lock.json`. CI and releases use this same installer and NuGet lock files.
 
 ## Test suite
 
-**593 tests** across seven suites:
+Seven .NET suites cover rules, engine logic, public-state reduction, strategies, strict replay, configuration, IPC and plugin action flows. The runner output is the current test count; do not maintain a duplicated count here.
 
-- **Mahjong.Core** (58): value-type semantics, defensive-copy contract.
-- **Mahjong.Rules** (51): yaku rules + scoring tiers + dora cycles + conflict declarations.
-- **Mahjong.Plugin.Game** (51): `Result<T,E>`, JSON layout loader, `ActionStateMachine` transitions, config migrators.
-- **Mahjong.Engine** (116): decomposition, shanten, ukeire, fu, scoring (via `Scorer + RiichiRuleSet`), yaku detection.
-- **Mahjong.Replay** (17): Tenhou parser + golden-file regression suite.
-- **Mahjong.Plugin.Dalamud** (214): config service, discard capture strategies, MeldTracker (incl. chi/pon race deferral), AutoPlayLoop accept-index computation, GameLogger dedup + hand-end, findings log, telemetry adapters.
-- **Mahjong.Policy** (86): every sub-policy in isolation, weight bundle defaults, JSON weight provider, structured `Decision<T>` rationale.
+Pure logic tests run on Linux. Dalamud plugin tests run on Windows. Python transport and arena tests use `python -m unittest discover -s tools/tests -v`. Missing replay fixtures or goldens fail tests. Only explicit `UPDATE_REPLAY_SNAPSHOTS=1` (Tenhou) or `MJ_REGEN_FIXTURES=1` (UI fixtures) updates reviewed baselines.
 
-Every project except `Mahjong.Plugin.Dalamud` itself is Dalamud-free and portable.
+See [implementation status](docs/implementation-status.md) and [paired evaluation](docs/evaluation.md) for acceptance limits and commands.
 
 ## Project layout
 
@@ -39,7 +33,7 @@ FFXIV-DomanMahjongSolver/
 ├── Mahjong.Replay/              Tenhou parser + golden-file regression harness
 ├── Mahjong.Engine/              decomposition · shanten · ukeire · Scorer
 ├── Mahjong.Policy/              heuristic policy implementations · weight tuner
-├── Mahjong.Tuner/               offline weight optimization (console exe)
+├── Mahjong.Tuner/               legacy logic smoke tuner; not a strength benchmark
 ├── Mahjong.Plugin.Dalamud/      the Dalamud plugin (thin shell)
 │
 ├── data/
@@ -53,10 +47,10 @@ FFXIV-DomanMahjongSolver/
 │   ├── roadmap.md               shipped / in progress / planned
 │   └── ruleset.md               Doman vs Riichi rules spec
 │
-├── server/                      Cloudflare Worker + Backblaze B2 telemetry sink
-├── tests/                       per-project test suites (593 tests)
+├── server/                      legacy server source; no active plugin upload pipeline
+├── tests/                       per-project test suites
 ├── tools/                       Node + Python + PowerShell scripts:
-│                                  - B2 telemetry pull / analysis (b2-*.mjs, analyze-*.mjs)
+│                                  - legacy corpus analysis (not part of plugin operation)
 │                                  - cross-install offset RE scanners (scan-*.mjs)
 │                                  - per-variant capture helpers (scan_tiles.py)
 ├── repo/repo.json               Dalamud plugin manifest (CI-checked against Directory.Build.props)

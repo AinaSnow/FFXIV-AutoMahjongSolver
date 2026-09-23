@@ -1,0 +1,35 @@
+name: Full paired evaluation
+on:
+  workflow_dispatch:
+    inputs:
+      groups:
+        description: Independent seed groups (acceptance requires 1000)
+        default: '1000'
+        required: true
+      split:
+        type: choice
+        options: [development, acceptance, train]
+        default: development
+jobs:
+  arena:
+    runs-on: [self-hosted, linux, mortal]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: |
+            10.0.400
+            8.0.x
+      - run: dotnet build Mahjong.Policy.Mjai -c Release -p:RestoreLockedMode=true
+      - name: Paired four-seat arena
+        env:
+          EVAL_GROUPS: ${{ inputs.groups }}
+          EVAL_SPLIT: ${{ inputs.split }}
+        run: |
+          cd "$MORTAL_DIR"
+          "$MORTAL_PYTHON" "$GITHUB_WORKSPACE/tools/evaluation/arena.py" --policy-command "[\"dotnet\",\"$GITHUB_WORKSPACE/Mahjong.Policy.Mjai/bin/Release/net8.0/Mahjong.Policy.Mjai.dll\"]" --mortal-dir "$MORTAL_DIR" --groups "$EVAL_GROUPS" --split "$EVAL_SPLIT" --output "$GITHUB_WORKSPACE/artifacts/evaluation/$GITHUB_RUN_ID"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: paired-evaluation
+          path: artifacts/evaluation/

@@ -2,6 +2,16 @@
 
 How the codebase is laid out, what each project owns, and how to extend it.
 
+## Shared decision and background runtime
+
+`network queue -> validated decoder -> PublicStateReducer -> UI merge -> StateAggregator -> PolicyEvaluation` is the local decision path. A revision binds the final action, candidate scores and reasons. Mortal publishes into the same decision cache with an empty candidate list; the local fallback cache remains separate. UI, automation and logging consume published results. They do not rescore independently.
+
+The relative player index is always zero in live merged states; `SeatWind` is independent. Unknown observations have no corresponding observation flag. Unsupported game builds keep UI reads and disable network inference. See [Mortal and compatibility](mortal.md).
+
+`MortalProcessClient` owns bounded sequential IPC on a worker. The maintained Python runner acknowledges every session/hand/sequence envelope. `IGameActionScheduler` and `TimeProvider` separate delayed clicks and deadlines from the host. Dispatch checks configuration, hand, revision and current legal UI before sending input. `BackgroundIoWorker` serializes logs and archive end markers; main-thread disposal initiates cancellation without waiting for disk/process completion.
+
+`Mahjong.Policy.Mjai` exposes the builtin policy to an external complete arena. `EnhancedSearch` is an opt-in experiment, with shadow comparison by default. See [evaluation](evaluation.md) and [remaining acceptance work](implementation-status.md).
+
 ## Layered overview
 
 ```

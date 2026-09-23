@@ -91,3 +91,8 @@ If you liked this plugin, take a look at my other Dalamud work. You might find s
 ## License
 
 AGPL-3.0-or-later. See [LICENSE.md](LICENSE.md).
+
+
+## Stability and experimental strategy update
+
+See [implementation status](docs/implementation-status.md), [Mortal compatibility](docs/mortal.md) and [paired evaluation](docs/evaluation.md). Unsupported game protocol versions use UI-only fallback. Enhanced strategy is disabled by default and shadow-only when first enabled. Small offline smoke runs have completed; the 8,000-match acceptance evaluation and current-client capture validation remain outstanding. No improvement in live win rate is claimed.

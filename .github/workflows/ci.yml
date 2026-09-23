@@ -21,7 +21,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '10.0.400'
 
       - name: Verify version sync (Directory.Build.props ↔ repo.json)
         shell: bash
@@ -36,6 +36,26 @@ jobs:
             echo "::error::Version mismatch — Directory.Build.props ($build_ver), repo.json AssemblyVersion ($assembly_ver), TestingAssemblyVersion ($testing_ver) must all match."
             exit 1
           fi
+
+  logic:
+    name: Pure logic and replay gates
+    needs: guards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: |
+            10.0.400
+            8.0.x
+      - name: Logic tests (fixtures must exist, no golden update mode)
+        shell: bash
+        run: |
+          for project in tests/*.Tests/*.csproj; do
+            if [[ "$project" != *Dalamud* ]]; then dotnet test "$project" -c Release -p:RestoreLockedMode=true --verbosity minimal; fi
+          done
+      - name: Python bridge and evaluation tests
+        run: python3 -m unittest discover -s tools/tests -v
 
   # Full build + tests. Needs Dalamud present at the standard plugin path
   # so Dalamud.NET.Sdk can resolve $(DalamudLibPath).
@@ -53,23 +73,14 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '10.0.400'
 
-      - name: Download Dalamud dev build
+      - name: Install pinned Dalamud build
         shell: pwsh
-        # Track staging while API 15 / Patch 7.50 is in beta — the release
-        # channel is still API 14 and won't satisfy Dalamud.NET.Sdk 15.x.
-        # Revert to /latest.zip once Dalamud 15 GAs.
-        run: |
-          $dalamudUrl = "https://goatcorp.github.io/dalamud-distrib/stg/latest.zip"
-          $dalamudDir = "$env:AppData\XIVLauncher\addon\Hooks\dev"
-          New-Item -ItemType Directory -Force -Path $dalamudDir | Out-Null
-          Invoke-WebRequest -Uri $dalamudUrl -OutFile dalamud.zip
-          Expand-Archive -Path dalamud.zip -DestinationPath $dalamudDir -Force
-          Remove-Item dalamud.zip
+        run: ./tools/install-dalamud.ps1
 
       - name: Restore
-        run: dotnet restore Mahjong.Plugin.Dalamud.sln
+        run: dotnet restore Mahjong.Plugin.Dalamud.sln --locked-mode
 
       - name: Build (Release)
         run: dotnet build Mahjong.Plugin.Dalamud.sln --configuration Release --no-restore
@@ -86,7 +97,7 @@ jobs:
 
       - name: Run tests
         if: steps.find_tests.outputs.found == 'true'
-        run: dotnet test Mahjong.Plugin.Dalamud.sln --configuration Release --no-build --logger "console;verbosity=normal"
+        run: dotnet test tests/Mahjong.Plugin.Dalamud.Tests --configuration Release --no-build --logger "console;verbosity=normal"
 
       - name: Upload plugin artifact
         if: github.ref == 'refs/heads/main'

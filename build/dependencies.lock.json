@@ -1,0 +1,17 @@
+{
+  "sdk": "10.0.400",
+  "dalamud_version": "15.0.3.5",
+  "dalamud_commit": "e81744f6aea94bb6781affdd0d0b9319592f95d9",
+  "distribution_commit": "966563c7d7fb17c13661e454dab7391666170221",
+  "url": "https://raw.githubusercontent.com/goatcorp/dalamud-distrib/966563c7d7fb17c13661e454dab7391666170221/stg/latest.zip",
+  "files": {
+    "Dalamud.dll": "1f662aa14dcd6ffb6e9b2a27b33ef93c04792ca2f9c41e863539af9ee9f6e255",
+    "FFXIVClientStructs.dll": "2dc5b513647cc9897041d4bcfeb1e2c15ec087e6e0d04570d72f73b7614c39a5",
+    "Dalamud.Bindings.ImGui.dll": "f446df5004fccf3fb41498c3eee17d99b3ccb2d0e4e4288f1de73f6de5d8af2e",
+    "Lumina.dll": "eb1c4cecfa9d7281e166f985a05e23a57f69caa4f0ce3b9e37fb52f42bed439c",
+    "Lumina.Excel.dll": "a644fd6ea7e654d9ab001c8aa5c9c028b53ad6bf86b608ff126b7969f04cda8e",
+    "Reloaded.Hooks.Definitions.dll": "ee8c15a22a347785491ecd451e17b3073d6ada89920502fd951045619e79b209",
+    "goatcorp.Reloaded.Hooks.dll": "ceb1101ff13614cb000291bfec6a03db19d9d1e83ffc605ea500917d977415c7"
+  },
+  "archive_sha256": "a6c716b81daeb4fc348b076b63fe1cb584a731c781dbdaf3e6c58c1fbc33a827"
+}
