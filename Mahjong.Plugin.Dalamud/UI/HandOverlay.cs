@@ -85,19 +85,10 @@ public sealed class HandOverlay : IDisposable
         if (rects is null)
             return;
 
-        ActionChoice? choice;
-        bool? choiceIsRed = null;
-        if (plugin.MortalBridge.Enabled)
-        {
-            if (!plugin.MortalBridge.TryGetRecommendation(snap, out var mortalChoice, out choiceIsRed))
-                return;
-            choice = mortalChoice;
-        }
-        else
-        {
-            choice = plugin.Aggregator.LastChoice;
-            choiceIsRed = choice?.DiscardIsRed;
-        }
+        var evaluation = plugin.Aggregator.PresentedEvaluation(plugin.MortalBridge.Enabled,
+            plugin.MortalBridge.TryGetRecommendation(snap, out _, out _));
+        var choice = evaluation?.Choice;
+        bool? choiceIsRed = choice?.DiscardIsRed;
         if (choice?.DiscardTile is null)
             return;
         int slot = InputDispatcher.FindSlotOfTile(

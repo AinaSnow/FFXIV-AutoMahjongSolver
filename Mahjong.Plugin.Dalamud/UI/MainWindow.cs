@@ -272,22 +272,13 @@ public sealed class MainWindow : Window, IDisposable
                 return;
             }
 
-            bool usesMortal = plugin.MortalBridge.Enabled;
-            ScoredDiscard[]? scored = usesMortal ? null : plugin.Aggregator.LastScored;
-            ActionChoice? choice;
-            bool? choiceIsRed = null;
-            if (usesMortal)
-            {
-                choice = plugin.MortalBridge.TryGetRecommendation(snap, out var mortalChoice, out choiceIsRed)
-                    ? mortalChoice
-                    : null;
-            }
-            else
-            {
-                choice = plugin.Aggregator.LastChoice;
-                choiceIsRed = choice?.DiscardIsRed;
-            }
-            string? scorerError = usesMortal ? null : plugin.Aggregator.LastScorerError;
+            var evaluation = plugin.Aggregator.PresentedEvaluation(plugin.MortalBridge.Enabled,
+                plugin.MortalBridge.TryGetRecommendation(snap, out _, out _));
+            bool usesMortal = evaluation?.Source == "mortal" || (evaluation is null && plugin.MortalBridge.Enabled);
+            ScoredDiscard[]? scored = evaluation?.Candidates.ToArray();
+            var choice = evaluation?.Choice;
+            bool? choiceIsRed = choice?.DiscardIsRed;
+            string? scorerError = plugin.Aggregator.LastScorerError;
             int highlightSlot = -1;
             if (choice?.DiscardTile is { } t)
                 highlightSlot = InputDispatcher.FindSlotOfTile(t, snap.Hand, snap.HandIsRed, choiceIsRed);
@@ -435,9 +426,8 @@ public sealed class MainWindow : Window, IDisposable
         if (choice.DiscardTile is not null)
             ImGui.SetCursorPosY(startY + bigH + 4);
 
-        string why = usesMortal
-            ? "Selected by Mortal."
-            : ExplainChoice(choice, scored ?? []);
+        string why = !string.IsNullOrWhiteSpace(choice.Reasoning) ? choice.Reasoning
+            : usesMortal ? "Selected by Mortal." : ExplainChoice(choice, scored ?? []);
         if (!string.IsNullOrEmpty(why))
         {
             ImGui.PushStyleColor(ImGuiCol.Text, Theme.Body);

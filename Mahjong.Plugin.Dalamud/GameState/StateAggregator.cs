@@ -188,6 +188,28 @@ public sealed class StateAggregator : IDisposable
         DecisionPublished?.Invoke(LastEvaluation);
     }
 
+    public void PublishLocalExecution(StateSnapshot snapshot, ActionChoice choice, string? source = null)
+    {
+        var evaluation = (LastLocalEvaluation ?? new PolicyEvaluation(choice, [])) with { Choice = choice };
+        if (source is not null) evaluation = evaluation with { Source = source };
+        if (LastEvaluation?.Choice == choice && LastEvaluation.Source == evaluation.Source) return;
+        PublishExternal(snapshot, evaluation);
+    }
+
+    public PolicyEvaluation? PresentedEvaluation(bool externalEnabled, bool externalRecommendationCurrent) =>
+        SelectPresentedEvaluation(LastEvaluation, externalEnabled, externalRecommendationCurrent);
+
+    internal static PolicyEvaluation? SelectPresentedEvaluation(PolicyEvaluation? current, bool externalEnabled, bool externalRecommendationCurrent)
+    {
+        if (!externalEnabled) return current;
+        return current?.Source switch
+        {
+            "mortal" when externalRecommendationCurrent => current,
+            "local-fallback" or "terminal-guard" => current,
+            _ => null,
+        };
+    }
+
     public StateSnapshot Enrich(StateSnapshot snapshot)
     {
         var merged = merge?.Invoke(snapshot) ?? snapshot;

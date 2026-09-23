@@ -1,4 +1,5 @@
 using Mahjong.Core;
+using Mahjong.Policy.Abstractions;
 using Mahjong.Plugin.Dalamud.GameState;
 
 namespace Mahjong.Plugin.Dalamud.Tests;
@@ -14,6 +15,16 @@ public class StateAggregatorHashTests
         Assert.NotEqual(
             StateAggregator.ComputeContentHash(first),
             StateAggregator.ComputeContentHash(second));
+    }
+
+    [Fact]
+    public void Timeout_fallback_remains_visible_when_model_cache_has_been_cleared()
+    {
+        var fallback = new PolicyEvaluation(ActionChoice.Discard(Tile.FromId(4), "Mortal timeout"), [])
+            { Source = "local-fallback" };
+        Assert.Same(fallback, StateAggregator.SelectPresentedEvaluation(fallback, true, false));
+        Assert.Null(StateAggregator.SelectPresentedEvaluation(fallback with { Source = "mortal" }, true, false));
+        Assert.Null(StateAggregator.SelectPresentedEvaluation(fallback with { Source = "stable" }, true, false));
     }
 
     private static StateSnapshot SnapshotWithPon(int claimedTileId)

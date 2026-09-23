@@ -336,7 +336,6 @@ public sealed class AutoPlayLoop : IDisposable
     {
         if (plugin.Configuration.MortalEnabled)
         {
-            plugin.GameLogger.RecordDecision(choice, plugin.MortalBridge.TryGetRecommendation(plugin.Aggregator.Enrich(snap), out _, out _) ? "mortal" : "local-fallback");
             plugin.StrategyDiagnostics.RecordFinalDecision(choice);
         }
 
@@ -1173,6 +1172,7 @@ public sealed class AutoPlayLoop : IDisposable
                     Reasoning = $"terminal win guard: {detail}",
                 };
                 hasMortalWait = false;
+                plugin.Aggregator.PublishLocalExecution(snapshot, choice, "terminal-guard");
                 return true;
             }
         }
@@ -1212,11 +1212,13 @@ public sealed class AutoPlayLoop : IDisposable
                 ? "local policy"
                 : fallback.Reasoning;
             choice = fallback with { Reasoning = $"Mortal timeout; replay recovery; local fallback: {detail}" };
+            plugin.Aggregator.PublishLocalExecution(snapshot, choice, "local-fallback");
             return true;
         }
 
         hasMortalWait = false;
         choice = plugin.Aggregator.Choose(snapshot);
+        plugin.Aggregator.PublishLocalExecution(snapshot, choice, plugin.MortalBridge.Enabled ? "local-fallback" : null);
         return true;
     }
 

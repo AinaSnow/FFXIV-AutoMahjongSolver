@@ -172,7 +172,7 @@ public sealed class GameLogger : IDisposable
 
     private void OnDecisionPublished(PolicyEvaluation evaluation)
     {
-        if (evaluation.Source != "mortal" && (externalEnabled?.Invoke() ?? configService.Current.MortalEnabled)) return;
+        if (evaluation.Source is not ("mortal" or "local-fallback" or "terminal-guard") && (externalEnabled?.Invoke() ?? configService.Current.MortalEnabled)) return;
         RecordDecision(evaluation.Choice, evaluation.Source);
     }
 
