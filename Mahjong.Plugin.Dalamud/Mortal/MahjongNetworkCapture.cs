@@ -39,17 +39,39 @@ public sealed unsafe class MahjongNetworkCapture : IDisposable
 
     private readonly ConcurrentQueue<CapturedMahjongPacket> queue = new();
     private readonly IPluginLog log;
+    private readonly ConcurrentQueue<CapturedMahjongPacket> publicQueue = new();
+    private readonly MahjongProtocolProfile[] profiles;
+    private readonly Func<string?> variantAccessor;
+    private readonly string? gameVersion;
+    public bool PublicCaptureEnabled { get; set; }
+    public bool ProtocolVerified => profiles.Any(p => p.Matches(gameVersion, variantAccessor()));
+    public string ProtocolStatus => ProtocolVerified ? "Verified" : $"No verified protocol for {gameVersion ?? "unknown build"}/{variantAccessor() ?? "unknown variant"}";
+    public bool TryDequeuePublic(out CapturedMahjongPacket packet) => publicQueue.TryDequeue(out packet);
     private Hook<ReceivePacketDelegate>? receiveHook;
     private bool disposed;
     private long droppedPackets;
 
     private delegate void ReceivePacketDelegate(PacketDispatcher* dispatcher, uint targetId, byte* packet);
 
-    public MahjongNetworkCapture(IGameInteropProvider gameInterop, IPluginLog log)
+    public MahjongNetworkCapture(IGameInteropProvider gameInterop, IPluginLog log,
+        Func<string?>? variantAccessor = null, string? profilesDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(gameInterop);
         ArgumentNullException.ThrowIfNull(log);
         this.log = log;
+        this.variantAccessor = variantAccessor ?? (() => null);
+        string? processDirectory = Path.GetDirectoryName(Environment.ProcessPath);
+        string versionPath = Path.Combine(processDirectory ?? "", "ffxivgame.ver");
+        try { gameVersion = File.Exists(versionPath) ? File.ReadAllText(versionPath).Trim() : null; }
+        catch (IOException) { gameVersion = null; }
+        try { profiles = MahjongProtocolProfile.LoadDirectory(profilesDirectory ?? ""); }
+        catch (Exception ex) { profiles = []; log.Warning(ex, "[Mahjong] Invalid protocol profiles; network capture disabled."); }
+        // An unknown build never installs an unverified native receive hook.
+        if (!profiles.Any(p => p.Verified && p.GameVersion == gameVersion))
+        {
+            log.Warning($"[Mahjong] {ProtocolStatus}; UI-only mode.");
+            return;
+        }
 
         nint address = GetVirtualFunctionAddress(
             PacketDispatcher.StaticVirtualTablePointer,
@@ -73,6 +95,8 @@ public sealed unsafe class MahjongNetworkCapture : IDisposable
             return;
         disposed = true;
         CaptureEnabled = false;
+        PublicCaptureEnabled = false;
+        while (publicQueue.TryDequeue(out _)) { }
         receiveHook?.Dispose();
         receiveHook = null;
         while (queue.TryDequeue(out _)) { }
@@ -100,7 +124,7 @@ public sealed unsafe class MahjongNetworkCapture : IDisposable
 
         // The dispatcher may reuse or mutate the receive buffer, so preserve
         // the wire payload before handing it to the game.
-        if (CaptureEnabled && packet is not null)
+        if ((CaptureEnabled || PublicCaptureEnabled) && ProtocolVerified && packet is not null)
             CapturePacket(packet);
 
         hook.Original(dispatcher, targetId, packet);
@@ -111,9 +135,10 @@ public sealed unsafe class MahjongNetworkCapture : IDisposable
         try
         {
             ushort opcode = *(ushort*)(packet + ReceiveOpcodeOffset);
-            if (!TryGetPacketSpec(opcode, out int messageId, out int payloadLength))
-                return;
-            if (queue.Count >= MaxQueuedPackets)
+            var profile = profiles.FirstOrDefault(p => p.Matches(gameVersion, variantAccessor()));
+            if (profile is null || !profile.TryGet(opcode, out var spec) || spec is null) return;
+            int messageId = spec.MessageId, payloadLength = spec.PayloadLength;
+            if ((CaptureEnabled && queue.Count >= MaxQueuedPackets) || publicQueue.Count >= MaxQueuedPackets)
             {
                 Interlocked.Increment(ref droppedPackets);
                 return;
@@ -121,7 +146,9 @@ public sealed unsafe class MahjongNetworkCapture : IDisposable
 
             var payload = new byte[payloadLength];
             Marshal.Copy((nint)(packet + ReceivePayloadOffset), payload, 0, payloadLength);
-            queue.Enqueue(new CapturedMahjongPacket(messageId, opcode, DateTimeOffset.UtcNow, payload));
+            var captured = new CapturedMahjongPacket(messageId, opcode, DateTimeOffset.UtcNow, payload);
+            if (CaptureEnabled) queue.Enqueue(captured);
+            if (PublicCaptureEnabled) publicQueue.Enqueue(captured);
         }
         catch (Exception ex)
         {

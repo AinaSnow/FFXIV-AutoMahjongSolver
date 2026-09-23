@@ -1,0 +1,32 @@
+{
+  "gameVersion": "UNVERIFIED",
+  "variant": "Emj",
+  "verified": false,
+  "evidence": "",
+  "packets": {
+    "0x0129": {
+      "messageId": 636,
+      "payloadLength": 48
+    },
+    "0x018E": {
+      "messageId": 637,
+      "payloadLength": 104
+    },
+    "0x00B0": {
+      "messageId": 638,
+      "payloadLength": 24
+    },
+    "0x0273": {
+      "messageId": 639,
+      "payloadLength": 256
+    },
+    "0x039C": {
+      "messageId": 640,
+      "payloadLength": 504
+    },
+    "0x0156": {
+      "messageId": 641,
+      "payloadLength": 32
+    }
+  }
+}
