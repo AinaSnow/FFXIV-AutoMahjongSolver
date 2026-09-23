@@ -159,3 +159,7 @@ game_version and tell me which client builds have no matching variant"*
 Scripts are ad-hoc one-offs — no test coverage, no formal API, run on
 demand. The `/mjauto` capture commands they consume live in the plugin's
 `Commands/MjAutoCommand.cs`.
+
+### Built-in debug captures
+
+Enable **Debug packet logger** in plugin settings before matchmaking; see [automatic capture](../docs/auto-packet-logger.md). Audit its raw `.ndjson` with `node tools/audit-debug-packets.mjs capture.ndjson 2026.09.15.0000.0000 report.json`. This reports sequence/length/transport loss and opcode inventory without guessing message names or exposing payloads. Tests: `node tools/test-audit-debug-packets.mjs`.

@@ -63,6 +63,7 @@ jobs:
         run: |
           node tools/test-parse-mahjong-packets.mjs
           node tools/test-audit-mahjong-capture.mjs
+          node tools/test-audit-debug-packets.mjs
 
   # Full build + tests. Needs Dalamud present at the standard plugin path
   # so Dalamud.NET.Sdk can resolve $(DalamudLibPath).

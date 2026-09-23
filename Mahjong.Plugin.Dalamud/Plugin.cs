@@ -62,6 +62,7 @@ public sealed class Plugin : IDalamudPlugin
     public InputDispatcher Dispatcher { get; }
     public GameLogger GameLogger { get; }
     public MatchArchiveWriter MatchArchive { get; }
+    public DebugPacketLogger DebugPackets { get; }
     private readonly BackgroundIoWorker archiveIo = new();
     public AutoPlayLoop AutoPlay { get; }
     public MahjongNetworkCapture NetworkCapture { get; }
@@ -156,6 +157,10 @@ public sealed class Plugin : IDalamudPlugin
         MatchArchive = new MatchArchiveWriter(configDir, Log, archiveIo, () => (ConfigService.Current.ArchiveRetentionDays, ConfigService.Current.ArchiveMaxBytes));
         NetworkCapture = new MahjongNetworkCapture(GameInterop, Log,
             () => AddonReader.ActiveLayout?.Name, Path.Combine(pluginAssemblyDir, "protocols"));
+        DebugPackets = new DebugPacketLogger(GameInterop, Framework, configDir,
+            () => Configuration.DebugAutoPacketLogging, () => AddonReader.LastObservation.Present,
+            () => new MatchArchiveEnvironment(NetworkCapture.GameVersion, AddonReader.ActiveLayout?.Name,
+                NetworkCapture.ProtocolVerified, NetworkCapture.ProtocolStatus, typeof(Plugin).Module.ModuleVersionId.ToString()));
         PublicState = new PublicStateTracker(NetworkCapture, Framework, AddonReader, Log, MatchArchive.RecordPacket);
         Aggregator = new StateAggregator(AddonReader, Framework, Policy, PublicState.Merge, () => Configuration);
         EventLogger = new InputEventLogger(
@@ -282,6 +287,7 @@ public sealed class Plugin : IDalamudPlugin
         MortalBridge.DecisionPublished -= Aggregator.PublishExternal;
         MortalBridge.Dispose();
         PublicState.Dispose();
+        DebugPackets.Dispose();
         NetworkCapture.Dispose();
         DiscardCaptureLogger.Dispose();
         DiscardTracker.Dispose();

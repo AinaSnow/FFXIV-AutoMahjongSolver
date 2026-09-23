@@ -59,6 +59,9 @@ public sealed record Configuration : IPluginConfiguration
     public string CalibrationPath { get; init; } = "";
     public int SearchBudgetMs { get; init; } = 50;
 
+    /// <summary>Local raw receive recording; independent of protocol validation and Mortal.</summary>
+    public bool DebugAutoPacketLogging { get; init; } = false;
+
     public bool EnableGameLogging { get; init; } = true;
 
     /// <summary>Legacy identifier retained so existing v2 configuration files round-trip. It is never transmitted.</summary>
