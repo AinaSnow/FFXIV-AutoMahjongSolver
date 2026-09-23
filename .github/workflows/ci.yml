@@ -56,6 +56,13 @@ jobs:
           done
       - name: Python bridge and evaluation tests
         run: python3 -m unittest discover -s tools/tests -v
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+      - name: Packet export parser and evidence audit
+        run: |
+          node tools/test-parse-mahjong-packets.mjs
+          node tools/test-audit-mahjong-capture.mjs
 
   # Full build + tests. Needs Dalamud present at the standard plugin path
   # so Dalamud.NET.Sdk can resolve $(DalamudLibPath).

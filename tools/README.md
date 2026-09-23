@@ -80,7 +80,13 @@ testing another append-capable packet producer. Copy
 `mortal-bridge.example.json` outside version control and adjust the executable,
 distribution, and Mortal working directory.
 
+### Capture validation for a new client build
+
+See [international 2026.09.15 capture checklist](../docs/capture-20260915.md). Run `node tools/audit-mahjong-capture.mjs session.log 2026.09.15.0000.0000 report.json` to check timestamps, opcode/length inventory and unknown actions. It never marks a protocol verified or writes live profiles. Tests: `node tools/test-audit-mahjong-capture.mjs`.
+
 ### Live Mortal integration
+
+**Current status:** no verified protocol profile is shipped for 2026.09.15.0000.0000. Network capture and Mortal inference remain disabled on this build; UI logs continue. Use a separate Packet Logger export for validation. The historical six-message description below is not a compatibility claim. See [current protocol requirements](../docs/mortal.md).
 
 The Dalamud plugin captures the six confirmed Mahjong receive opcodes directly
 in-process and never captures message 642, whose payload contains player names.
@@ -97,7 +103,9 @@ Enable Mortal before a match or before the next hand begins. The current opcode
 map is patch-specific and comes from the verified human-match capture; the
 offline parser continues to key on the analysis tool's stable `DOWN_ID_*` names.
 
-## Pulling user telemetry
+## Historical telemetry tooling (inactive)
+
+The plugin no longer uploads telemetry. This section describes legacy corpus maintenance only.
 
 Once the Cloudflare Worker is deployed (see `server/README.md`):
 

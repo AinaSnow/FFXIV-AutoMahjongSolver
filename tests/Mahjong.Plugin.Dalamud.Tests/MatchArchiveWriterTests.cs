@@ -29,10 +29,13 @@ public class MatchArchiveWriterTests
             """{"e":"decision","source":"local-fallback","elapsed_ms":24}""",
             """{"e":"action""" ]);
         using var writer = new MatchArchiveWriter(tmp.Path, new StubPluginLog());
-        string archive = Assert.IsType<string>(await writer.FinalizeSessionAsync([game], Stats));
+        var environment = new MatchArchiveEnvironment("2026.09.15.0000.0000", "Emj", false, "UI-only", "test-build");
+        string archive = Assert.IsType<string>(await writer.FinalizeSessionAsync([game], Stats, environment));
         using var doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(archive,"summary.json")));
         Assert.True(doc.RootElement.GetProperty("packet_write_failed").GetBoolean());
         var health = doc.RootElement.GetProperty("decision_health");
+        Assert.Equal("2026.09.15.0000.0000", doc.RootElement.GetProperty("environment").GetProperty("game_version").GetString());
+        Assert.False(doc.RootElement.GetProperty("environment").GetProperty("protocol_verified").GetBoolean());
         Assert.Equal(18, health.GetProperty("mean_ms").GetDouble());
         Assert.Equal(24, health.GetProperty("p95_ms").GetDouble());
         Assert.Equal(1, health.GetProperty("malformed_lines").GetInt32());

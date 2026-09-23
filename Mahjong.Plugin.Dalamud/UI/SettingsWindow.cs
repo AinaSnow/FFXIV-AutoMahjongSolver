@@ -174,6 +174,9 @@ public sealed class SettingsWindow : Window, IDisposable
                 ImGui.EndDisabled();
 
             Theme.Subtle($"Status: {plugin.MortalBridge.Status}");
+            Theme.Subtle($"Network: {plugin.NetworkCapture.ProtocolStatus}");
+            if (!plugin.NetworkCapture.ProtocolVerified)
+                ImGui.TextWrapped("Network packet capture is disabled. UI logs still work. To validate a new game version, record and export a separate Packet Logger session.");
             Theme.Subtle($"Packets {plugin.MortalBridge.PacketsProcessed}  ·  MJAI {plugin.MortalBridge.EventsSent}  ·  Decisions {plugin.MortalBridge.ReactionsReceived}");
             Theme.Subtle($"Mapped {plugin.MortalBridge.DecisionsMapped}  ·  Timeouts {plugin.MortalBridge.DecisionTimeouts}  ·  Corrected {plugin.MortalBridge.CandidateCorrections}  ·  Recovered {plugin.MortalBridge.RecoveredDiscardEvents}  ·  Model {plugin.MortalBridge.LastModelEvalMilliseconds:0.0} ms");
         }

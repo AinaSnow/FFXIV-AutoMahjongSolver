@@ -258,7 +258,9 @@ public sealed class Plugin : IDalamudPlugin
                 DecisionTimeouts: MortalBridge.DecisionTimeouts,
                 CandidateCorrections: MortalBridge.CandidateCorrections,
                 RecoveredDiscards: MortalBridge.RecoveredDiscardEvents,
-                LastModelEvalMilliseconds: MortalBridge.LastModelEvalMilliseconds));
+                LastModelEvalMilliseconds: MortalBridge.LastModelEvalMilliseconds),
+            new MatchArchiveEnvironment(NetworkCapture.GameVersion, AddonReader.ActiveLayout?.Name,
+                NetworkCapture.ProtocolVerified, NetworkCapture.ProtocolStatus, typeof(Plugin).Module.ModuleVersionId.ToString()));
     }
 
     public void Dispose()

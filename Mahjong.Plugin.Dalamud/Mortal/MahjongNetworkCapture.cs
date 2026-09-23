@@ -43,6 +43,7 @@ public sealed unsafe class MahjongNetworkCapture : IDisposable
     private readonly MahjongProtocolProfile[] profiles;
     private readonly Func<string?> variantAccessor;
     private readonly string? gameVersion;
+    public string? GameVersion => gameVersion;
     public bool PublicCaptureEnabled { get; set; }
     public bool ProtocolVerified => profiles.Any(p => p.Matches(gameVersion, variantAccessor()));
     public string ProtocolStatus => ProtocolVerified ? "Verified" : $"No verified protocol for {gameVersion ?? "unknown build"}/{variantAccessor() ?? "unknown variant"}";

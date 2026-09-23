@@ -110,10 +110,10 @@ public sealed class MatchArchiveWriter : IDisposable
     /// Copies this table session's per-hand logs and seals the archive with a summary.
     /// Returns the archive directory, or <see langword="null"/> when no match data existed.
     /// </summary>
-    public Task<string?> FinalizeSessionAsync(IReadOnlyList<string> gamePaths, MatchArchiveMortalStats mortalStats)
+    public Task<string?> FinalizeSessionAsync(IReadOnlyList<string> gamePaths, MatchArchiveMortalStats mortalStats, MatchArchiveEnvironment? environment = null)
     {
         var paths = gamePaths.ToArray();
-        return io.RunAfterWritesAsync(() => FinalizeSessionCore(paths, mortalStats));
+        return io.RunAfterWritesAsync(() => FinalizeSessionCore(paths, mortalStats, environment));
     }
 
     // Synchronous compatibility entry for offline consumers. Runtime uses FinalizeSessionAsync.
@@ -122,7 +122,8 @@ public sealed class MatchArchiveWriter : IDisposable
 
     private string? FinalizeSessionCore(
         IReadOnlyList<string> gamePaths,
-        MatchArchiveMortalStats mortalStats)
+        MatchArchiveMortalStats mortalStats,
+        MatchArchiveEnvironment? environment)
     {
         ArgumentNullException.ThrowIfNull(gamePaths);
         ArgumentNullException.ThrowIfNull(mortalStats);
@@ -187,6 +188,7 @@ public sealed class MatchArchiveWriter : IDisposable
                     FailedActions: metrics.FailedActions,
                     TimeoutFallbacks: metrics.TimeoutFallbacks,
                     Mortal: mortalStats,
+                    Environment: environment,
                     DecisionHealth: new { sources = metrics.Sources, mean_ms = metrics.MeanMs, p95_ms = metrics.P95Ms, malformed_lines = metrics.MalformedLines, io_failures = io.Failures });
                 File.WriteAllText(
                     Path.Combine(completedDir, "summary.json"),
@@ -438,6 +440,7 @@ public sealed class MatchArchiveWriter : IDisposable
         [property: JsonPropertyName("failed_actions")] int FailedActions,
         [property: JsonPropertyName("timeout_fallbacks")] int TimeoutFallbacks,
         [property: JsonPropertyName("mortal")] MatchArchiveMortalStats Mortal,
+        [property: JsonPropertyName("environment")] MatchArchiveEnvironment? Environment,
         [property: JsonPropertyName("decision_health")] object DecisionHealth);
 
     private sealed record ArchiveMetrics(
@@ -460,3 +463,10 @@ public sealed record MatchArchiveMortalStats(
     [property: JsonPropertyName("candidate_corrections")] long CandidateCorrections,
     [property: JsonPropertyName("recovered_discards")] long RecoveredDiscards,
     [property: JsonPropertyName("last_model_eval_ms")] double LastModelEvalMilliseconds);
+
+public sealed record MatchArchiveEnvironment(
+    [property: JsonPropertyName("game_version")] string? GameVersion,
+    [property: JsonPropertyName("client_variant")] string? ClientVariant,
+    [property: JsonPropertyName("protocol_verified")] bool ProtocolVerified,
+    [property: JsonPropertyName("protocol_status")] string ProtocolStatus,
+    [property: JsonPropertyName("plugin_build_id")] string PluginBuildId);
