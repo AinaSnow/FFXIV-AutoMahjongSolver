@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Component.GUI;
+using FFXIVClientStructs.FFXIV.Client.UI.Misc;
 using Mahjong.Engine;
 using ValueType = FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType;
 
@@ -21,6 +22,8 @@ internal sealed class BaseEmjVariant : IEmjVariant
     // Recomputed per snapshot from the hand array; tracks the configured base unless a client tile-ID shift forces a retune (issue #52).
     private int effectiveTextureBase;
     private int lastWarnedTextureBase;
+    private bool doraModeObserved;
+    private bool? lastTraditionalDoraIndicator;
 
     public BaseEmjVariant(LayoutProfile profile, IPluginLog log, string pluginConfigDir)
     {
@@ -82,6 +85,15 @@ internal sealed class BaseEmjVariant : IEmjVariant
     {
         if (unit == null)
             return null;
+        var emj = EmjModule.Instance();
+        bool? traditional = emj == null ? null : emj->ShowTraditionalDoraIndicator;
+        ctx = ctx with { ShowTraditionalDoraIndicator = traditional };
+        if (!doraModeObserved || lastTraditionalDoraIndicator != traditional)
+        {
+            doraModeObserved = true;
+            lastTraditionalDoraIndicator = traditional;
+            log.Info($"[Mahjong] Dora display: {traditional switch { true => "traditional indicator", false => "bonus tile", null => "unknown; UI dora omitted" }}.");
+        }
         var memory = new ReadOnlySpan<byte>((void*)unit, AddonMemorySize);
         var atkValues = SnapshotAtkValues(unit->AtkValues, unit->AtkValuesCount);
         bool modalVisible = IsCallModalVisible(unit);
@@ -110,7 +122,7 @@ internal sealed class BaseEmjVariant : IEmjVariant
         if (!ScoresPlausible(scores))
             return null;
 
-        var doraIndicators = ReadDoraIndicators(memory);
+        var doraIndicators = ReadDoraIndicators(memory, ctx.ShowTraditionalDoraIndicator);
         var discardCounts = ReadDiscardCounts(memory);
 
         int stateCode = ReadStateCode(atkValues);
@@ -197,13 +209,24 @@ internal sealed class BaseEmjVariant : IEmjVariant
         return true;
     }
 
-    private List<Tile> ReadDoraIndicators(ReadOnlySpan<byte> memory)
+    private List<Tile> ReadDoraIndicators(ReadOnlySpan<byte> memory, bool? traditional)
     {
         var dora = new List<Tile>(1);
+        // The game can display the bonus tile itself or the traditional indicator.
+        // Without the setting, neither interpretation is safe for scoring or MJAI repair.
+        if (traditional is null) return dora;
         int rawDora = ReadInt32(memory, profile.Offsets.DoraIndicator);
         int doraTileId = DecodeTileId(rawDora);
         if (doraTileId >= 0)
+        {
+            if (!traditional.Value)
+            {
+                int start = doraTileId < 27 ? doraTileId / 9 * 9 : doraTileId < 31 ? 27 : 31;
+                int count = doraTileId < 27 ? 9 : doraTileId < 31 ? 4 : 3;
+                doraTileId = start + (doraTileId - start + count - 1) % count;
+            }
             dora.Add(Tile.FromId(doraTileId));
+        }
         return dora;
     }
 

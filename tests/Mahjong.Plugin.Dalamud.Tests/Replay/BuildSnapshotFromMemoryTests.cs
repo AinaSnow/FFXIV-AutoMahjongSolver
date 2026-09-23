@@ -252,4 +252,50 @@ public class BuildSnapshotFromMemoryTests
         Assert.False(snap.SeatInfoKnown);
         Assert.False(snap.Observations.HasFlag(SnapshotObservationFlags.SeatInfo));
     }
+    [Theory]
+    [InlineData("8m", 6)]
+    [InlineData("4z", 29)]
+    [InlineData("7s", 23)]
+    [InlineData("4s", 20)]
+    [InlineData("4m", 2)]
+    [InlineData("1m", 8)]
+    [InlineData("1p", 17)]
+    [InlineData("1s", 26)]
+    [InlineData("1z", 30)]
+    [InlineData("5z", 33)]
+    public void Doman_bonus_tile_is_normalized_to_a_traditional_indicator(string display, int expected)
+    {
+        // First five cases match the current capture's independent network/UI opening pairs.
+        var memory = new AddonMemoryBuilder(EmjProfile)
+            .WithScores(25000, 25000, 25000, 25000)
+            .WithHand("1234m456p789s1234z")
+            .WithDoraIndicator(display).Build();
+        var (variant, ctx) = MakeVariant(EmjProfile);
+        var snapshot = variant.BuildSnapshotFromMemory(memory, [AtkValueRecord.OfInt(30)],
+            ctx with { ShowTraditionalDoraIndicator = false }, callModalVisible: false)!;
+        Assert.Equal(expected, Assert.Single(snapshot.DoraIndicators).Id);
+        var bonus = new Mahjong.Rules.Scoring.StandardDoraRule().Next(snapshot.DoraIndicators[0]);
+        Assert.Equal(display, bonus.ShortName);
+    }
+
+    [Fact]
+    public void Dora_setting_changes_are_applied_without_double_converting_traditional_tiles()
+    {
+        var memory = new AddonMemoryBuilder(EmjProfile)
+            .WithScores(25000, 25000, 25000, 25000)
+            .WithHand("1234m456p789s1234z")
+            .WithDoraIndicator("8m").Build();
+        var (variant, ctx) = MakeVariant(EmjProfile);
+        var traditional = variant.BuildSnapshotFromMemory(memory, [AtkValueRecord.OfInt(30)],
+            ctx with { ShowTraditionalDoraIndicator = true }, callModalVisible: false)!;
+        Assert.Equal(7, Assert.Single(traditional.DoraIndicators).Id);
+        var doman = variant.BuildSnapshotFromMemory(memory, [AtkValueRecord.OfInt(30)],
+            ctx with { ShowTraditionalDoraIndicator = false }, callModalVisible: false)!;
+        Assert.Equal(6, Assert.Single(doman.DoraIndicators).Id);
+        var unknown = variant.BuildSnapshotFromMemory(memory, [AtkValueRecord.OfInt(30)],
+            ctx with { ShowTraditionalDoraIndicator = null }, callModalVisible: false)!;
+        Assert.Empty(unknown.DoraIndicators);
+        Assert.False(unknown.Observations.HasFlag(SnapshotObservationFlags.Dora));
+    }
+
 }

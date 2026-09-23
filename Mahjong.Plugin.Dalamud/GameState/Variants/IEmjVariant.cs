@@ -21,4 +21,5 @@ internal interface IEmjVariant
 
 internal readonly record struct VariantReadContext(
     MeldTracker MeldTracker,
-    InputEventLogger? EventLogger);
+    InputEventLogger? EventLogger,
+    bool? ShowTraditionalDoraIndicator = null);

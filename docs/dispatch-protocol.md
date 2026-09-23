@@ -124,7 +124,7 @@ The dispatcher is only half the protocol — the policy needs an accurate snapsh
 | `Honba` | hardcoded `0` | 🔴 Honba bonus not factored into payments |
 | `RiichiSticks` | hardcoded `0` | 🔴 |
 | `Scores` (per-seat) | `BaseEmjVariant.ReadScores` | ✅ |
-| `DoraIndicators` | `BaseEmjVariant.ReadDoraIndicators` from `+0x0FD8` | ✅ for visible dora; ura-dora not implemented |
+| `DoraIndicators` | First visible tile at `+0x0FD8`, normalized with `EmjModule.ShowTraditionalDoraIndicator` | Doman bonus-tile display is converted to a traditional indicator; unknown mode omitted. Additional kan indicators and ura-dora are not read |
 | `UraDoraIndicators` | empty | 🔴 Riichi ura-dora not read |
 | `WallRemaining` | derived from per-seat discard counts | ✅ |
 | `TurnIndex` | hardcoded `0` | 🟡 Not currently used by policy |
