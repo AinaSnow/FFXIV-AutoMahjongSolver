@@ -54,10 +54,7 @@ public sealed record Configuration : IPluginConfiguration
 
     public bool EnableGameLogging { get; init; } = true;
 
-    /// <summary>
-    /// Stable anonymous install identifier sent as <c>X-Install-Id</c>. <see cref="Guid.Empty"/>
-    /// = not yet minted; the uploader treats that as a fatal init error.
-    /// </summary>
+    /// <summary>Legacy identifier retained so existing v2 configuration files round-trip. It is never transmitted.</summary>
     public Guid InstallId { get; init; } = Guid.Empty;
 }
 

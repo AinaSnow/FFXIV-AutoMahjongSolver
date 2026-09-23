@@ -30,6 +30,7 @@ public sealed class GameLogger : IDisposable
     private readonly Func<IPolicy>? policyAccessor;
     private readonly Func<MeldTrackerStateDto>? meldTrackerAccessor;
     private readonly InputEventLogger? eventLogger;
+    private readonly List<string> sessionPaths = [];
 
     private string? currentPath;
     private int handSeq;
@@ -97,6 +98,25 @@ public sealed class GameLogger : IDisposable
             eventLogger.CallPromptObserved -= OnCallPromptObserved;
     }
 
+    internal void ResetSession()
+    {
+        lock (writerLock)
+        {
+            currentPath = null;
+            sessionPaths.Clear();
+            handSeq = 0;
+            lastWall = -1;
+            lastStateHash = null;
+            lastHandStartScores = null;
+        }
+    }
+
+    internal IReadOnlyList<string> SnapshotSessionPaths()
+    {
+        lock (writerLock)
+            return sessionPaths.ToArray();
+    }
+
     internal void OnStateChanged(StateSnapshot snap)
     {
         if (!configService.Current.EnableGameLogging)
@@ -122,7 +142,7 @@ public sealed class GameLogger : IDisposable
 
     private void MaybeRecordDecision(StateSnapshot snap)
     {
-        if (policyAccessor is null)
+        if (policyAccessor is null || !ShouldRecordPolicyDecision(configService.Current))
             return;
         if (snap.Legal.Flags == ActionFlags.None)
             return;
@@ -137,7 +157,8 @@ public sealed class GameLogger : IDisposable
         try
         {
             var tracker = meldTrackerAccessor?.Invoke();
-            WriteLine(JsonSerializer.Serialize(BuildDecisionEvent(choice, tracker), JsonOpts));
+            WriteLine(JsonSerializer.Serialize(
+                BuildDecisionEvent(choice, tracker, "local-policy"), JsonOpts));
         }
         catch (Exception ex)
         {
@@ -193,6 +214,25 @@ public sealed class GameLogger : IDisposable
         }
     }
 
+    public void RecordDecision(ActionChoice choice, string source)
+    {
+        if (!configService.Current.EnableGameLogging || disposed)
+            return;
+        try
+        {
+            var tracker = meldTrackerAccessor?.Invoke();
+            WriteLine(JsonSerializer.Serialize(
+                BuildDecisionEvent(choice, tracker, source), JsonOpts));
+        }
+        catch (Exception ex)
+        {
+            log.Error($"GameLogger decision-write error: {ex.Message}");
+        }
+    }
+
+    internal static bool ShouldRecordPolicyDecision(Configuration config) =>
+        !config.MortalEnabled || !config.AutomationArmed || config.SuggestionOnly;
+
     /// <summary>Roll only on wall-jump-up AND hand at deal-shape count (0/13/14); mid-hand jumps are read glitches.</summary>
     private void MaybeRollHand(StateSnapshot snap)
     {
@@ -208,7 +248,7 @@ public sealed class GameLogger : IDisposable
             return;
         lastWall = snap.WallRemaining;
 
-        // Write hand-end into the NEW file so TelemetryUploader can't move the old file between writes.
+        // Write hand-end into the new file so each next-hand boundary carries the prior settlement.
         var previousStartScores = lastHandStartScores;
         bool emitHandEnd = !firstRoll && previousStartScores is not null;
 
@@ -288,10 +328,11 @@ public sealed class GameLogger : IDisposable
             handSeq++;
             var fn = $"game-{DateTime.UtcNow:yyyyMMdd-HHmmss}-hand{handSeq:D2}.ndjson";
             currentPath = Path.Combine(gamesDir, fn);
+            sessionPaths.Add(currentPath);
         }
     }
 
-    /// <summary>Open-write-close per line — a persistent StreamWriter blocks TelemetryUploader's FileShare.Read.</summary>
+    /// <summary>Open-write-close per line so diagnostics and local archive tooling can read live files.</summary>
     private void WriteLine(string line)
     {
         if (currentPath is null)
@@ -362,9 +403,11 @@ public sealed class GameLogger : IDisposable
         return h.ToHashCode();
     }
 
-    private static DecisionEvent BuildDecisionEvent(ActionChoice choice, MeldTrackerStateDto? tracker) => new(
+    private static DecisionEvent BuildDecisionEvent(
+        ActionChoice choice, MeldTrackerStateDto? tracker, string source) => new(
         T: Now(),
         E: "decision",
+        Source: source,
         Kind: choice.Kind.ToString(),
         Tile: choice.DiscardTile?.Id,
         CallKind: choice.Call?.Kind.ToString(),
@@ -467,6 +510,7 @@ public sealed class GameLogger : IDisposable
     private sealed record DecisionEvent(
         [property: JsonPropertyName("t")] string T,
         [property: JsonPropertyName("e")] string E,
+        [property: JsonPropertyName("source")] string Source,
         [property: JsonPropertyName("kind")] string Kind,
         [property: JsonPropertyName("tile")] int? Tile,
         [property: JsonPropertyName("call_kind")] string? CallKind,

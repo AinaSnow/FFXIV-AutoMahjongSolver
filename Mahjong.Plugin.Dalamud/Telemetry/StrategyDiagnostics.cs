@@ -30,6 +30,7 @@ public sealed class StrategyDiagnostics : IDisposable
     private readonly StateAggregator aggregator;
     private readonly IDiscardCapture capture;
     private readonly IFindingsLog findings;
+    private readonly Func<bool> usesExternalRecommendations;
     private readonly object gate = new();
 
     private Tile? lastRecommendedTile;
@@ -57,7 +58,10 @@ public sealed class StrategyDiagnostics : IDisposable
     private bool disposed;
 
     public StrategyDiagnostics(
-        StateAggregator aggregator, IDiscardCapture capture, IFindingsLog findings)
+        StateAggregator aggregator,
+        IDiscardCapture capture,
+        IFindingsLog findings,
+        Func<bool>? usesExternalRecommendations = null)
     {
         ArgumentNullException.ThrowIfNull(aggregator);
         ArgumentNullException.ThrowIfNull(capture);
@@ -65,6 +69,7 @@ public sealed class StrategyDiagnostics : IDisposable
         this.aggregator = aggregator;
         this.capture = capture;
         this.findings = findings;
+        this.usesExternalRecommendations = usesExternalRecommendations ?? (() => false);
 
         aggregator.Changed += OnAggregatorChanged;
         capture.DiscardObserved += OnDiscardObserved;
@@ -77,6 +82,22 @@ public sealed class StrategyDiagnostics : IDisposable
         disposed = true;
         aggregator.Changed -= OnAggregatorChanged;
         capture.DiscardObserved -= OnDiscardObserved;
+    }
+
+    internal void ResetSession()
+    {
+        lock (gate)
+        {
+            lastRecommendedTile = null;
+            lastRecommendedAtUtc = default;
+            lastHandCounts = null;
+            lastHandTotal = -1;
+            lastMeldsCount = -1;
+            lastEmittedKey = long.MinValue;
+            lastDealerSeat = -1;
+            lastWall = -1;
+            ResetHandCounters();
+        }
     }
 
     private void OnAggregatorChanged(StateSnapshot snap)
@@ -107,7 +128,8 @@ public sealed class StrategyDiagnostics : IDisposable
                 handYakulessTenpai++;
 
             if (choice.Kind is ActionKind.Discard or ActionKind.Riichi
-                && choice.DiscardTile is { } recTile)
+                && choice.DiscardTile is { } recTile
+                && !usesExternalRecommendations())
             {
                 lastRecommendedTile = recTile;
                 lastRecommendedAtUtc = DateTime.UtcNow;
@@ -152,6 +174,22 @@ public sealed class StrategyDiagnostics : IDisposable
                 ["call_offered"] = callOffered,
                 ["call_reason_code"] = callCode,
             });
+        }
+    }
+
+    internal void RecordFinalDecision(ActionChoice choice)
+    {
+        if (disposed || !usesExternalRecommendations())
+            return;
+        if (choice.Kind is not (ActionKind.Discard or ActionKind.Riichi)
+            || choice.DiscardTile is not { } tile)
+            return;
+
+        lock (gate)
+        {
+            lastRecommendedTile = tile;
+            lastRecommendedAtUtc = DateTime.UtcNow;
+            handTurns++;
         }
     }
 

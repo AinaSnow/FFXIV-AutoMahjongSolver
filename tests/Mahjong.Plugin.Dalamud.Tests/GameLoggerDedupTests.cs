@@ -4,6 +4,7 @@ using Mahjong.Plugin.Dalamud.Composition;
 using Mahjong.Plugin.Dalamud.Logging;
 using Mahjong.Plugin.Dalamud.Tests.Stubs;
 using Mahjong.Plugin.Game;
+using Mahjong.Policy.Abstractions;
 
 namespace Mahjong.Plugin.Dalamud.Tests;
 
@@ -116,7 +117,7 @@ public class GameLoggerDedupTests
         Assert.Equal(2, files.Length);
     }
 
-    // Regression: hand-end for the prior hand is written into the new hand's file so it survives uploader mid-session moves.
+    // Regression: hand-end for the prior hand is written into the new hand's file at the next boundary.
     [Fact]
     public void Hand_roll_emits_hand_end_with_score_delta_into_new_file()
     {
@@ -142,6 +143,37 @@ public class GameLoggerDedupTests
         Assert.Contains("\"deltas\":[8000,-2000,-4000,-2000]", hand2[0]);
         Assert.Contains("\"scores_after\":[33000,23000,21000,23000]", hand2[0]);
         Assert.Contains("\"e\":\"hand-start\"", hand2[1]);
+    }
+
+    [Fact]
+    public void Session_reset_restarts_hand_sequence_without_cross_game_hand_end()
+    {
+        using var tmp = new TempDir();
+        var config = new DalamudConfigService(_ => { }, new Configuration());
+        using var logger = new GameLogger(config, new StubPluginLog(), tmp.Path);
+
+        logger.OnStateChanged(SampleSnap(
+            70, handCount: 14, scores: [28900, 21400, 29900, 19800]));
+        logger.OnStateChanged(SampleSnap(
+            40, handCount: 14, scores: [28900, 21400, 29900, 19800]));
+
+        Assert.Single(logger.SnapshotSessionPaths());
+
+        logger.ResetSession();
+
+        Assert.Equal(0, logger.HandSeq);
+        Assert.Null(logger.CurrentPath);
+        Assert.Empty(logger.SnapshotSessionPaths());
+
+        logger.OnStateChanged(SampleSnap(
+            70, handCount: 14, scores: [25000, 25000, 25000, 25000]));
+
+        Assert.Equal(1, logger.HandSeq);
+        var lines = Directory.GetFiles(logger.GamesDir, "game-*.ndjson")
+            .SelectMany(File.ReadAllLines)
+            .ToArray();
+        Assert.Equal(2, lines.Count(line => line.Contains("\"e\":\"hand-start\"")));
+        Assert.DoesNotContain(lines, line => line.Contains("\"e\":\"hand-end\""));
     }
 
     // Regression: a deferred roll must not consume the wall-jump signal, so the next deal-shape tick still triggers the roll.
@@ -186,5 +218,39 @@ public class GameLoggerDedupTests
 
         var files = Directory.GetFiles(logger.GamesDir, "game-*.ndjson");
         Assert.Empty(files);
+    }
+
+    [Fact]
+    public void Mortal_auto_mode_suppresses_preliminary_local_policy_decision()
+    {
+        var config = new Configuration
+        {
+            MortalEnabled = true,
+            AutomationArmed = true,
+            SuggestionOnly = false,
+        };
+
+        Assert.False(GameLogger.ShouldRecordPolicyDecision(config));
+    }
+
+    [Fact]
+    public void RecordDecision_writes_final_source_and_choice()
+    {
+        using var tmp = new TempDir();
+        var config = new DalamudConfigService(_ => { }, new Configuration());
+        using var logger = new GameLogger(config, new StubPluginLog(), tmp.Path);
+        logger.OnStateChanged(SampleSnap(70, handCount: 14));
+
+        logger.RecordDecision(
+            ActionChoice.Discard(Tile.FromId(8), "Mortal"),
+            source: "discard");
+
+        var file = Assert.Single(Directory.GetFiles(logger.GamesDir, "game-*.ndjson"));
+        var decision = Assert.Single(File.ReadAllLines(file),
+            line => line.Contains("\"e\":\"decision\""));
+        Assert.Contains("\"source\":\"discard\"", decision);
+        Assert.Contains("\"kind\":\"Discard\"", decision);
+        Assert.Contains("\"tile\":8", decision);
+        Assert.Contains("\"why\":\"Mortal\"", decision);
     }
 }

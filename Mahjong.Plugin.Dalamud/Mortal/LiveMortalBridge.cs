@@ -19,6 +19,7 @@ public sealed class LiveMortalBridge : IDisposable
     private readonly IConfigService<Configuration> configService;
     private readonly Func<StateSnapshot?> snapshotAccessor;
     private readonly IPluginLog log;
+    private readonly Action<CapturedMahjongPacket>? packetObserver;
     private readonly ConcurrentQueue<MortalReaction> reactions = new();
     private readonly object reachLock = new();
     private readonly object recommendationLock = new();
@@ -58,7 +59,8 @@ public sealed class LiveMortalBridge : IDisposable
         IFramework framework,
         IConfigService<Configuration> configService,
         Func<StateSnapshot?> snapshotAccessor,
-        IPluginLog log)
+        IPluginLog log,
+        Action<CapturedMahjongPacket>? packetObserver = null)
     {
         ArgumentNullException.ThrowIfNull(capture);
         ArgumentNullException.ThrowIfNull(framework);
@@ -70,6 +72,7 @@ public sealed class LiveMortalBridge : IDisposable
         this.configService = configService;
         this.snapshotAccessor = snapshotAccessor;
         this.log = log;
+        this.packetObserver = packetObserver;
         framework.Update += OnFrameworkUpdate;
     }
 
@@ -97,6 +100,18 @@ public sealed class LiveMortalBridge : IDisposable
 
     public double LastModelEvalMilliseconds =>
         Interlocked.Read(ref lastModelEvalNanoseconds) / 1_000_000d;
+
+    public void ResetSessionStatistics()
+    {
+        PacketsProcessed = 0;
+        EventsSent = 0;
+        ReactionsReceived = 0;
+        DecisionsMapped = 0;
+        DecisionTimeouts = 0;
+        CandidateCorrections = 0;
+        RecoveredDiscardEvents = 0;
+        Interlocked.Exchange(ref lastModelEvalNanoseconds, 0);
+    }
 
     public void QuarantineUnresponsiveHand(string reason)
     {
@@ -330,6 +345,7 @@ public sealed class LiveMortalBridge : IDisposable
         while (capture.TryDequeue(out var packet))
         {
             PacketsProcessed++;
+            ObserveCapturedPacket(packet);
             if (!ProcessCapturedPacket(packet))
                 return;
         }
@@ -422,6 +438,7 @@ public sealed class LiveMortalBridge : IDisposable
         while (capture.TryDequeue(out var packet))
         {
             PacketsProcessed++;
+            ObserveCapturedPacket(packet);
             lastCapturedPacket = packet;
             if (packet.MessageId is MahjongPacketMjaiDecoder.HandResultAMessageId
                 or MahjongPacketMjaiDecoder.HandResultBMessageId)
@@ -453,6 +470,18 @@ public sealed class LiveMortalBridge : IDisposable
             ? "Running; quarantined kyoku ended"
             : "Running; current kyoku quarantined, waiting for the next kyoku";
         return false;
+    }
+
+    private void ObserveCapturedPacket(CapturedMahjongPacket packet)
+    {
+        try
+        {
+            packetObserver?.Invoke(packet);
+        }
+        catch (Exception ex)
+        {
+            log.Warning($"[Mortal] Local match packet archive failed; gameplay capture continues: {ex.Message}");
+        }
     }
 
     private bool TryFlushPendingStart()
@@ -1051,19 +1080,47 @@ public sealed class LiveMortalBridge : IDisposable
         const string reason = "Mortal";
         discardIsRed = null;
         var legal = snapshot.Legal;
+
+        // A delayed or stale discard/pass must never override a visible win prompt.
+        // AutoPlayLoop independently verifies the win with the local rules before
+        // dispatching it; rejecting the conflicting reaction here also keeps hints safe.
+        if (legal.Can(ActionFlags.Tsumo)
+            && (reaction.Type != "hora" || reaction.Target != 0))
+        {
+            choice = ActionChoice.Pass(reason);
+            return false;
+        }
+        if (legal.Can(ActionFlags.Ron) && reaction.Type != "hora")
+        {
+            choice = ActionChoice.Pass(reason);
+            return false;
+        }
+
         switch (reaction.Type)
         {
             case "dahai" when legal.Can(ActionFlags.Discard)
-                && TryReactionTile(reaction, out var discard, out bool discardRed)
+                && TryReactionTile(reaction, out var discard, out bool requestedDiscardRed)
                 && snapshot.Hand.Contains(discard):
-                choice = ActionChoice.Discard(discard, reason);
+                bool discardRed = ResolveReactionRedIdentity(
+                    snapshot, discard, requestedDiscardRed);
+                choice = ActionChoice.Discard(
+                    discard,
+                    discardRed == requestedDiscardRed
+                        ? reason
+                        : "Mortal (red identity corrected)");
                 discardIsRed = discardRed;
                 return true;
 
             case "riichi" when legal.Can(ActionFlags.Riichi)
-                && TryReactionTile(reaction, out var reachDiscard, out bool reachDiscardRed)
+                && TryReactionTile(reaction, out var reachDiscard, out bool requestedReachDiscardRed)
                 && snapshot.Hand.Contains(reachDiscard):
-                choice = ActionChoice.DeclareRiichi(reachDiscard, reason);
+                bool reachDiscardRed = ResolveReactionRedIdentity(
+                    snapshot, reachDiscard, requestedReachDiscardRed);
+                choice = ActionChoice.DeclareRiichi(
+                    reachDiscard,
+                    reachDiscardRed == requestedReachDiscardRed
+                        ? reason
+                        : "Mortal (red identity corrected)");
                 discardIsRed = reachDiscardRed;
                 return true;
 
@@ -1156,6 +1213,32 @@ public sealed class LiveMortalBridge : IDisposable
 
     private static bool TryReactionTile(MortalReaction reaction, out Tile tile, out bool isRed) =>
         MjaiTile.TryParse(reaction.Pai, out tile, out isRed);
+
+    private static bool ResolveReactionRedIdentity(
+        StateSnapshot snapshot, Tile tile, bool requestedIsRed)
+    {
+        if (!snapshot.Observations.HasFlag(SnapshotObservationFlags.HandRedIdentity)
+            || snapshot.HandIsRed.Count != snapshot.Hand.Count)
+        {
+            return requestedIsRed;
+        }
+
+        bool hasRequestedIdentity = false;
+        bool hasOppositeIdentity = false;
+        for (int i = 0; i < snapshot.Hand.Count; i++)
+        {
+            if (snapshot.Hand[i] != tile)
+                continue;
+            if (snapshot.HandIsRed[i] == requestedIsRed)
+                hasRequestedIdentity = true;
+            else
+                hasOppositeIdentity = true;
+        }
+
+        return !hasRequestedIdentity && hasOppositeIdentity
+            ? !requestedIsRed
+            : requestedIsRed;
+    }
 
     private void PublishRecommendation(StateSnapshot snapshot, ActionChoice choice, bool? discardIsRed)
     {

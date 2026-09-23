@@ -317,6 +317,12 @@ public sealed class AutoPlayLoop : IDisposable
 
     private void EmitDecisionFinding(string source, StateSnapshot snap, ActionChoice choice)
     {
+        if (plugin.Configuration.MortalEnabled)
+        {
+            plugin.GameLogger.RecordDecision(choice, source);
+            plugin.StrategyDiagnostics.RecordFinalDecision(choice);
+        }
+
         plugin.FindingsLog?.Record("decision", new Dictionary<string, object?>
         {
             ["source"] = source,
@@ -366,7 +372,8 @@ public sealed class AutoPlayLoop : IDisposable
 
     private PendingDispatchOutcome? pendingOutcome;
 
-    private static readonly TimeSpan DispatchOutcomeWindow = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan FastDispatchOutcomeWindow = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan DelayedDispatchOutcomeWindow = TimeSpan.FromSeconds(5);
 
     private readonly record struct PendingDispatchOutcome(
         string Label,
@@ -480,7 +487,8 @@ public sealed class AutoPlayLoop : IDisposable
             (snap.AddonStateCode != pending.StateAtDispatch
              || snap.Hand.Count != pending.HandAtDispatch
              || snap.OurMelds.Count != pending.MeldsAtDispatch);
-        bool windowExpired = DateTime.UtcNow - pending.DispatchedAt > DispatchOutcomeWindow;
+        bool windowExpired = DateTime.UtcNow - pending.DispatchedAt >
+            DispatchOutcomeWindowFor(pending.Label);
 
         if (stateChanged)
         {
@@ -517,6 +525,11 @@ public sealed class AutoPlayLoop : IDisposable
             pendingOutcome = null;
         }
     }
+
+    internal static TimeSpan DispatchOutcomeWindowFor(string label) =>
+        label is "discard" or "oos-tsumogiri"
+            ? FastDispatchOutcomeWindow
+            : DelayedDispatchOutcomeWindow;
 
     private bool IsAutomationArmed()
     {
@@ -1134,6 +1147,27 @@ public sealed class AutoPlayLoop : IDisposable
 
     private bool TryChoose(StateSnapshot snapshot, out ActionChoice choice)
     {
+        if ((snapshot.Legal.Flags & (ActionFlags.Tsumo | ActionFlags.Ron)) != 0)
+        {
+            var localChoice = plugin.Policy.Choose(snapshot);
+            bool verifiedTsumo = localChoice.Kind == ActionKind.Tsumo
+                && snapshot.Legal.Can(ActionFlags.Tsumo);
+            bool verifiedRon = localChoice.Kind == ActionKind.Ron
+                && snapshot.Legal.Can(ActionFlags.Ron);
+            if (verifiedTsumo || verifiedRon)
+            {
+                string detail = string.IsNullOrWhiteSpace(localChoice.Reasoning)
+                    ? "locally verified"
+                    : localChoice.Reasoning;
+                choice = localChoice with
+                {
+                    Reasoning = $"terminal win guard: {detail}",
+                };
+                hasMortalWait = false;
+                return true;
+            }
+        }
+
         if (plugin.MortalBridge.Enabled && !plugin.MortalBridge.CurrentHandQuarantined)
         {
             if (plugin.MortalBridge.TryChoose(snapshot, out choice))
@@ -1159,9 +1193,10 @@ public sealed class AutoPlayLoop : IDisposable
             hasMortalWait = false;
             plugin.MortalBridge.RecoverUnresponsiveDecision(
                 $"No decision for {snapshot.Legal.Flags} within {timeout.TotalSeconds:0.#}s");
-            bool opponentResponse = (snapshot.Legal.Flags &
-                (ActionFlags.Pon | ActionFlags.Chi | ActionFlags.MinKan | ActionFlags.Ron)) != 0;
-            var fallback = opponentResponse && !plugin.MortalBridge.HasAuthoritativeOpponentDiscard
+            bool forceSafePass = ShouldForcePassWithoutAuthoritativeDiscard(
+                snapshot.Legal.Flags,
+                plugin.MortalBridge.HasAuthoritativeOpponentDiscard);
+            var fallback = forceSafePass
                 ? ActionChoice.Pass("pass: no authoritative opponent discard")
                 : plugin.Policy.Choose(plugin.MortalBridge.NormalizeForLocalFallback(snapshot));
             string detail = string.IsNullOrWhiteSpace(fallback.Reasoning)
@@ -1174,6 +1209,17 @@ public sealed class AutoPlayLoop : IDisposable
         hasMortalWait = false;
         choice = plugin.Policy.Choose(snapshot);
         return true;
+    }
+
+    internal static bool ShouldForcePassWithoutAuthoritativeDiscard(
+        ActionFlags flags, bool hasAuthoritativeOpponentDiscard)
+    {
+        if (hasAuthoritativeOpponentDiscard || (flags & ActionFlags.Discard) != 0)
+            return false;
+
+        const ActionFlags opponentResponseFlags =
+            ActionFlags.Pon | ActionFlags.Chi | ActionFlags.MinKan;
+        return (flags & opponentResponseFlags) != 0;
     }
 
     internal static TimeSpan MortalDecisionTimeout(ActionFlags flags)

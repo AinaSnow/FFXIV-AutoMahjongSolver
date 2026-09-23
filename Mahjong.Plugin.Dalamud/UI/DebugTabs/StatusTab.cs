@@ -33,8 +33,8 @@ internal sealed class StatusTab
         ImGui.Dummy(new Vector2(0, 4));
         using (Theme.BeginCard("status-hooks"))
         {
-            Theme.SectionHeader("Hooks & telemetry");
-            Theme.Subtle("Health of the discard-capture hook and ongoing data-collection counters.");
+            Theme.SectionHeader("Hooks & local data");
+            Theme.Subtle("Health of the discard-capture hook and local diagnostic counters.");
             var capture = plugin.DiscardCapture;
             DevHelpers.KeyValueRow(
                 "DiscardCapture",

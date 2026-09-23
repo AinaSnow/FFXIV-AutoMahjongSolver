@@ -73,10 +73,9 @@ public sealed class MainWindow : Window, IDisposable
             ImGui.PushStyleColor(ImGuiCol.Text, Theme.Muted);
             ImGui.BulletText("\"Hints\" mode only shows advice — never clicks for you.");
             ImGui.TextWrapped(
-                "  • This build uploads anonymous gameplay logs, error reports, and " +
-                "memory diagnostics from the Mahjong addon to support cross-client " +
-                "reverse-engineering. No character names, Content IDs, or other PII " +
-                "are included — uploads are keyed only by a random per-install ID.");
+                "  • Gameplay logs, Mahjong packets, errors, and memory diagnostics " +
+                "stay on this computer. Completed matches are grouped into local " +
+                "archives for later review; this build does not upload them.");
             ImGui.PopStyleColor();
 
             ImGui.Dummy(new Vector2(0, 10));

@@ -5,7 +5,7 @@ using Serilog.Events;
 
 namespace Mahjong.Plugin.Dalamud.Adapters;
 
-/// <summary>Mirrors Warning/Error/Fatal events into the ErrorSink so they reach the errors telemetry stream; Info and below pass through only.</summary>
+/// <summary>Mirrors Warning/Error/Fatal events into the local ErrorSink; Info and below pass through only.</summary>
 internal sealed class MirroredPluginLog : IPluginLog
 {
     private readonly IPluginLog inner;

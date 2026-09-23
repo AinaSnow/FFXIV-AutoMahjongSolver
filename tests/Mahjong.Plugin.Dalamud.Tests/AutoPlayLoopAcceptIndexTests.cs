@@ -220,4 +220,59 @@ public class AutoPlayLoopAcceptIndexTests
         int idx = AutoPlayLoop.ComputeAcceptIndex(ActionKind.ShouMinKan, legal, null);
         Assert.Equal(1, idx);
     }
+
+    [Fact]
+    public void Self_turn_with_discard_and_minkan_does_not_force_timeout_pass()
+    {
+        var flags = ActionFlags.Discard | ActionFlags.MinKan | ActionFlags.Pass;
+
+        Assert.False(AutoPlayLoop.ShouldForcePassWithoutAuthoritativeDiscard(
+            flags, hasAuthoritativeOpponentDiscard: false));
+    }
+
+    [Theory]
+    [InlineData(ActionFlags.Pon | ActionFlags.Pass)]
+    [InlineData(ActionFlags.Chi | ActionFlags.Pass)]
+    [InlineData(ActionFlags.MinKan | ActionFlags.Pass)]
+    public void Opponent_response_without_authoritative_discard_forces_safe_pass(
+        ActionFlags flags)
+    {
+        Assert.True(AutoPlayLoop.ShouldForcePassWithoutAuthoritativeDiscard(
+            flags, hasAuthoritativeOpponentDiscard: false));
+    }
+
+    [Fact]
+    public void Authoritative_opponent_discard_allows_local_timeout_policy()
+    {
+        var flags = ActionFlags.Pon | ActionFlags.Pass;
+
+        Assert.False(AutoPlayLoop.ShouldForcePassWithoutAuthoritativeDiscard(
+            flags, hasAuthoritativeOpponentDiscard: true));
+    }
+
+    [Fact]
+    public void Visible_ron_does_not_require_authoritative_discard_for_local_fallback()
+    {
+        var flags = ActionFlags.Ron | ActionFlags.Pass;
+
+        Assert.False(AutoPlayLoop.ShouldForcePassWithoutAuthoritativeDiscard(
+            flags, hasAuthoritativeOpponentDiscard: false));
+    }
+
+    [Theory]
+    [InlineData("ron")]
+    [InlineData("pass")]
+    [InlineData("riichi")]
+    [InlineData("riichi-tsumogiri")]
+    public void Modal_dispatches_use_delayed_outcome_window(string label)
+    {
+        Assert.Equal(TimeSpan.FromSeconds(5), AutoPlayLoop.DispatchOutcomeWindowFor(label));
+    }
+
+    [Fact]
+    public void Ordinary_discard_keeps_fast_outcome_window()
+    {
+        Assert.Equal(TimeSpan.FromMilliseconds(500),
+            AutoPlayLoop.DispatchOutcomeWindowFor("discard"));
+    }
 }

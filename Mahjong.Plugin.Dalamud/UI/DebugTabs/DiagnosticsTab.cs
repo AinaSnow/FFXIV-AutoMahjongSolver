@@ -6,7 +6,7 @@ using Dalamud.Bindings.ImGui;
 
 namespace Mahjong.Plugin.Dalamud.UI.DebugTabs;
 
-/// <summary>Event logger, hook health, telemetry status, errors/findings tail, overlay debug.</summary>
+/// <summary>Event logger, hook health, local archives, errors/findings tail, overlay debug.</summary>
 internal sealed class DiagnosticsTab
 {
     private const int TailLines = 5;
@@ -21,7 +21,7 @@ internal sealed class DiagnosticsTab
         ImGui.Dummy(new Vector2(0, 4));
         DrawDiscardCaptureCard();
         ImGui.Dummy(new Vector2(0, 4));
-        DrawTelemetryCard();
+        DrawLocalStorageCard();
         ImGui.Dummy(new Vector2(0, 4));
         DrawStreamsCard();
         ImGui.Dummy(new Vector2(0, 4));
@@ -67,23 +67,19 @@ internal sealed class DiagnosticsTab
         }
     }
 
-    private void DrawTelemetryCard()
+    private void DrawLocalStorageCard()
     {
-        using (Theme.BeginCard("diag-telemetry"))
+        using (Theme.BeginCard("diag-local-storage"))
         {
-            Theme.SectionHeader("Telemetry");
-            Theme.Subtle("Anonymous upload of error/finding/memdump files to the project's research endpoint. URL resolves from GitHub at startup.");
-
-            var ep = ctx.Plugin.TelemetryUploader.CurrentEndpoint;
-            DevHelpers.KeyValueRow("Endpoint", string.IsNullOrEmpty(ep.UploadUrl) ? "(none)" : ep.UploadUrl);
-            DevHelpers.KeyValueRow("Enabled", ep.Enabled.ToString());
-            if (!string.IsNullOrEmpty(ep.MinPluginVersion))
-                DevHelpers.KeyValueRow("Min plugin ver", ep.MinPluginVersion);
-
-            int pending = ctx.Plugin.TelemetryUploader.CountPending();
-            DevHelpers.KeyValueRow("Pending files", pending.ToString());
-            if (!string.IsNullOrEmpty(ep.UploadUrl))
-                DevHelpers.CopyButton(ep.UploadUrl, "telemetry", $"Copy upload URL to clipboard:\n{ep.UploadUrl}");
+            Theme.SectionHeader("Local match archives");
+            Theme.Subtle("All gameplay, packet, error, finding, and memory-dump data stays on this computer. Nothing is uploaded.");
+            string path = ctx.Plugin.MatchArchive.RootDir;
+            int count = Directory.Exists(path)
+                ? Directory.GetDirectories(path, "match-*").Length
+                : 0;
+            DevHelpers.KeyValueRow("Completed matches", count.ToString());
+            DevHelpers.KeyValueRow("Folder", path);
+            DevHelpers.OpenFolderButton(path, "match-archives", $"Open local match archives:\n{path}");
         }
     }
 

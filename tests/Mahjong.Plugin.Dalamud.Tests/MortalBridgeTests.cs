@@ -55,6 +55,46 @@ public sealed class MortalBridgeTests
     }
 
     [Fact]
+    public void Dahai_cannot_override_a_visible_tsumo()
+    {
+        var fiveSou = Tile.FromId(22);
+        var snapshot = Snapshot(
+            hand: [fiveSou],
+            legal: new LegalActions(
+                ActionFlags.Discard | ActionFlags.Tsumo | ActionFlags.Pass,
+                [fiveSou], [], [], []));
+        var reaction = new MortalReaction("dahai", 0, null, "5sr", []);
+
+        Assert.False(LiveMortalBridge.TryMapDecision(reaction, snapshot, out _));
+    }
+
+    [Fact]
+    public void None_cannot_override_a_visible_ron()
+    {
+        var snapshot = Snapshot(
+            hand: [Tile.FromId(22)],
+            legal: new LegalActions(ActionFlags.Ron | ActionFlags.Pass, [], [], [], []));
+        var reaction = new MortalReaction("none", 0, null, null, []);
+
+        Assert.False(LiveMortalBridge.TryMapDecision(reaction, snapshot, out _));
+    }
+
+    [Theory]
+    [InlineData(ActionFlags.Tsumo | ActionFlags.Discard, 0, ActionKind.Tsumo)]
+    [InlineData(ActionFlags.Ron | ActionFlags.Pass, 3, ActionKind.Ron)]
+    public void Hora_still_maps_to_the_visible_win(
+        ActionFlags flags, int target, ActionKind expected)
+    {
+        var snapshot = Snapshot(
+            hand: [Tile.FromId(22)],
+            legal: new LegalActions(flags, [], [], [], []));
+        var reaction = new MortalReaction("hora", 0, target, null, []);
+
+        Assert.True(LiveMortalBridge.TryMapDecision(reaction, snapshot, out var choice));
+        Assert.Equal(expected, choice.Kind);
+    }
+
+    [Fact]
     public void Dahai_preserves_red_identity_for_slot_selection()
     {
         var fiveMan = Tile.FromId(4);
@@ -83,6 +123,53 @@ public sealed class MortalBridgeTests
                 snapshot.Hand,
                 snapshot.HandIsRed,
                 targetIsRed: false));
+    }
+
+    [Theory]
+    [InlineData("5m", true)]
+    [InlineData("5mr", false)]
+    public void Discard_red_identity_is_corrected_when_only_the_opposite_copy_exists(
+        string mortalTile, bool handIsRed)
+    {
+        var fiveMan = Tile.FromId(4);
+        var snapshot = Snapshot(
+            hand: [fiveMan],
+            legal: new LegalActions(ActionFlags.Discard, [fiveMan], [], [], [])) with
+        {
+            HandIsRed = [handIsRed],
+            Observations = SnapshotObservationFlags.HandRedIdentity,
+        };
+        var reaction = new MortalReaction("dahai", 0, null, mortalTile, []);
+
+        Assert.True(LiveMortalBridge.TryMapDecision(
+            reaction, snapshot, out var choice, out bool? isRed));
+        Assert.Equal(handIsRed, isRed);
+        Assert.Contains("red identity corrected", choice.Reasoning);
+        Assert.Equal(
+            0,
+            InputDispatcher.FindSlotOfTile(
+                choice.DiscardTile!.Value,
+                snapshot.Hand,
+                snapshot.HandIsRed,
+                isRed));
+    }
+
+    [Fact]
+    public void Discard_red_identity_remains_strict_when_both_copies_exist()
+    {
+        var fiveMan = Tile.FromId(4);
+        var snapshot = Snapshot(
+            hand: [fiveMan, fiveMan],
+            legal: new LegalActions(ActionFlags.Discard, [fiveMan], [], [], [])) with
+        {
+            HandIsRed = [true, false],
+            Observations = SnapshotObservationFlags.HandRedIdentity,
+        };
+        var reaction = new MortalReaction("dahai", 0, null, "5m", []);
+
+        Assert.True(LiveMortalBridge.TryMapDecision(
+            reaction, snapshot, out _, out bool? isRed));
+        Assert.False(isRed);
     }
 
     [Fact]

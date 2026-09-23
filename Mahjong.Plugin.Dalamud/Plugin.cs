@@ -1,5 +1,6 @@
 using Dalamud.Game;
 using Dalamud.Game.Addon.Lifecycle;
+using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.Game.Command;
 using Dalamud.Interface.Windowing;
 using Dalamud.IoC;
@@ -60,6 +61,7 @@ public sealed class Plugin : IDalamudPlugin
     public InputEventLogger EventLogger { get; }
     public InputDispatcher Dispatcher { get; }
     public GameLogger GameLogger { get; }
+    public MatchArchiveWriter MatchArchive { get; }
     public AutoPlayLoop AutoPlay { get; }
     public MahjongNetworkCapture NetworkCapture { get; }
     public LiveMortalBridge MortalBridge { get; }
@@ -73,12 +75,10 @@ public sealed class Plugin : IDalamudPlugin
     public ISigprobeLog SigprobeLog { get; }
     public SeatPoolRegistry SeatPoolRegistry { get; } = new();
     public MemoryDumpRecorder MemoryDumpRecorder { get; }
-    public TelemetryUploader TelemetryUploader { get; }
     public DiscardTracker DiscardTracker { get; }
     public StrategyDiagnostics StrategyDiagnostics { get; }
     public InputRecorder InputRecorder { get; }
 
-    private readonly System.Net.Http.HttpClient telemetryHttp;
     private readonly MirroredPluginLog mirroredLog = null!;
 
     public MjAutoCommand MjAutoCommand => command;
@@ -160,13 +160,19 @@ public sealed class Plugin : IDalamudPlugin
             policyAccessor: () => Policy,
             eventLogger: EventLogger,
             meldTrackerAccessor: () => MeldTracker.SerializeState());
+        MatchArchive = new MatchArchiveWriter(configDir, Log);
         NetworkCapture = new MahjongNetworkCapture(GameInterop, Log);
         MortalBridge = new LiveMortalBridge(
             NetworkCapture,
             Framework,
             ConfigService,
             () => Aggregator.Latest,
-            Log);
+            Log,
+            packetObserver: MatchArchive.RecordPacket);
+        AddonLifecycle.RegisterListener(
+            AddonEvent.PreFinalize,
+            mahjongAddon.KnownAddonNames,
+            OnMahjongAddonPreFinalize);
         AutoPlay = new AutoPlayLoop(this, Framework, Log, mahjongAddon);
 
         DiscardCapture = DiscardCaptureFactory.Create(
@@ -174,20 +180,11 @@ public sealed class Plugin : IDalamudPlugin
         DiscardCaptureLogger = new DiscardCaptureLogger(
             DiscardCapture, PluginInterface.GetPluginConfigDirectory());
         DiscardTracker = new DiscardTracker(DiscardCapture, configDir);
-        StrategyDiagnostics = new StrategyDiagnostics(Aggregator, DiscardCapture, FindingsLog);
-
-        var envelope = TelemetryEnvelope.Build(migrated.InstallId, ClientState.ClientLanguage);
-        telemetryHttp = new System.Net.Http.HttpClient
-        {
-            Timeout = TimeSpan.FromSeconds(30),
-        };
-        var http = new HttpTelemetryClient(telemetryHttp, envelope, Log);
-        var endpointHolder = new EndpointHolder(
-            new TelemetryEndpoint(EndpointResolver.EmbeddedFallbackUrl, true, null));
-        TelemetryUploader = new TelemetryUploader(http, endpointHolder, Log, configDir);
-
-        // Async — startup must not block on a GitHub fetch; uploads use the embedded fallback until this completes.
-        _ = ResolveEndpointAsync(telemetryHttp, endpointHolder);
+        StrategyDiagnostics = new StrategyDiagnostics(
+            Aggregator,
+            DiscardCapture,
+            FindingsLog,
+            usesExternalRecommendations: () => Configuration.MortalEnabled);
 
         MemoryDumpRecorder = new MemoryDumpRecorder(
             AddonReader, SeatPoolRegistry, ErrorSink, configDir);
@@ -233,9 +230,36 @@ public sealed class Plugin : IDalamudPlugin
         });
     }
 
+    private void OnMahjongAddonPreFinalize(AddonEvent type, AddonArgs args)
+    {
+        ArchiveCurrentMatch();
+        MortalBridge.ResetSessionStatistics();
+        GameLogger.ResetSession();
+        StrategyDiagnostics.ResetSession();
+        Log.Information("[Mortal] Reset session statistics and game-log state after leaving the mahjong table.");
+    }
+
+    private void ArchiveCurrentMatch()
+    {
+        MatchArchive.FinalizeSession(
+            GameLogger.SnapshotSessionPaths(),
+            new MatchArchiveMortalStats(
+                Status: MortalBridge.Status,
+                PacketsProcessed: MortalBridge.PacketsProcessed,
+                EventsSent: MortalBridge.EventsSent,
+                ReactionsReceived: MortalBridge.ReactionsReceived,
+                DecisionsMapped: MortalBridge.DecisionsMapped,
+                DecisionTimeouts: MortalBridge.DecisionTimeouts,
+                CandidateCorrections: MortalBridge.CandidateCorrections,
+                RecoveredDiscards: MortalBridge.RecoveredDiscardEvents,
+                LastModelEvalMilliseconds: MortalBridge.LastModelEvalMilliseconds));
+    }
+
     public void Dispose()
     {
         MeldTracker.DeferralTimedOut -= OnMeldTrackerDeferralTimedOut;
+        AddonLifecycle.UnregisterListener(OnMahjongAddonPreFinalize);
+        ArchiveCurrentMatch();
         command.Dispose();
         PluginInterface.UiBuilder.Draw -= WindowSystem.Draw;
         PluginInterface.UiBuilder.OpenMainUi -= ToggleMainWindow;
@@ -254,35 +278,18 @@ public sealed class Plugin : IDalamudPlugin
         StrategyDiagnostics.Dispose();
         DiscardCapture.Dispose();
         GameLogger.Dispose();
+        MatchArchive.Dispose();
         InputRecorder.Dispose();
         EventLogger.Dispose();
         Aggregator.Dispose();
         AddonReader.Dispose();
 
-        // Flush uploader first (10s hard cap inside) so in-flight POSTs finish before sinks tear down.
-        TelemetryUploader.Dispose();
         MemoryDumpRecorder.Dispose();
         (FindingsLog as IDisposable)?.Dispose();
         ErrorSink.Dispose();
-        telemetryHttp.Dispose();
 
         // Services last — container singletons may still be touched by components disposed above.
         Services.Dispose();
-    }
-
-    private async System.Threading.Tasks.Task ResolveEndpointAsync(
-        System.Net.Http.HttpClient http, EndpointHolder holder)
-    {
-        try
-        {
-            var resolved = await EndpointResolver.ResolveAsync(http).ConfigureAwait(false);
-            holder.Set(resolved);
-            Log.Info($"[Telemetry] endpoint resolved: enabled={resolved.Enabled}");
-        }
-        catch (Exception ex)
-        {
-            ErrorSink.RecordException("Plugin.ResolveEndpointAsync", ex);
-        }
     }
 
     public void ToggleMainWindow() => MainWindow.Toggle();
