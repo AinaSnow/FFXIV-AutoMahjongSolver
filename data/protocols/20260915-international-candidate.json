@@ -1,0 +1,24 @@
+{
+  "gameVersion": "2026.09.15.0000.0000",
+  "variant": "Emj",
+  "verified": false,
+  "evidence": "Partial opening only; docs/reviews/20260924-international-match.md. Capture SHA-256 f2489dbfa351bc59976cca953f9a4ea68065ce53e088e178f395fe165947b863",
+  "packets": {
+    "0x023F": {
+      "messageId": 636,
+      "payloadLength": 48
+    },
+    "0x0133": {
+      "messageId": 637,
+      "payloadLength": 104
+    },
+    "0x02BB": {
+      "messageId": 638,
+      "payloadLength": 24
+    },
+    "0x0214": {
+      "messageId": 641,
+      "payloadLength": 32
+    }
+  }
+}

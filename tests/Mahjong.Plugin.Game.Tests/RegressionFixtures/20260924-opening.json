@@ -1,0 +1,646 @@
+{
+  "note": "Partial first hand only. Candidate mapping is NOT verified for live inference. Excludes all actor IDs, IPC headers, roster/unclassified payloads and player names.",
+  "capture_sha256": "f2489dbfa351bc59976cca953f9a4ea68065ce53e088e178f395fe165947b863",
+  "ui_source_sha256": "e1093be73e98917e77109b86291b0a4c948f31a6a42c6d288a626b5d42b6bf19",
+  "packets": [
+    {
+      "t": "2026-09-23T18:43:52.4452524+00:00",
+      "opcode": "0x023F",
+      "message_id": 636,
+      "payload_hex": "00000000000000000000000000000000000000000000000003000000FA000000FA000000FA000000FA00000000000000"
+    },
+    {
+      "t": "2026-09-23T18:43:52.4452842+00:00",
+      "opcode": "0x0133",
+      "message_id": 637,
+      "payload_hex": "0000000000000000000000000000000000000000000000000000000006000000FA000000FA000000FA000000FA000000170000000D0000000000000013000000050000000C0000000B0000001B000000000000000A00000013000000200000001300000000000000",
+      "ui_t": "2026-09-23T18:43:52.7832080Z",
+      "ui_hand": [
+        0,
+        0,
+        5,
+        10,
+        11,
+        12,
+        13,
+        19,
+        19,
+        19,
+        23,
+        27,
+        32
+      ],
+      "ui_red": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "ui_scores": [
+        25000,
+        25000,
+        25000,
+        25000
+      ]
+    },
+    {
+      "t": "2026-09-23T18:44:00.0668448+00:00",
+      "opcode": "0x02BB",
+      "message_id": 638,
+      "payload_hex": "00000000000100006400FFFFFFFFFFFFFFFFFFFF01000000",
+      "ui_t": "2026-09-23T18:44:00.1668912Z",
+      "ui_hand": [
+        0,
+        0,
+        5,
+        10,
+        11,
+        12,
+        13,
+        19,
+        19,
+        19,
+        23,
+        27,
+        32,
+        25
+      ],
+      "ui_red": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "ui_scores": [
+        25000,
+        25000,
+        25000,
+        25000
+      ]
+    },
+    {
+      "t": "2026-09-23T18:44:02.559404+00:00",
+      "opcode": "0x0214",
+      "message_id": 641,
+      "payload_hex": "0000000000000000100100006C00FFFFFFFFFFFFFFFFFFFF0000000000000000",
+      "ui_t": "2026-09-23T18:44:02.6000485Z",
+      "ui_hand": [
+        0,
+        0,
+        5,
+        10,
+        11,
+        12,
+        13,
+        19,
+        19,
+        19,
+        23,
+        25,
+        32
+      ],
+      "ui_red": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "ui_scores": [
+        25000,
+        25000,
+        25000,
+        25000
+      ]
+    },
+    {
+      "t": "2026-09-23T18:44:02.8044674+00:00",
+      "opcode": "0x02BB",
+      "message_id": 638,
+      "payload_hex": "01000000000100000000FFFFFFFFFFFFFFFFFFFF01000000"
+    },
+    {
+      "t": "2026-09-23T18:44:04.4026075+00:00",
+      "opcode": "0x0214",
+      "message_id": 641,
+      "payload_hex": "0100000000000000100100008000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+    },
+    {
+      "t": "2026-09-23T18:44:04.551199+00:00",
+      "opcode": "0x02BB",
+      "message_id": 638,
+      "payload_hex": "02000000000100000000FFFFFFFFFFFFFFFFFFFF01000000"
+    },
+    {
+      "t": "2026-09-23T18:44:05.2328327+00:00",
+      "opcode": "0x0214",
+      "message_id": 641,
+      "payload_hex": "0200000000000000100100007800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+    },
+    {
+      "t": "2026-09-23T18:44:05.3213421+00:00",
+      "opcode": "0x02BB",
+      "message_id": 638,
+      "payload_hex": "03000000000100000000FFFFFFFFFFFFFFFFFFFF01000000"
+    },
+    {
+      "t": "2026-09-23T18:44:07.3082843+00:00",
+      "opcode": "0x0214",
+      "message_id": 641,
+      "payload_hex": "0300000000000000100100007000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+    },
+    {
+      "t": "2026-09-23T18:44:07.4521281+00:00",
+      "opcode": "0x02BB",
+      "message_id": 638,
+      "payload_hex": "00000000000100003800FFFFFFFFFFFFFFFFFFFF01000000",
+      "ui_t": "2026-09-23T18:44:07.4788786Z",
+      "ui_hand": [
+        0,
+        0,
+        5,
+        10,
+        11,
+        12,
+        13,
+        19,
+        19,
+        19,
+        23,
+        25,
+        32,
+        14
+      ],
+      "ui_red": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "ui_scores": [
+        25000,
+        25000,
+        25000,
+        25000
+      ]
+    },
+    {
+      "t": "2026-09-23T18:44:08.2122046+00:00",
+      "opcode": "0x0214",
+      "message_id": 641,
+      "payload_hex": "0000000000000000100100008000FFFFFFFFFFFFFFFFFFFF0000000000000000",
+      "ui_t": "2026-09-23T18:44:08.2787070Z",
+      "ui_hand": [
+        0,
+        0,
+        5,
+        10,
+        11,
+        12,
+        13,
+        14,
+        19,
+        19,
+        19,
+        23,
+        25
+      ],
+      "ui_red": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "ui_scores": [
+        25000,
+        25000,
+        25000,
+        25000
+      ]
+    },
+    {
+      "t": "2026-09-23T18:44:08.4591297+00:00",
+      "opcode": "0x02BB",
+      "message_id": 638,
+      "payload_hex": "01000000000100000000FFFFFFFFFFFFFFFFFFFF01000000"
+    },
+    {
+      "t": "2026-09-23T18:44:10.2663461+00:00",
+      "opcode": "0x0214",
+      "message_id": 641,
+      "payload_hex": "0100000000000000100100006C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+    },
+    {
+      "t": "2026-09-23T18:44:10.3726344+00:00",
+      "opcode": "0x02BB",
+      "message_id": 638,
+      "payload_hex": "02000000000100000000FFFFFFFFFFFFFFFFFFFF01000000"
+    },
+    {
+      "t": "2026-09-23T18:44:11.5611347+00:00",
+      "opcode": "0x0214",
+      "message_id": 641,
+      "payload_hex": "0200000000000000100100008400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+    },
+    {
+      "t": "2026-09-23T18:44:11.6662558+00:00",
+      "opcode": "0x02BB",
+      "message_id": 638,
+      "payload_hex": "03000000000100000000FFFFFFFFFFFFFFFFFFFF01000000"
+    },
+    {
+      "t": "2026-09-23T18:44:12.2784652+00:00",
+      "opcode": "0x0214",
+      "message_id": 641,
+      "payload_hex": "0300000000000000100100006C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+    },
+    {
+      "t": "2026-09-23T18:44:12.4564705+00:00",
+      "opcode": "0x02BB",
+      "message_id": 638,
+      "payload_hex": "00000000000100002800FFFFFFFFFFFFFFFFFFFF01000000",
+      "ui_t": "2026-09-23T18:44:12.5674059Z",
+      "ui_hand": [
+        0,
+        0,
+        5,
+        10,
+        11,
+        12,
+        13,
+        14,
+        19,
+        19,
+        19,
+        23,
+        25,
+        10
+      ],
+      "ui_red": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "ui_scores": [
+        25000,
+        25000,
+        25000,
+        25000
+      ]
+    },
+    {
+      "t": "2026-09-23T18:44:14.0835775+00:00",
+      "opcode": "0x0214",
+      "message_id": 641,
+      "payload_hex": "0000000000000000100100001400FFFFFFFFFFFFFFFFFFFF0000000000000000",
+      "ui_t": "2026-09-23T18:44:14.1478482Z",
+      "ui_hand": [
+        0,
+        0,
+        10,
+        10,
+        11,
+        12,
+        13,
+        14,
+        19,
+        19,
+        19,
+        23,
+        25
+      ],
+      "ui_red": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "ui_scores": [
+        25000,
+        25000,
+        25000,
+        25000
+      ]
+    },
+    {
+      "t": "2026-09-23T18:44:14.3245032+00:00",
+      "opcode": "0x02BB",
+      "message_id": 638,
+      "payload_hex": "01000000000100000000FFFFFFFFFFFFFFFFFFFF01000000"
+    },
+    {
+      "t": "2026-09-23T18:44:16.4264313+00:00",
+      "opcode": "0x0214",
+      "message_id": 641,
+      "payload_hex": "0100000000000000120100007C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+    },
+    {
+      "t": "2026-09-23T18:44:16.5023809+00:00",
+      "opcode": "0x02BB",
+      "message_id": 638,
+      "payload_hex": "02000000000100000000FFFFFFFFFFFFFFFFFFFF01000000"
+    },
+    {
+      "t": "2026-09-23T18:44:17.3936894+00:00",
+      "opcode": "0x0214",
+      "message_id": 641,
+      "payload_hex": "0200000000000000100100007C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+    },
+    {
+      "t": "2026-09-23T18:44:17.8970488+00:00",
+      "opcode": "0x02BB",
+      "message_id": 638,
+      "payload_hex": "03000000000100000000FFFFFFFFFFFFFFFFFFFF01000000"
+    },
+    {
+      "t": "2026-09-23T18:44:18.7616259+00:00",
+      "opcode": "0x0214",
+      "message_id": 641,
+      "payload_hex": "0300000000000000100100007C00FFFFFFFFFFFFFFFFFFFF0100000000000000"
+    },
+    {
+      "t": "2026-09-23T18:44:20.7569353+00:00",
+      "opcode": "0x02BB",
+      "message_id": 638,
+      "payload_hex": "00000000000100007800FFFFFFFFFFFFFFFFFFFF01000000",
+      "ui_t": "2026-09-23T18:44:20.8725871Z",
+      "ui_hand": [
+        0,
+        0,
+        10,
+        10,
+        11,
+        12,
+        13,
+        14,
+        19,
+        19,
+        19,
+        23,
+        25,
+        30
+      ],
+      "ui_red": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "ui_scores": [
+        25000,
+        25000,
+        25000,
+        25000
+      ]
+    },
+    {
+      "t": "2026-09-23T18:44:22.0372124+00:00",
+      "opcode": "0x0214",
+      "message_id": 641,
+      "payload_hex": "0000000000000000120100007800FFFFFFFFFFFFFFFFFFFF0000000000000000",
+      "ui_t": "2026-09-23T18:44:22.0854445Z",
+      "ui_hand": [
+        0,
+        0,
+        10,
+        10,
+        11,
+        12,
+        13,
+        14,
+        19,
+        19,
+        19,
+        23,
+        25
+      ],
+      "ui_red": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "ui_scores": [
+        25000,
+        25000,
+        25000,
+        25000
+      ]
+    },
+    {
+      "t": "2026-09-23T18:44:22.2958651+00:00",
+      "opcode": "0x02BB",
+      "message_id": 638,
+      "payload_hex": "01000000000100000000FFFFFFFFFFFFFFFFFFFF01000000"
+    },
+    {
+      "t": "2026-09-23T18:44:24.1291278+00:00",
+      "opcode": "0x0214",
+      "message_id": 641,
+      "payload_hex": "0100000000000000120100007400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+    },
+    {
+      "t": "2026-09-23T18:44:24.1327676+00:00",
+      "opcode": "0x02BB",
+      "message_id": 638,
+      "payload_hex": "02000000000100000000FFFFFFFFFFFFFFFFFFFF01000000"
+    },
+    {
+      "t": "2026-09-23T18:44:24.9196199+00:00",
+      "opcode": "0x0214",
+      "message_id": 641,
+      "payload_hex": "0200000002000000100100000000FFFFFFFFFFFFFFFFFFFF0100000000000000"
+    },
+    {
+      "t": "2026-09-23T18:44:26.2826563+00:00",
+      "opcode": "0x02BB",
+      "message_id": 638,
+      "payload_hex": "03000000000100000000FFFFFFFFFFFFFFFFFFFF01000000"
+    },
+    {
+      "t": "2026-09-23T18:44:27.4437802+00:00",
+      "opcode": "0x0214",
+      "message_id": 641,
+      "payload_hex": "0300000000000000120100007000FFFFFFFFFFFFFFFFFFFF0100000000000000"
+    },
+    {
+      "t": "2026-09-23T18:44:29.6060288+00:00",
+      "opcode": "0x02BB",
+      "message_id": 638,
+      "payload_hex": "00000000000100006400FFFFFFFFFFFFFFFFFFFF01000000",
+      "ui_t": "2026-09-23T18:44:29.7253011Z",
+      "ui_hand": [
+        0,
+        0,
+        10,
+        10,
+        11,
+        12,
+        13,
+        14,
+        19,
+        19,
+        19,
+        23,
+        25,
+        25
+      ],
+      "ui_red": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "ui_scores": [
+        25000,
+        25000,
+        25000,
+        25000
+      ]
+    },
+    {
+      "t": "2026-09-23T18:44:30.6894988+00:00",
+      "opcode": "0x0214",
+      "message_id": 641,
+      "payload_hex": "0000000000000000100100005C00FFFFFFFFFFFFFFFFFFFF0000000000000000",
+      "ui_t": "2026-09-23T18:44:30.7669534Z",
+      "ui_hand": [
+        0,
+        0,
+        10,
+        10,
+        11,
+        12,
+        13,
+        14,
+        19,
+        19,
+        19,
+        25,
+        25
+      ],
+      "ui_red": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "ui_scores": [
+        25000,
+        25000,
+        25000,
+        25000
+      ]
+    },
+    {
+      "t": "2026-09-23T18:44:30.8969773+00:00",
+      "opcode": "0x02BB",
+      "message_id": 638,
+      "payload_hex": "01000000000100000000FFFFFFFFFFFFFFFFFFFF01000000"
+    }
+  ]
+}

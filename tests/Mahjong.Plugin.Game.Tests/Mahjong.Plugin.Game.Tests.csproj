@@ -20,4 +20,8 @@
     <ProjectReference Include="..\..\Mahjong.Plugin.Game\Mahjong.Plugin.Game.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="RegressionFixtures/**/*.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../data/protocols/20260915-international-candidate.json" Link="RegressionFixtures/candidate-profile.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
