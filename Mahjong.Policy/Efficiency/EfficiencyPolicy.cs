@@ -77,6 +77,13 @@ public sealed class EfficiencyPolicy : IAnalyzablePolicy
         if (!state.PublicStateConsistent)
             return ActionChoice.Pass("public-state-incomplete: waiting for a consistent observation");
         var legal = state.Legal;
+        bool riichiPopup = legal.Can(ActionFlags.Riichi) && !legal.Can(ActionFlags.Discard)
+            && state.Hand.Count + state.OurMelds.Count * 3 == 14;
+        if (riichiPopup)
+        {
+            legal = legal with { Flags = legal.Flags | ActionFlags.Discard };
+            state = state with { Legal = legal };
+        }
 
         // Gate Tsumo on MinHan: addon flag alone softlocks Doman yakuless wins (#51).
         if (legal.Can(ActionFlags.Tsumo) && TryDeclareTsumo(state) is { } tsumoChoice)
@@ -136,7 +143,7 @@ public sealed class EfficiencyPolicy : IAnalyzablePolicy
 
         var summary = FormatDiscardSummary(best);
         steps.Add(new Reason("discard", summary));
-        return ActionChoice.Discard(best.Discard, summary, steps);
+        return riichiPopup ? ActionChoice.Pass("riichi declined: " + summary, steps) : ActionChoice.Discard(best.Discard, summary, steps);
     }
 
     private ScoredDiscard ApplyPushFold(StateSnapshot state, ScoredDiscard[] scored, List<Reason> steps)

@@ -33,7 +33,7 @@ public sealed class HeuristicPushFoldPolicy : IPushFoldPolicy
                     $"{shanten}-shanten, opponent tenpai-prob ≥ 0.7");
         }
 
-        bool isDealer = state.OurSeat == state.DealerSeat;
+        bool isDealer = state.SeatInfoKnown && state.OurSeat == state.DealerSeat;
         double pComplete = ProbComplete(shanten, plannedDiscard.UkeireWeighted, state.WallRemaining);
         double handValue = EstimateHandValuePoints(plannedDiscard, isDealer);
         double evPush = pComplete * handValue - dealInCost;
