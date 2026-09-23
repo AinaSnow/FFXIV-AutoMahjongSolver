@@ -50,6 +50,7 @@ internal sealed class StatusTab
             DevHelpers.KeyValueRow(
                 "Event log",
                 plugin.EventLogger.Enabled ? "ON" : "OFF");
+            DevHelpers.KeyValueRow("FireCallback", plugin.EventLogger.CallbackCaptureStatus);
 
             int findingsToday = CountFindingsToday();
             DevHelpers.KeyValueRow("Findings (today)", findingsToday.ToString());

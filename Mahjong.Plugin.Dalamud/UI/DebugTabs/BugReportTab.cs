@@ -81,6 +81,8 @@ internal sealed class BugReportTab
         {
             Theme.SectionHeader("Capture (arm-and-click)");
             Theme.Subtle("Records the very next click you make in the mahjong UI with a label. Type a name, press Arm, then click in-game. Auto-disarms after one click or 60s.");
+            if (!ctx.Plugin.EventLogger.CallbackCaptureAvailable)
+                Theme.Subtle($"Unavailable: {ctx.Plugin.EventLogger.CallbackCaptureStatus}");
             var pending = ctx.Plugin.EventLogger.PendingCaptureLabel;
 
             if (pending is not null)
@@ -100,7 +102,7 @@ internal sealed class BugReportTab
                 ImGui.SetNextItemWidth(220);
                 ImGui.InputText("##caplbl", ref captureLabel, 64);
                 ImGui.SameLine(0, 8);
-                bool armBlocked = !IsValidLabel(captureLabel) || ctx.Plugin.Configuration.AutomationArmed;
+                bool armBlocked = !ctx.Plugin.EventLogger.CallbackCaptureAvailable || !IsValidLabel(captureLabel) || ctx.Plugin.Configuration.AutomationArmed;
                 using (DevHelpers.Disable(armBlocked))
                 {
                     if (ImGui.Button("Arm"))

@@ -1,3 +1,4 @@
+using Mahjong.Plugin.Dalamud.Hooks;
 using Mahjong.Plugin.Dalamud.Logging;
 using System;
 using System.Globalization;
@@ -50,6 +51,10 @@ public sealed class InputEventLogger : IDisposable
     }
 
     public bool Enabled { get; set; }
+    public unsafe bool CallbackCaptureAvailable => !disposed && fireCallbackHook is { IsEnabled: true };
+    public string? CallbackCaptureFailure { get; private set; }
+    public string CallbackCaptureStatus => CallbackCaptureAvailable ? "Active" :
+        CallbackCaptureFailure ?? "Inactive";
 
     public string CaptureLogPath => capturePath;
 
@@ -98,16 +103,13 @@ public sealed class InputEventLogger : IDisposable
 
         addonLifecycle.RegisterListener(AddonEvent.PostReceiveEvent, addon.KnownAddonNames, OnReceiveEvent);
 
-        try
+        if (!HookSetup.TryEnable(ref fireCallbackHook,
+            () => gameInterop.HookFromSignature<FireCallbackDelegate>(FireCallbackSig, FireCallbackDetour),
+            hook => hook.Enable(), out var failure))
         {
-            fireCallbackHook = gameInterop.HookFromSignature<FireCallbackDelegate>(
-                FireCallbackSig, FireCallbackDetour);
-            fireCallbackHook.Enable();
-        }
-        catch (Exception ex)
-        {
-            log.Error($"InputEventLogger: failed to hook FireCallback: {ex}");
-            fireCallbackHook = null;
+            CallbackCaptureFailure = HookSetup.DescribeFailure(failure!);
+            log.Warning(failure!, $"[InputEventLogger] FireCallback observation unavailable ({CallbackCaptureFailure}). " +
+                "Click captures and input-pre/input-post snapshots are unavailable; addon lifecycle logging and packet capture are independent.");
         }
     }
 
@@ -127,6 +129,7 @@ public sealed class InputEventLogger : IDisposable
 
     public void ArmCapture(string label)
     {
+        if (!CallbackCaptureAvailable) return;
         pendingCaptureLabel = label;
         captureArmedAt = DateTime.UtcNow;
     }

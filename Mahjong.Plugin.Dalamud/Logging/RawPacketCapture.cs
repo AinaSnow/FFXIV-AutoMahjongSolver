@@ -1,3 +1,4 @@
+using Mahjong.Plugin.Dalamud.Hooks;
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -16,6 +17,7 @@ internal sealed unsafe class RawPacketCapture(IGameInteropProvider interop) : ID
     internal const int MaxSegmentLength = 65536;
     private delegate void ReceiveDelegate(PacketDispatcher* dispatcher, uint target, byte* ipc);
     private Hook<ReceiveDelegate>? hook;
+    private ReceiveDelegate? original;
     private bool failed;
     private volatile bool enabled;
     public event Action<RawReceivedPacket>? Received;
@@ -39,9 +41,17 @@ internal sealed unsafe class RawPacketCapture(IGameInteropProvider interop) : ID
         try
         {
             if (PacketDispatcher.StaticVirtualTablePointer is null) throw new InvalidOperationException("Receive vtable unavailable");
-            hook ??= interop.HookFromAddress<ReceiveDelegate>(
-                (nint)PacketDispatcher.StaticVirtualTablePointer->OnReceivePacket, Receive);
-            hook.Enable();
+            // Hook the vtable slot, not the code target. Dalamud's pointer-variable hook uses
+            // an absolute thunk and does not require Reloaded's +/-2 GiB allocation window.
+            if (!HookSetup.TryEnable(ref hook,
+                () => interop.HookFromFunctionPointerVariable<ReceiveDelegate>(
+                    (nint)(&PacketDispatcher.StaticVirtualTablePointer->OnReceivePacket), Receive),
+                current => { original = current.Original; current.Enable(); }, out var failure))
+            {
+                failed = true;
+                Error = $"Capture hook unavailable: {HookSetup.DescribeFailure(failure!)}";
+                return;
+            }
             Error = null;
             enabled = true;
         }
@@ -50,8 +60,8 @@ internal sealed unsafe class RawPacketCapture(IGameInteropProvider interop) : ID
 
     private void Receive(PacketDispatcher* dispatcher, uint target, byte* ipc)
     {
-        var current = hook;
-        if (current is null) return;
+        var callOriginal = original;
+        if (callOriginal is null) return;
         try
         {
             if (enabled)
@@ -66,7 +76,7 @@ internal sealed unsafe class RawPacketCapture(IGameInteropProvider interop) : ID
             Error = $"Capture rejected: {ex.GetType().Name}";
             try { Rejected?.Invoke(Error); } catch { /* Never interfere with the original receiver. */ }
         }
-        finally { current.Original(dispatcher, target, ipc); }
+        finally { callOriginal(dispatcher, target, ipc); }
     }
 
     internal static bool TryReadHeader(ReadOnlySpan<byte> header, uint target, out int size, out ushort opcode)

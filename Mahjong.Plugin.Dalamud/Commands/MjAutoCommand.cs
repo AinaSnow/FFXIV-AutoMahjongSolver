@@ -350,6 +350,12 @@ public sealed class MjAutoCommand : IDisposable
             return;
         }
 
+        if (!plugin.EventLogger.CallbackCaptureAvailable)
+        {
+            chatGui.PrintError($"[MjAuto] click capture unavailable: {plugin.EventLogger.CallbackCaptureStatus}");
+            return;
+        }
+
         plugin.EventLogger.ArmCapture(label);
         chatGui.Print(
             $"[MjAuto] capture armed: '{label}'. Click the action in-game once. " +

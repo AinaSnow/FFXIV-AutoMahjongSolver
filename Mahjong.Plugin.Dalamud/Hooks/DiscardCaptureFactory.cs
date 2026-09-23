@@ -7,7 +7,7 @@ using Mahjong.Plugin.Game;
 
 namespace Mahjong.Plugin.Dalamud.Hooks;
 
-/// <summary>Always returns AddonPollDiscardCapture — the native-asm sig collides with idle code on post-2026-05 builds. SigscanProbe still records sig drift to telemetry.</summary>
+/// <summary>Always returns AddonPollDiscardCapture — the native-asm sig collides with idle code on post-2026-05 builds. SigscanProbe can record signature drift in local diagnostics.</summary>
 public static class DiscardCaptureFactory
 {
     public static IDiscardCapture Create(
@@ -27,7 +27,7 @@ public static class DiscardCaptureFactory
         SigscanProbe.ProbeDiscardHandler(sigScanner, sigprobes ?? NullSigprobeLog.Instance);
 
         log.Info(
-            "[DiscardCapture] using addon-poll strategy (sigscan recorded for telemetry; " +
+            "[DiscardCapture] using addon-poll strategy (signature probe is local-only; " +
             "asm hook disabled until a verified discard-handler sig lands).");
         var fallback = new AddonPollDiscardCapture(log);
         aggregator.Changed += fallback.OnSnapshotChanged;

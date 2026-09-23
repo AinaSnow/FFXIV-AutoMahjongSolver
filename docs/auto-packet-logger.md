@@ -26,3 +26,13 @@ node tools/audit-debug-packets.mjs "C:\path\to\capture.ndjson" 2026.09.15.0000.0
 独立诊断 Hook 使用 [Dalamud NetworkMonitor 的 OnReceivePacket 入口](https://github.com/goatcorp/Dalamud/blob/master/Dalamud/Interface/Internal/Windows/Data/Widgets/NetworkMonitorWidget.cs)。段头依据 [Deucalion 的 packet 定义](https://github.com/ff14wed/deucalion/blob/main/deucalion/src/hook/packet.rs)：16 字节段头后跟 16 字节 IPC 头。实现通过本进程 `ReadProcessMemory` 读取 IPC 指针前 16 字节开始的头，检查总长 32–65536、段类型 3、目标 ID 匹配、IPC 标志 0x14，复制后再次对比包头。读取失败或校验不符直接拒绝，不按旧 opcode 长度猜测，更不会改写或发送报文。
 
 上述内存布局在国际服 2026.09.15 的本机实战尚待验证。若 Saved 一直为 0 或 Read rejects 持续增加，保留文件和显示状态供定位；不得通过关闭长度检查或填写固定长度来规避。即使能捕获原始包，麻将字段仍需要 UI 对照与回放验证。未知游戏协议依然停用正式网络推理，调试文件不进入公开局面或 Mortal 队列。
+
+## FireCallback Hook 内存分配失败
+
+`InputEventLogger: failed to hook FireCallback` 与自动 packet logger 是两个独立的 Hook。`Unable to find memory location to fit MemoryBuffer` 表示 Reloaded 未能在要求的地址范围内分配跳转缓冲，并不表示麻将 opcode 已失效，也不能仅凭此判断物理内存不足。
+
+插件现在在诊断页显示 FireCallback 的可用状态，失败时明确停用手动 Arm-and-click 捕获，并清理初始化未完成的 Hook。UI 生命周期日志、读牌与录包保持各自状态；缺失的点击回调、input-pre/input-post 快照不会伪装成已经采集。完整退出并重启游戏可能恢复地址空间条件，单纯重载插件未必有效；本次改动不保证修复 Dalamud 的底层分配失败。
+
+自动 packet logger 改为通过 Dalamud 的 `HookFromFunctionPointerVariable` 接管 OnReceivePacket 虚表槽位。该实现使用绝对跳转，不依赖 Reloaded 的近地址跳转分配路径；不切换已被当前 Dalamud 移除的 MinHook 后端。依据是 [Dalamud 的指针 Hook 实现](https://github.com/goatcorp/Dalamud/blob/master/Dalamud/Hooking/Internal/FunctionPointerVariableHook.cs)。实际虚调用覆盖范围和当前客户端包头仍需实机确认：重载新构建，打开录包，入桌后确认 Saved 增长、Read rejects 不持续增加。
+
+`[DiscardCapture] using addon-poll strategy` 是正常的信息日志。旧版本的 `sigscan recorded for telemetry` 文案已改为本地诊断，不存在远程上传。

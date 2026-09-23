@@ -33,7 +33,8 @@ internal sealed class DiagnosticsTab
         using (Theme.BeginCard("diag-log"))
         {
             Theme.SectionHeader("Event logger");
-            Theme.Subtle("Logs every UI callback the mahjong addon receives. Useful for reverse-engineering button indices; heavy when on — turn off when done.");
+            Theme.Subtle($"FireCallback: {ctx.Plugin.EventLogger.CallbackCaptureStatus}");
+            Theme.Subtle("Logs observed UI callbacks the mahjong addon receives. Useful for reverse-engineering button indices; heavy when on — turn off when done.");
             bool enabled = ctx.Plugin.EventLogger.Enabled;
             if (ImGui.Checkbox("Record clicks to emj-events.log", ref enabled))
             {
@@ -56,7 +57,7 @@ internal sealed class DiagnosticsTab
         using (Theme.BeginCard("diag-discardhook"))
         {
             Theme.SectionHeader("Discard capture");
-            Theme.Subtle("Tracks every discard the moment it commits. Strategy is auto-picked at startup: native asm hook preferred, addon-poll as fallback.");
+            Theme.Subtle("Tracks discards from addon snapshots. Native asm capture remains disabled until its signature is verified.");
             var c = ctx.Plugin.DiscardCapture;
             DevHelpers.KeyValueRow("Strategy", c.StrategyName);
             DevHelpers.KeyValueRow("Health", c.Health.ToString());
