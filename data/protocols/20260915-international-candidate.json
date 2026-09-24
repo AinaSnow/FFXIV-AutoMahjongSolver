@@ -33,6 +33,6 @@
       "payloadLength": 264
     }
   },
-  "limitedTrialScope": "doman-east-zero-stick-no-kan-v1",
-  "limitedTrialEvidence": "docs/reviews/20260924-mortal-limited-trial.md; independently checked Emj openings, draws, discards, calls, red identities and result boundaries. Full protocol remains unverified."
+  "limitedTrialScope": "doman-east-score-pool-no-kan-v2",
+  "limitedTrialEvidence": "docs/reviews/20260924-mortal-limited-trial.md; independently checked Emj openings, draws, discards, calls, red identities and result boundaries. Full protocol remains unverified.; opening riichi pools independently cross-checked against four preceding reach/draw-result histories: docs/reviews/20260925-mortal-decision-coverage.md. Pool is derived from scores; raw counter offsets and kan/dora remain unverified."
 }

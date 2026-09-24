@@ -144,6 +144,13 @@ public sealed class MahjongPacketMjaiDecoder
         _ => MjaiTile.Unknown,
     };
 
+    private static int ScaleScore(int hundreds)
+    {
+        if (hundreds is < -2000 or > 2000)
+            throw new InvalidDataException("Opening score outside the validated range.");
+        return hundreds * 100;
+    }
+
     private void DecodeHandStart(ReadOnlySpan<byte> payload, List<IMjaiEvent> output)
     {
         if (payload.Length < 100)
@@ -164,8 +171,10 @@ public sealed class MahjongPacketMjaiDecoder
 
         var scores = new int[4];
         for (int absoluteSeat = 0; absoluteSeat < 4; absoluteSeat++)
-            scores[RelativeSeat(absoluteSeat, absoluteSelfSeat)] = ReadInt32(payload, 32 + absoluteSeat * 4) * 100;
+            scores[RelativeSeat(absoluteSeat, absoluteSelfSeat)] = ScaleScore(ReadInt32(payload, 32 + absoluteSeat * 4));
 
+        int kyotaku = DomanMortalTrialGuard.InferOpeningRiichiSticks(scores)
+            ?? throw new InvalidDataException("Opening scores cannot establish the Doman riichi pool.");
         var tehais = new string[4][];
         for (int actor = 0; actor < 4; actor++)
             tehais[actor] = Enumerable.Repeat(MjaiTile.Unknown, 13).ToArray();
@@ -184,7 +193,7 @@ public sealed class MahjongPacketMjaiDecoder
             DoraMarker: dora,
             Kyoku: Math.Abs(handIndex % 4) + 1,
             Honba: ReadInt32(payload, 12),
-            Kyotaku: 0,
+            Kyotaku: kyotaku,
             Oya: RelativeSeat(0, absoluteSelfSeat),
             Scores: scores,
             Tehais: tehais));

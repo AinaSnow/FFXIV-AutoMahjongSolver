@@ -21,7 +21,7 @@ public class CapturedPacketReplayTests
         Assert.Equal(hands, result.Hands.Count);
         Assert.Equal(eligible, result.Hands.Count(h => h.OfflineModelEligible));
         Assert.False(result.RuntimeEligible);
-        Assert.Contains(result.Caveats, text => text.Contains("kyotaku=0"));
+        Assert.Contains(result.Caveats, text => text.Contains("score conservation"));
         foreach (var row in result.Hands.SelectMany(h => h.Events))
         {
             var e = row.Event;

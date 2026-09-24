@@ -34,7 +34,7 @@ wsl.exe -d Ubuntu -e python /mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/tools/
 
 ## 未验证范围不会被隐藏
 
-- 导出的开始供托沿用当前解码器的旧 0 值，报告明确标注为未验证假设，不得用于协议晋级。
+- 开始供托按 Doman 起始十万点与四家已确认分数推导；差额必须是非负整数千点，异常分数拒绝解码。报告标明这是规则推导，不是已验证的供托偏移；历史导出中的固定 0 值不能冒充新结果。
 - 未映射 opcode 只统计数量，不声称它们与麻将无关；从选定 fixture 导出也不声称包含了捕获中的所有包。
 - 0x018D / 264 字节的普通流局边界已接入生产解码；其余字段和特殊流局语义保持未知。缺实际结果的手局仍明确标注并跳过模型。
 - 构造的每局子进程结束仅用于释放离线模型，不写回捕获，也不会触发游戏操作。
@@ -61,3 +61,5 @@ wsl.exe -d Ubuntu -e python /mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/tools/
 本地输出 `artifacts/mortal-trial-20260924/model-run-1/report.json`：三场共 18 小局，**17 成功、0 错误、1 跳过**。第三场改用新增的完整脱敏 fixture，8 小局全部完成；唯一跳过仍为第二场第 2 小局的 sequence 133 / 0x140 加杠。真实 runner 确认 1744 条输入，返回 262 条建议/响应。模型、libriichi、配置和 runner 哈希与首次相同。
 
 这些结果仍为离线诊断；新的实战入口是另一个默认关闭、范围受限且有逐局保护的 [Mortal 有限试用](reviews/20260924-mortal-limited-trial.md)。离线通过本身不会改写配置或解锁完整协议。
+
+2026-09-25 新增四个带供托开局的脱敏回放：真实模型全部完成，共 427 条关联输入、66 条响应。实战接入另有 guard：第 3 个样本在后半局 sequence 866 的 `0x113` 仍应隔离；离线兼容不能越过实战字段验证。见 [覆盖修复报告](reviews/20260925-mortal-decision-coverage.md)。

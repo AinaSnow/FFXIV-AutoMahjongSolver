@@ -102,12 +102,30 @@ public sealed class MortalLimitedTrialTests
     }
 
     [Fact]
-    public void Nonzero_opening_pool_is_skipped_and_next_zero_pool_opening_can_resume()
+    public void Invalid_opening_pool_is_skipped_and_next_valid_opening_can_resume()
     {
-        using var h = new Harness(); h.Open(990);
+        using var h = new Harness(); h.Open(999);
         Assert.True(h.Bridge.CurrentHandQuarantined);
         Assert.DoesNotContain(h.Client.Sent, x => x is MjaiStartKyoku);
         h.Open(); Assert.False(h.Bridge.CurrentHandQuarantined);
+    }
+
+    [Theory]
+    [InlineData(990, 1)]
+    [InlineData(980, 2)]
+    public void Carried_sticks_reach_mortal_and_do_not_skip_the_whole_hand(int hundreds, int sticks)
+    {
+        using var h = new Harness(); h.Open(hundreds);
+        Assert.False(h.Bridge.CurrentHandQuarantined);
+        Assert.Equal(sticks, Assert.Single(h.Client.Sent.OfType<MjaiStartKyoku>()).Kyotaku);
+        h.Send(0x02BB, Draw());
+        h.Client.Emit("""{"type":"dahai","actor":0,"pai":"5sr"}""");
+        Assert.True(h.Bridge.TryChoose(h.Snapshot, out var choice));
+        Assert.Equal(ActionKind.Discard, choice.Kind); Assert.True(choice.DiscardIsRed);
+        h.Bridge.RecoverUnresponsiveDecision("test timeout"); h.Bridge.Update();
+        var opening = h.Client.Replayed.Select(x => JsonDocument.Parse(x).RootElement)
+            .Single(x => x.GetProperty("type").GetString() == "start_kyoku");
+        Assert.Equal(sticks, opening.GetProperty("kyotaku").GetInt32());
     }
 
     [Fact]
@@ -286,6 +304,33 @@ public sealed class MortalLimitedTrialTests
         h.Send(0x018D, new byte[264]);
         Assert.False(h.Bridge.HasExpiredOpponentPrompt(Prompt()));
         Assert.Single(h.Clients); Assert.Equal(0, h.Bridge.DecisionTimeouts);
+    }
+
+    [Theory]
+    [InlineData(1, 2, 0)] [InlineData(2, 1, 0)] [InlineData(3, 1, 866)] [InlineData(4, 1, 0)]
+    public void Captured_carried_pool_hand_is_admitted_until_result_or_unverified_flag(int index, int sticks, int rejectedSequence)
+    {
+        using var h = new Harness();
+        using var data = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory,
+            "RegressionFixtures", $"20260925-carried-sticks-{index}.json")));
+        var original = h.Client;
+        foreach (var row in data.RootElement.GetProperty("packets").EnumerateArray())
+        {
+            h.Send(Convert.ToUInt16(row.GetProperty("opcode").GetString()![2..], 16),
+                Convert.FromHexString(row.GetProperty("payload_hex").GetString()!));
+            if (row.GetProperty("sequence").GetInt32() == rejectedSequence)
+            {
+                Assert.True(h.Bridge.CurrentHandQuarantined);
+                Assert.Contains("combined riichi flag", h.Bridge.Status);
+                break; // Do not silently broaden protocol admission to make a replay pass.
+            }
+            Assert.Same(original, h.Client);
+            Assert.True(h.Client.IsRunning, $"Unexpected isolation at {row.GetProperty("sequence")}: {h.Bridge.Status}");
+        }
+        Assert.Equal(sticks, Assert.Single(h.Client.Sent.OfType<MjaiStartKyoku>()).Kyotaku);
+        Assert.Equal(rejectedSequence == 0 ? 1 : 0, h.Client.Sent.OfType<MjaiEndKyoku>().Count());
+        Assert.Single(h.Clients);
+        Assert.Equal(0, h.Bridge.DecisionTimeouts);
     }
 
     private static List<CapturedMahjongPacket> Drain(MahjongNetworkCapture capture)

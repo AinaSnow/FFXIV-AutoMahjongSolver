@@ -2,22 +2,33 @@ using System.Buffers.Binary;
 
 namespace Mahjong.Plugin.Game.Mjai;
 
-/// <summary>Deliberately narrow trial admission; no guessed kan, dora or nonzero kyotaku.</summary>
+/// <summary>Deliberately narrow trial admission; no guessed kan or dora; opening sticks use score conservation.</summary>
 public static class DomanMortalTrialGuard
 {
-    public const string Scope = "doman-east-zero-stick-no-kan-v1";
+    public const string Scope = "doman-east-score-pool-no-kan-v2";
 
     public static string? RejectStart(MjaiStartKyoku start)
     {
         if (start.Bakaze != "E" || start.Kyoku is < 1 or > 4 || start.Honba < 0)
             return "Limited trial: round outside the captured East-round scope";
-        // Standard Doman tables start at 4 * 25000. Sticks leave player scores until
-        // awarded. Only an unchanged total admits the decoder's zero-kyotaku input.
-        // This is a rule-based inference, not an observed counter flag.
-        if (start.Scores.Length != 4 || start.Scores.Any(s => s is < -200000 or > 200000)
-            || start.Scores.Sum(s => (long)s) != 100000 || start.Kyotaku != 0)
-            return "Limited trial: riichi pool is not confirmed zero by score conservation";
+        if (InferOpeningRiichiSticks(start.Scores) is not { } sticks || start.Kyotaku != sticks)
+            return "Limited trial: riichi pool conflicts with opening score conservation";
         return null;
+    }
+
+    /// <summary>
+    /// Doman starts with 4 * 25000; exchanges and noten payments conserve points.
+    /// Only deposited riichi sticks leave player totals. This derives a counter
+    /// from confirmed scores, not an unverified packet offset. See the four
+    /// independent reach -> draw-result -> opening traces dated 2026-09-25.
+    /// </summary>
+    public static int? InferOpeningRiichiSticks(IReadOnlyList<int> scores)
+    {
+        if (scores.Count != 4 || scores.Any(s => s is < -200000 or > 200000 || s % 100 != 0))
+            return null;
+        long total = scores.Sum(s => (long)s);
+        long pool = 100000 - total;
+        return total >= 0 && pool >= 0 && pool % 1000 == 0 ? (int)(pool / 1000) : null;
     }
 
     public static string? RejectPacket(int messageId, ReadOnlySpan<byte> payload)

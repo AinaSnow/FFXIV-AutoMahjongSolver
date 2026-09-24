@@ -104,7 +104,7 @@ public static class CapturedPacketReplay
         return new PacketReplayReport(1, false,
             rawCapture ? "mapped raw-capture packets" : "selected fixture packets",
             ["Offline compatibility diagnostics only; not live protocol approval or win-rate evaluation.",
-             "Current decoder assumes start kyotaku=0; this is not observed evidence.",
+             "Opening kyotaku is derived from Doman score conservation, not a verified counter offset.",
              "Unmapped packets are inventoried, not proven irrelevant. Missing result boundaries are not synthesized.",
              "Only hands ending in a mapped result without a decoder/reducer fault are sent to the offline model."],
             unmapped, hands);
