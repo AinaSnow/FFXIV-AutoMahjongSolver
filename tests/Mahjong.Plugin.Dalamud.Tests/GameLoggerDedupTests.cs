@@ -247,6 +247,22 @@ public class GameLoggerDedupTests
     }
 
     [Fact]
+    public async Task Expired_prompt_recovery_is_logged_as_recovery_not_mortal_or_silently_omitted()
+    {
+        using var tmp = new TempDir();
+        var config = new DalamudConfigService(_ => { }, new Configuration { MortalEnabled = true });
+        using var logger = new GameLogger(config, new StubPluginLog(), tmp.Path);
+        logger.OnStateChanged(SampleSnap(70, handCount: 14));
+        var pass = ActionChoice.Pass("expired prompt");
+        logger.OnDecisionPublished(new Mahjong.Policy.Abstractions.PolicyEvaluation(pass, []) { Source = "ui-recovery" });
+        await logger.FlushAsync();
+        var file = Assert.Single(Directory.GetFiles(logger.GamesDir, "game-*.ndjson"));
+        var decision = Assert.Single(File.ReadAllLines(file), line => line.Contains("\"e\":\"decision\""));
+        Assert.Contains("\"source\":\"ui-recovery\"", decision);
+        Assert.DoesNotContain("\"source\":\"mortal\"", decision);
+    }
+
+    [Fact]
     public async Task RecordDecision_writes_final_source_and_choice()
     {
         using var tmp = new TempDir();

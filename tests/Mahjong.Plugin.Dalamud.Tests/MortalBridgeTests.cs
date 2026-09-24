@@ -227,6 +227,22 @@ public sealed class MortalBridgeTests
     }
 
     [Fact]
+    public void Mortal_ankan_call_candidate_uses_the_same_quad_dispatch_as_local_policy()
+    {
+        var hand = Tiles.Parse("567m26p45s7777z").ToArray();
+        var legal = GameState.Variants.BaseEmjVariant.NormalizeSelfKanPrompt(
+            new LegalActions(ActionFlags.Discard | ActionFlags.MinKan | ActionFlags.Pass, [], [], [], []), hand, []);
+        var snapshot = Snapshot(hand, legal);
+        var reaction = new MortalReaction("ankan", 0, null, null, ["C", "C", "C", "C"]);
+        Assert.True(LiveMortalBridge.TryMapDecision(reaction, snapshot, out var choice));
+        Assert.Null(choice.DiscardTile); // Mortal supplies Call, whereas older local choices used DiscardTile.
+        Assert.True(AutoPlayLoop.TryGetAnkanTile(snapshot, choice, out var tile));
+        Assert.Equal(Tile.FromId(33), tile);
+        Assert.False(AutoPlayLoop.TryGetAnkanTile(snapshot with { Hand = hand.Take(10).ToArray() }, choice, out _));
+        Assert.False(AutoPlayLoop.TryGetAnkanTile(snapshot with { Legal = LegalActions.None }, choice, out _));
+    }
+
+    [Fact]
     public void Kakan_matches_the_single_added_tile_ui_candidate()
     {
         var east = Tile.FromId(27);

@@ -159,6 +159,20 @@ public class BuildSnapshotFromMemoryTests
     }
 
     [Fact]
+    public void Current_visible_rows_override_stale_parent_call_labels()
+    {
+        var memory = new AddonMemoryBuilder(EmjProfile)
+            .WithScores(25000, 25000, 25000, 25000).WithHand("55m123p456s11234z").Build();
+        var (variant, ctx) = MakeVariant(EmjProfile);
+        var snap = variant.BuildSnapshotFromMemory(memory,
+            [AtkValueRecord.OfInt(15), AtkValueRecord.OfString("Chi"), AtkValueRecord.OfString("Pass")], ctx,
+            callModalVisible: true, listWidgetLabels: ["Ron", "Pass"]);
+        Assert.NotNull(snap);
+        Assert.True(snap.Legal.Can(ActionFlags.Ron));
+        Assert.False(snap.Legal.Can(ActionFlags.Chi));
+    }
+
+    [Fact]
     public void Japanese_pon_label_emits_pon_flag()
     {
         var memory = new AddonMemoryBuilder(JpProfile)

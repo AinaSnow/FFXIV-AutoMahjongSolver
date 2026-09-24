@@ -1014,9 +1014,10 @@ public sealed class AutoPlayLoop : IDisposable
 
     private void DispatchPolicyChoice(StateSnapshot snap, ActionChoice choice)
     {
-        if (choice.Kind == ActionKind.AnKan && choice.DiscardTile is { } kanTile)
+        if (choice.Kind == ActionKind.AnKan)
         {
-            DispatchAnkan(snap, choice, kanTile);
+            if (TryGetAnkanTile(snap, choice, out var kanTile)) DispatchAnkan(snap, choice, kanTile);
+            else LastActionDescription = "ankan aborted: selected quad is no longer legal";
             return;
         }
 
@@ -1095,11 +1096,20 @@ public sealed class AutoPlayLoop : IDisposable
         ClearRetryDebounceIfHookFailed(result);
     }
 
+    internal static bool TryGetAnkanTile(StateSnapshot snapshot, ActionChoice choice, out Tile tile)
+    {
+        Tile? selected = choice.Call is { Kind: MeldKind.AnKan } call ? call.ClaimedTile : choice.DiscardTile;
+        tile = selected ?? default;
+        return choice.Kind == ActionKind.AnKan && snapshot.Legal.Can(ActionFlags.AnKan)
+            && selected is { } quad && snapshot.Hand.Count(t => t == quad) == 4
+            && snapshot.Hand.Count % 3 == 2;
+    }
+
     private void DispatchAnkan(StateSnapshot snap, ActionChoice choice, Tile kanTile)
     {
         // Route AnKan through opcode 11 (call-prompt button-row) — the speculative opcode-12 path was a no-op in the addon.
         int acceptIndex = ComputeAcceptIndex(ActionKind.AnKan, snap.Legal, null);
-        var result = plugin.Dispatcher.DispatchCallOption(acceptIndex);
+        var result = plugin.Dispatcher.DispatchCallOption(acceptIndex, ActionKind.AnKan, snap);
         LastActionDescription = $"auto-ankan {kanTile} opt={acceptIndex} → {result}";
         plugin.GameLogger.RecordAction(ActionKind.AnKan, kanTile, acceptIndex, result.ToString(), choice.Reasoning);
         EmitDispatchFinding("ankan", result, option: acceptIndex, tile: kanTile, snap: snap);
@@ -1168,6 +1178,13 @@ public sealed class AutoPlayLoop : IDisposable
         {
             DispatchPolicyChoice(snap, choice);
             log.Info($"[AutoPlayLoop] discard-from-call-popup dispatch: {LastActionDescription}");
+            return;
+        }
+
+        if (choice.Kind == ActionKind.AnKan)
+        {
+            if (TryGetAnkanTile(snap, choice, out var kanTile)) DispatchAnkan(snap, choice, kanTile);
+            else LastActionDescription = "ankan aborted: selected quad is no longer legal";
             return;
         }
 

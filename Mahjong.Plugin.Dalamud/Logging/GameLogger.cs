@@ -209,9 +209,9 @@ public sealed class GameLogger : IDisposable
             reason=enhanced.Choice.Reasoning, elapsed_ms=enhanced.ElapsedMilliseconds }, JsonOpts));
     }
 
-    private void OnDecisionPublished(PolicyEvaluation evaluation)
+    internal void OnDecisionPublished(PolicyEvaluation evaluation)
     {
-        if (evaluation.Source is not ("mortal" or "local-fallback" or "terminal-guard") && (externalEnabled?.Invoke() ?? configService.Current.MortalEnabled)) return;
+        if (evaluation.Source is not ("mortal" or "local-fallback" or "terminal-guard" or "ui-recovery") && (externalEnabled?.Invoke() ?? configService.Current.MortalEnabled)) return;
         RecordDecision(evaluation.Choice, evaluation.Source);
     }
 
