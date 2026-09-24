@@ -42,7 +42,7 @@ public sealed class DebugPacketLogger : IDisposable
         if (disposed) return;
         bool active = enabled();
         network.RefreshProfile();
-        source.SetEnabled(active || network.HasVerifiedBuild);
+        source.SetEnabled(active || network.HasAdmittedBuild);
         network.TransportReady = source.IsEnabled;
         network.TransportStatus = source.Status;
         // Arm pre-roll while connecting so the first received packet is retained.

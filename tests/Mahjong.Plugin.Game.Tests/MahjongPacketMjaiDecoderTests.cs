@@ -178,6 +178,27 @@ public sealed class MahjongPacketMjaiDecoderTests
             e => Assert.Equal(new MjaiReachAccepted(0), e));
     }
 
+    [Fact]
+    public void Draw_result_closes_once_and_next_hand_starts_without_a_synthetic_end()
+    {
+        var decoder = new MahjongPacketMjaiDecoder();
+        decoder.Process(637, HandStart());
+        Assert.IsType<MjaiEndKyoku>(Assert.Single(decoder.Process(MahjongPacketMjaiDecoder.DrawResultMessageId, new byte[264])));
+        Assert.Empty(decoder.Process(MahjongPacketMjaiDecoder.DrawResultMessageId, new byte[264]));
+        Assert.IsType<MjaiStartKyoku>(Assert.Single(decoder.Process(637, HandStart())));
+    }
+
+    [Theory]
+    [InlineData(263)]
+    [InlineData(265)]
+    public void Malformed_draw_result_cannot_close_the_current_hand(int length)
+    {
+        var decoder = new MahjongPacketMjaiDecoder();
+        decoder.Process(637, HandStart());
+        Assert.Throws<InvalidDataException>(() => decoder.Process(MahjongPacketMjaiDecoder.DrawResultMessageId, new byte[length]));
+        Assert.IsType<MjaiEndKyoku>(Assert.Single(decoder.Process(MahjongPacketMjaiDecoder.DrawResultMessageId, new byte[264])));
+    }
+
     private static byte[] MatchStart() => new byte[48];
 
     private static byte[] HandStart()

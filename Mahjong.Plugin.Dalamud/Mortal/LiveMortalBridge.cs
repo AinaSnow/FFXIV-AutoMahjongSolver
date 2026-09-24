@@ -26,10 +26,16 @@ public sealed class LiveMortalBridge : IDisposable
     private readonly MjaiEventJournal journal = new();
 
     private MahjongPacketMjaiDecoder decoder = new();
+    private PublicStateReducer trialState = new();
+    private long admissionGeneration = -1;
+    internal Func<IMortalProcessClient>? ClientFactory { get; set; }
+    private Action<string>? clientReactionHandler;
+    private Action<int?>? clientExitHandler;
     private IMortalProcessClient? client;
     private MortalProcessSettings? activeSettings;
     private DateTime lastStartAttemptUtc = DateTime.MinValue;
     private bool awaitingReachDiscard;
+    private bool optimisticReachSent;
     private string? optimisticRiichiTile;
     private MortalReaction? pendingKanReaction;
     private ActionChoice? recommendation;
@@ -83,11 +89,11 @@ public sealed class LiveMortalBridge : IDisposable
 
     public event Action<StateSnapshot, PolicyEvaluation>? DecisionPublished;
 
-    public bool Enabled => configService.Current.MortalEnabled && capture.ProtocolVerified && capture.TransportReady;
+    public bool Enabled => configService.Current.MortalEnabled && capture.ProtocolAdmitted && capture.TransportReady;
 
     public bool IsRunning => client?.IsRunning == true;
 
-    public bool CurrentHandQuarantined => waitingForNextHand;
+    public bool CurrentHandQuarantined => waitingForNextHand || capture.LimitedTrialActive && !trialState.Active;
 
     public string Status { get; private set; } = "Disabled";
 
@@ -153,10 +159,17 @@ public sealed class LiveMortalBridge : IDisposable
     public bool TryChoose(StateSnapshot snapshot, out ActionChoice choice)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+        if (!Enabled || CurrentHandQuarantined || !snapshot.PublicStateConsistent
+            || capture.LimitedTrialActive && !trialState.Merge(snapshot).PublicStateConsistent)
+        {
+            ClearRecommendation();
+            choice = ActionChoice.Pass("waiting for a matching public/UI state");
+            return false;
+        }
         if (TryGetRecommendation(snapshot, out choice, out _))
             return true;
 
-        TryRecoverMissingDiscard(snapshot);
+        if (!capture.LimitedTrialActive) TryRecoverMissingDiscard(snapshot);
         if (IsOpponentResponseWindow(snapshot.Legal.Flags)
             && lastNetworkDiscard is not { Actor: > 0 })
         {
@@ -205,6 +218,13 @@ public sealed class LiveMortalBridge : IDisposable
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         int key = StateAggregator.ComputeContentHash(snapshot);
+        if (!Enabled || CurrentHandQuarantined || !snapshot.PublicStateConsistent
+            || capture.LimitedTrialActive && !trialState.Merge(snapshot).PublicStateConsistent)
+        {
+            choice = ActionChoice.Pass("waiting for a matching public/UI state");
+            discardIsRed = null;
+            return false;
+        }
         lock (recommendationLock)
         {
             if (hasRecommendation && recommendationKey == key && recommendation is not null)
@@ -248,6 +268,11 @@ public sealed class LiveMortalBridge : IDisposable
         if (choice.Kind is not (ActionKind.AnKan or ActionKind.MinKan or ActionKind.ShouMinKan))
             return;
 
+        if (capture.LimitedTrialActive)
+        {
+            QuarantineCurrentHand("Limited trial: kan selected; local policy handles the rest of this hand");
+            return;
+        }
         MortalReaction? reaction;
         lock (reachLock)
         {
@@ -280,16 +305,23 @@ public sealed class LiveMortalBridge : IDisposable
         Stop("Disposed");
     }
 
-    private void OnFrameworkUpdate(IFramework _)
+    private void OnFrameworkUpdate(IFramework _) => Update();
+
+    internal void Update()
     {
         if (disposed)
             return;
 
-        if (!capture.ProtocolVerified)
+        if (!capture.ProtocolAdmitted)
         {
             if (client is not null) Stop(capture.ProtocolStatus);
             Status = capture.ProtocolStatus;
             return;
+        }
+        if (admissionGeneration != capture.AdmissionGeneration)
+        {
+            Stop("Protocol context changed; waiting for an observed opening");
+            admissionGeneration = capture.AdmissionGeneration;
         }
         if (!capture.TransportReady)
         {
@@ -384,7 +416,28 @@ public sealed class LiveMortalBridge : IDisposable
         IReadOnlyList<IMjaiEvent> decodedEvents;
         try
         {
+            if (capture.LimitedTrialActive && DomanMortalTrialGuard.RejectPacket(packet.MessageId, packet.Payload) is { } rejected)
+                throw new InvalidDataException(rejected);
             decodedEvents = decoder.Process(packet.MessageId, packet.Payload);
+            if (capture.LimitedTrialActive && optimisticReachSent
+                && decodedEvents.Any(e => e is MjaiDahai { Actor: 0 })
+                && !decodedEvents.Any(e => e is MjaiReach { Actor: 0 }))
+                throw new InvalidDataException("Limited trial: actual discard did not confirm the model's riichi declaration");
+            if (capture.LimitedTrialActive)
+            {
+                foreach (var evt in decodedEvents)
+                {
+                    if (evt is MjaiStartKyoku start)
+                    {
+                        string? reason = DomanMortalTrialGuard.RejectStart(start);
+                        if (reason is not null) throw new InvalidDataException(reason);
+                        if (!IsSafeStartKyoku(start)) throw new InvalidDataException("Limited trial: unknown opening tile");
+                    }
+                    trialState.Apply(evt, knownCounters: false);
+                    if (evt is not MjaiStartGame && !trialState.Complete)
+                        throw new InvalidDataException(trialState.Failure ?? "Limited trial: incomplete public history");
+                }
+            }
         }
         catch (InvalidDataException ex)
         {
@@ -477,7 +530,8 @@ public sealed class LiveMortalBridge : IDisposable
             ObserveCapturedPacket(packet);
             lastCapturedPacket = packet;
             if (packet.MessageId is MahjongPacketMjaiDecoder.HandResultAMessageId
-                or MahjongPacketMjaiDecoder.HandResultBMessageId)
+                or MahjongPacketMjaiDecoder.HandResultBMessageId
+                or MahjongPacketMjaiDecoder.DrawResultMessageId)
             {
                 quarantinedKyokuEnded = true;
                 continue;
@@ -488,6 +542,7 @@ public sealed class LiveMortalBridge : IDisposable
             waitingForNextHand = false;
             quarantinedKyokuEnded = false;
             decoder = new MahjongPacketMjaiDecoder();
+            trialState = new();
             journal.Clear();
             lastNetworkDiscard = null;
             recoveredPendingServerDiscard = null;
@@ -550,6 +605,18 @@ public sealed class LiveMortalBridge : IDisposable
         if (evt is MjaiStartGame)
             journal.Clear();
         journal.Append(evt);
+        if (evt is MjaiStartGame or MjaiStartKyoku or MjaiEndKyoku or MjaiEndGame)
+        {
+            while (reactions.TryDequeue(out _)) { }
+            ClearRecommendation();
+            lock (reachLock)
+            {
+                awaitingReachDiscard = false;
+                optimisticRiichiTile = null;
+                optimisticReachSent = false;
+                pendingKanReaction = null;
+            }
+        }
         if (ShouldSuppressOptimisticRiichiEvent(evt))
             return true;
 
@@ -564,6 +631,7 @@ public sealed class LiveMortalBridge : IDisposable
         {
             Status = $"Send failed: {ex.Message}";
             log.Error(ex, "[Mortal] Failed to send an MJAI event.");
+            QuarantineCurrentHand("MJAI input delivery failed; waiting for the next hand");
             return false;
         }
     }
@@ -573,9 +641,11 @@ public sealed class LiveMortalBridge : IDisposable
         lastStartAttemptUtc = clock.UtcNow;
         try
         {
-            var next = new MortalProcessClient(log, runnerDirectory);
-            next.ReactionReceived += OnReactionReceived;
-            next.Exited += OnProcessExited;
+            var next = ClientFactory?.Invoke() ?? new MortalProcessClient(log, runnerDirectory);
+            clientReactionHandler = json => { if (ReferenceEquals(client, next)) OnReactionReceived(json); };
+            clientExitHandler = code => { if (ReferenceEquals(client, next)) OnProcessExited(code); };
+            next.ReactionReceived += clientReactionHandler;
+            next.Exited += clientExitHandler;
             next.Start(settings);
             client = next;
             capture.CaptureEnabled = true;
@@ -615,8 +685,8 @@ public sealed class LiveMortalBridge : IDisposable
         client = null;
         if (old is not null)
         {
-            old.ReactionReceived -= OnReactionReceived;
-            old.Exited -= OnProcessExited;
+            old.ReactionReceived -= clientReactionHandler;
+            old.Exited -= clientExitHandler;
             old.Dispose();
         }
 
@@ -624,6 +694,7 @@ public sealed class LiveMortalBridge : IDisposable
         {
             while (capture.TryDequeue(out _)) { }
             decoder = new MahjongPacketMjaiDecoder();
+            trialState = new();
             journal.Clear();
             pendingStartKyoku = null;
             pendingStartTileKinds = [];
@@ -646,6 +717,7 @@ public sealed class LiveMortalBridge : IDisposable
         {
             awaitingReachDiscard = false;
             optimisticRiichiTile = null;
+            optimisticReachSent = false;
             pendingKanReaction = null;
         }
         Status = status;
@@ -669,12 +741,13 @@ public sealed class LiveMortalBridge : IDisposable
         client = null;
         if (old is not null)
         {
-            old.ReactionReceived -= OnReactionReceived;
-            old.Exited -= OnProcessExited;
+            old.ReactionReceived -= clientReactionHandler;
+            old.Exited -= clientExitHandler;
             old.Dispose();
         }
 
         decoder = new MahjongPacketMjaiDecoder();
+        trialState = new();
         journal.Clear();
         pendingStartKyoku = null;
         pendingStartTileKinds = [];
@@ -695,6 +768,7 @@ public sealed class LiveMortalBridge : IDisposable
         {
             awaitingReachDiscard = false;
             optimisticRiichiTile = null;
+            optimisticReachSent = false;
             pendingKanReaction = null;
         }
         capture.CaptureEnabled = true;
@@ -717,6 +791,7 @@ public sealed class LiveMortalBridge : IDisposable
             if (parsed.Type == "reach" && parsed.Actor == 0)
             {
                 awaitingReachDiscard = true;
+                optimisticReachSent = true;
                 try
                 {
                     var current = client ?? throw new InvalidOperationException("Mortal process is not running.");
@@ -728,6 +803,7 @@ public sealed class LiveMortalBridge : IDisposable
                     awaitingReachDiscard = false;
                     Status = $"Reach handshake failed: {ex.Message}";
                     log.Error(ex, "[Mortal] Failed to complete the reach handshake.");
+                    QuarantineCurrentHand("Riichi input delivery failed; waiting for the next hand");
                 }
                 return;
             }
@@ -748,7 +824,7 @@ public sealed class LiveMortalBridge : IDisposable
     {
         lock (reachLock)
         {
-            if (optimisticRiichiTile is null)
+            if (!optimisticReachSent)
                 return false;
             if (evt is MjaiReach { Actor: 0 })
                 return true;
@@ -756,10 +832,13 @@ public sealed class LiveMortalBridge : IDisposable
             {
                 if (!string.Equals(discard.Pai, optimisticRiichiTile, StringComparison.Ordinal))
                     log.Warning($"[Mortal] Server riichi discard {discard.Pai} differs from planned {optimisticRiichiTile}.");
-                return true;
+                return false;
             }
             if (evt is MjaiReachAccepted { Actor: 0 })
+            {
                 optimisticRiichiTile = null;
+                optimisticReachSent = false;
+            }
             return false;
         }
     }

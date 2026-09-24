@@ -135,8 +135,11 @@ public class MatchArchiveWriterTests
         Assert.Equal(4, root.GetProperty("our_rank").GetInt32());
     }
 
-    [Fact]
-    public void Packet_result_settles_a_hand_when_score_delta_contains_a_riichi_stick()
+    [Theory]
+    [InlineData(MahjongPacketMjaiDecoder.HandResultAMessageId)]
+    [InlineData(MahjongPacketMjaiDecoder.HandResultBMessageId)]
+    [InlineData(MahjongPacketMjaiDecoder.DrawResultMessageId)]
+    public void Packet_result_settles_a_hand_when_score_delta_contains_a_riichi_stick(int resultId)
     {
         using var tmp = new TempDir();
         string gamesDir = Path.Combine(tmp.Path, "games");
@@ -152,7 +155,7 @@ public class MatchArchiveWriterTests
         using var writer = new MatchArchiveWriter(tmp.Path, new StubPluginLog());
         writer.RecordPacket(HandStartPacket(selfSeat: 0, [25000, 25000, 25000, 25000]));
         writer.RecordPacket(new CapturedMahjongPacket(
-            MahjongPacketMjaiDecoder.HandResultAMessageId,
+            resultId,
             0x1234,
             DateTimeOffset.UtcNow,
             [0x01]));

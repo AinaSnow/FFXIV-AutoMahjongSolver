@@ -35,6 +35,8 @@ public class StateAggregatorHashTests
         Assert.Same(fallback, StateAggregator.SelectPresentedEvaluation(fallback, true, false));
         Assert.Null(StateAggregator.SelectPresentedEvaluation(fallback with { Source = "mortal" }, true, false));
         Assert.Null(StateAggregator.SelectPresentedEvaluation(fallback with { Source = "stable" }, true, false));
+        Assert.Equal("local-fallback", StateAggregator.SelectPresentedEvaluation(fallback with { Source = "stable" }, true, false, true)?.Source);
+        Assert.Null(StateAggregator.SelectPresentedEvaluation(fallback with { Source = "mortal" }, true, false, true));
     }
 
     private static StateSnapshot SnapshotWithPon(int claimedTileId)

@@ -44,6 +44,7 @@
     on it automatically.
   -->
   <ItemGroup>
+    <None Include="../Mahjong.Plugin.Game.Tests/RegressionFixtures/20260924-draw-result-match.json" Link="RegressionFixtures/20260924-draw-result-match.json" CopyToOutputDirectory="PreserveNewest" />
     <None Update="RegressionFixtures\**\*.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Replay\fixtures\**\*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

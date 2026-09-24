@@ -86,7 +86,8 @@ public sealed class HandOverlay : IDisposable
             return;
 
         var evaluation = plugin.Aggregator.PresentedEvaluation(plugin.MortalBridge.Enabled,
-            plugin.MortalBridge.TryGetRecommendation(snap, out _, out _));
+            plugin.MortalBridge.TryGetRecommendation(snap, out _, out _),
+            plugin.MortalBridge.Enabled && plugin.MortalBridge.CurrentHandQuarantined);
         var choice = evaluation?.Choice;
         bool? choiceIsRed = choice?.DiscardIsRed;
         if (choice?.DiscardTile is null)

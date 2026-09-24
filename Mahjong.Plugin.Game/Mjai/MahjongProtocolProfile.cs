@@ -5,10 +5,15 @@ namespace Mahjong.Plugin.Game.Mjai;
 
 public sealed record MahjongPacketSpec(int MessageId, int PayloadLength);
 public sealed record MahjongProtocolProfile(string GameVersion, string Variant, bool Verified,
-    string Evidence, Dictionary<string, MahjongPacketSpec> Packets)
+    string Evidence, Dictionary<string, MahjongPacketSpec> Packets, string? LimitedTrialScope = null, string? LimitedTrialEvidence = null)
 {
     public bool Matches(string? version, string? variant) => Verified && !string.IsNullOrWhiteSpace(Evidence)
         && !string.IsNullOrWhiteSpace(version) && GameVersion == version && Variant == variant;
+    public bool MatchesLimitedTrial(string? version, string? variant) =>
+        !string.IsNullOrWhiteSpace(version) && !string.IsNullOrWhiteSpace(variant)
+        && GameVersion == version && Variant == variant
+        && LimitedTrialScope == DomanMortalTrialGuard.Scope
+        && !string.IsNullOrWhiteSpace(LimitedTrialEvidence);
     public bool TryGet(ushort opcode, out MahjongPacketSpec? spec) =>
         Packets.TryGetValue($"0x{opcode:X4}", out spec);
     public static MahjongProtocolProfile[] LoadDirectory(string path)

@@ -273,8 +273,9 @@ public sealed class MainWindow : Window, IDisposable
             }
 
             var evaluation = plugin.Aggregator.PresentedEvaluation(plugin.MortalBridge.Enabled,
-                plugin.MortalBridge.TryGetRecommendation(snap, out _, out _));
-            bool usesMortal = evaluation?.Source == "mortal" || (evaluation is null && plugin.MortalBridge.Enabled);
+                plugin.MortalBridge.TryGetRecommendation(snap, out _, out _),
+            plugin.MortalBridge.Enabled && plugin.MortalBridge.CurrentHandQuarantined);
+            bool usesMortal = evaluation?.Source == "mortal" || (evaluation is null && plugin.MortalBridge.Enabled && !plugin.MortalBridge.CurrentHandQuarantined);
             ScoredDiscard[]? scored = evaluation?.Candidates.ToArray();
             var choice = evaluation?.Choice;
             bool? choiceIsRed = choice?.DiscardIsRed;

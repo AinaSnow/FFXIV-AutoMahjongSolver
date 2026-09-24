@@ -3,6 +3,16 @@ namespace Mahjong.Plugin.Dalamud.Tests;
 public class ConfigurationTests
 {
     [Fact]
+    public void Existing_configuration_keeps_settings_and_does_not_enable_trial()
+    {
+        var old = Newtonsoft.Json.JsonConvert.DeserializeObject<Configuration>("{\"Version\":3,\"MortalEnabled\":true,\"MortalWslDistribution\":\"Ubuntu\",\"HumanizedDelayMs\":987}")!;
+        Assert.False(old.MortalLimitedTrial); Assert.True(old.MortalEnabled);
+        Assert.Equal("Ubuntu", old.MortalWslDistribution); Assert.Equal(987, old.HumanizedDelayMs);
+        var enabled = old with { MortalLimitedTrial = true };
+        Assert.True(Newtonsoft.Json.JsonConvert.DeserializeObject<Configuration>(Newtonsoft.Json.JsonConvert.SerializeObject(enabled))!.MortalLimitedTrial);
+    }
+
+    [Fact]
     public void Default_construction_uses_current_schema_version()
     {
         var c = new Configuration();

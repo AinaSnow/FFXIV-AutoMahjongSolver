@@ -10,6 +10,7 @@ public sealed class LiveLaterHandsCaptureTests
     [InlineData("20260924-later-hands.json", "EmjL", 72, 118, 57, 57, 9, 4, 483, 18, 2)]
     [InlineData("20260924-full-match.json", "Emj", 0, 129, 62, 62, 0, 5, 524, 7, 8)]
     [InlineData("20260924-added-kan-match.json", "Emj", 0, 97, 47, 45, 3, 5, 388, 2, 7)]
+    [InlineData("20260924-draw-result-match.json", "Emj", 0, 216, 103, 104, 0, 8, 872, 2, 9)]
     public void Live_capture_matches_self_hands_and_reports_public_history_gaps(
         string fixtureName, string variant, int expectedPrefix, int expectedCompared,
         int expectedDraws, int expectedDiscards, int expectedGaps, int expectedHands,
@@ -81,6 +82,10 @@ public sealed class LiveLaterHandsCaptureTests
                         break;
                     case MjaiTsumo draw when draw.Actor == 0:
                         hand.Add(draw.Pai); selfDraws++; break;
+                    case MjaiOpenCall call when call.Actor == 0:
+                        foreach (string consumed in call.Consumed)
+                            Assert.True(hand.Remove(consumed));
+                        break;
                     case MjaiDahai discard when discard.Actor == 0:
                         Assert.True(hand.Remove(discard.Pai), $"Missing {discard.Pai} at packet {packet.GetProperty("sequence")}");
                         selfDiscards++; break;
@@ -99,8 +104,10 @@ public sealed class LiveLaterHandsCaptureTests
             if (packet.TryGetProperty("ui_result", out var result))
             {
                 Assert.Single(decoded.OfType<MjaiEndKyoku>());
+                int offset = spec.MessageId == MahjongPacketMjaiDecoder.DrawResultMessageId ? 8 : 36;
+                int stride = spec.MessageId == MahjongPacketMjaiDecoder.DrawResultMessageId ? 64 : 4;
                 int[] scores = Enumerable.Range(0, 4).Select(actor =>
-                    BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(36 + ((selfSeat + actor) % 4) * 4)) * 100).ToArray();
+                    BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset + ((selfSeat + actor) % 4) * stride)) * 100).ToArray();
                 Assert.Equal(Ints(result.GetProperty("scores_after")), scores);
                 results++;
             }
@@ -121,8 +128,14 @@ public sealed class LiveLaterHandsCaptureTests
         Assert.All(events.OfType<MjaiTsumo>().Where(e => e.Actor != 0), e => Assert.Equal("?", e.Pai));
         if (variant == "Emj")
         {
-            string expectedRedDiscard = fixtureName == "20260924-full-match.json" ? "5mr" : "5sr";
-            Assert.Contains(events.OfType<MjaiDahai>(), e => e.Actor == 0 && e.Pai == expectedRedDiscard);
+            if (fixtureName == "20260924-draw-result-match.json")
+                Assert.Contains(document.RootElement.GetProperty("packets").EnumerateArray(), p =>
+                    p.TryGetProperty("ui_hand_red", out var reds) && reds.EnumerateArray().Any(r => r.GetBoolean()));
+            else
+            {
+                string expectedRedDiscard = fixtureName == "20260924-full-match.json" ? "5mr" : "5sr";
+                Assert.Contains(events.OfType<MjaiDahai>(), e => e.Actor == 0 && e.Pai == expectedRedDiscard);
+            }
             Assert.Equal(new[] { 0, 1, 2, 3 }, events.OfType<MjaiStartKyoku>().Select(e => e.Oya).Distinct().Order());
         }
         else

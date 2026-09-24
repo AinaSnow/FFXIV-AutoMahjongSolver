@@ -15,6 +15,8 @@ public sealed class MahjongPacketMjaiDecoder
     public const int HandResultAMessageId = 639;
     public const int HandResultBMessageId = 640;
     public const int DiscardMessageId = 641;
+    // 642 remains the historical roster ID. This is an analysis ID, not a wire opcode.
+    public const int DrawResultMessageId = 643;
 
     private static readonly string[] SeatNames = ["E", "S", "W", "N"];
 
@@ -66,6 +68,12 @@ public sealed class MahjongPacketMjaiDecoder
                 DecodeDiscard(payload, output);
                 break;
 
+            case DrawResultMessageId:
+                // Only the observed 264-byte result boundary is supported; do not infer
+                // noten, nagashi, or other result semantics from its opaque fields.
+                if (payload.Length != 264)
+                    throw new InvalidDataException("Draw result payload must be exactly 264 bytes.");
+                goto case HandResultAMessageId;
             case HandResultAMessageId:
             case HandResultBMessageId:
                 if (handOpen)

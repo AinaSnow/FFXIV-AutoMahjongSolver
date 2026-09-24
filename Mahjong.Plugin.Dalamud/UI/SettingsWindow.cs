@@ -152,6 +152,11 @@ public sealed class SettingsWindow : Window, IDisposable
             if (ImGui.Checkbox("Use Mortal for live decisions", ref enabled))
                 plugin.ConfigService.Update(c => c with { MortalEnabled = enabled });
 
+            bool trial = cfg.MortalLimitedTrial;
+            if (ImGui.Checkbox("Mortal limited trial (2026.09.15 / Emj)", ref trial))
+                plugin.ConfigService.Update(c => c with { MortalLimitedTrial = trial });
+            ImGui.TextWrapped("Optional trial for observed East-round hands with no carried riichi deposits. Kans or incomplete state switch the rest of that hand to the local strategy. Next hand is checked again. Match-end ranking differences remain experimental.");
+
             if (enabled)
                 ImGui.BeginDisabled();
 
@@ -175,8 +180,10 @@ public sealed class SettingsWindow : Window, IDisposable
 
             Theme.Subtle($"Status: {plugin.MortalBridge.Status}");
             Theme.Subtle($"Network: {plugin.NetworkCapture.ProtocolStatus}");
-            if (!plugin.NetworkCapture.ProtocolVerified)
-                ImGui.TextWrapped("Verified network inference is disabled. UI logs still work. Use Debug packet logger below to collect evidence.");
+            if (!plugin.NetworkCapture.ProtocolAdmitted)
+                ImGui.TextWrapped("Network inference is unavailable for this version/variant or the limited trial is off. Existing recordings can be checked offline; additional random matches are not required.");
+            else if (plugin.NetworkCapture.LimitedTrialActive)
+                ImGui.TextWrapped("Limited trial is active. This is not full protocol verification; unsupported hands use the local strategy.");
             Theme.Subtle($"Packets {plugin.MortalBridge.PacketsProcessed}  ·  MJAI {plugin.MortalBridge.EventsSent}  ·  Decisions {plugin.MortalBridge.ReactionsReceived}");
             Theme.Subtle($"Mapped {plugin.MortalBridge.DecisionsMapped}  ·  Timeouts {plugin.MortalBridge.DecisionTimeouts}  ·  Corrected {plugin.MortalBridge.CandidateCorrections}  ·  Recovered {plugin.MortalBridge.RecoveredDiscardEvents}  ·  Model {plugin.MortalBridge.LastModelEvalMilliseconds:0.0} ms");
         }
@@ -189,7 +196,7 @@ public sealed class SettingsWindow : Window, IDisposable
             bool capture = cfg.DebugAutoPacketLogging;
             if (ImGui.Checkbox("Automatically record packets at mahjong tables", ref capture))
                 plugin.ConfigService.Update(c => c with { DebugAutoPacketLogging = capture });
-            ImGui.TextWrapped("Saves local received packets through bundled Deucalion, with a 2-second pre-roll. May contain player information. No upload. Unverified packets are never used for decisions.");
+            ImGui.TextWrapped("Saves local received packets through bundled Deucalion, with a 2-second pre-roll. May contain player information. No upload. Decision input follows the separately selected verified or limited-trial protocol scope.");
             Theme.Subtle($"Status: {plugin.DebugPackets.Status}");
             Theme.Subtle($"Saved {plugin.DebugPackets.Packets}  |  Queue drops {plugin.DebugPackets.Dropped}  |  Read rejects {plugin.DebugPackets.Rejected}");
             Theme.Subtle("64 MiB per capture; automatically stops on leaving the table. Files remain until you remove them.");

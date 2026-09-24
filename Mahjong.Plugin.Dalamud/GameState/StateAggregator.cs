@@ -203,11 +203,13 @@ public sealed class StateAggregator : IDisposable
         PublishExternal(snapshot, evaluation);
     }
 
-    public PolicyEvaluation? PresentedEvaluation(bool externalEnabled, bool externalRecommendationCurrent) =>
-        SelectPresentedEvaluation(LastEvaluation, externalEnabled, externalRecommendationCurrent);
+    public PolicyEvaluation? PresentedEvaluation(bool externalEnabled, bool externalRecommendationCurrent, bool localFallback = false) =>
+        SelectPresentedEvaluation(localFallback ? LastLocalEvaluation : LastEvaluation,
+            externalEnabled, externalRecommendationCurrent, localFallback);
 
-    internal static PolicyEvaluation? SelectPresentedEvaluation(PolicyEvaluation? current, bool externalEnabled, bool externalRecommendationCurrent)
+    internal static PolicyEvaluation? SelectPresentedEvaluation(PolicyEvaluation? current, bool externalEnabled, bool externalRecommendationCurrent, bool localFallback = false)
     {
+        if (localFallback) return current is null || current.Source == "mortal" ? null : current with { Source = "local-fallback" };
         if (!externalEnabled) return current;
         return current?.Source switch
         {

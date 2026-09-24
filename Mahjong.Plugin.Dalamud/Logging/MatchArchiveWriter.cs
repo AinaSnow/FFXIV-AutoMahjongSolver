@@ -289,6 +289,7 @@ public sealed class MatchArchiveWriter : IDisposable
 
             case MahjongPacketMjaiDecoder.HandResultAMessageId:
             case MahjongPacketMjaiDecoder.HandResultBMessageId:
+            case MahjongPacketMjaiDecoder.DrawResultMessageId:
                 if (packetHandOpen)
                 {
                     packetSettledHands++;

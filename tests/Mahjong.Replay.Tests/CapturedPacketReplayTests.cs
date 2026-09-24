@@ -13,6 +13,7 @@ public class CapturedPacketReplayTests
     [Theory]
     [InlineData("20260924-full-match.json", 5, 5)]
     [InlineData("20260924-added-kan-match.json", 5, 4)]
+    [InlineData("20260924-draw-result-match.json", 8, 8)]
     public void Existing_real_corpus_replays_without_hidden_opponent_tiles_or_protocol_approval(string file, int hands, int eligible)
     {
         var result = CapturedPacketReplay.Read(File.ReadAllText(RepoPathResolver.Resolve(
@@ -51,12 +52,12 @@ public class CapturedPacketReplayTests
     [Fact]
     public void Missing_result_is_recorded_not_synthesized_as_a_complete_hand()
     {
-        var report = Fixture(Packet(1, "0x0133", Start()), Packet(2, "0x018D", new byte[264]),
+        var report = Fixture(Packet(1, "0x0133", Start()), Packet(2, "0xF00D", new byte[264]),
             Packet(3, "0x0133", Start()));
         Assert.Equal("next-start-without-result", report.Hands[0].Boundary);
         Assert.Equal("capture-end-without-result", report.Hands[1].Boundary);
         Assert.All(report.Hands, hand => Assert.False(hand.OfflineModelEligible));
-        Assert.Equal(1, report.UnmappedOpcodes["0x018D"]);
+        Assert.Equal(1, report.UnmappedOpcodes["0xF00D"]);
         Assert.DoesNotContain(report.Hands.SelectMany(h => h.Events), e => e.Event.GetProperty("type").GetString() == "end_kyoku");
     }
 

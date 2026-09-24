@@ -14,7 +14,7 @@ public sealed class PublicStateTracker : IDisposable
     private readonly Action<CapturedMahjongPacket>? observer;
     private MahjongPacketMjaiDecoder decoder = new();
     private readonly PublicStateReducer state = new();
-    private long dropped;
+    private long dropped, admissionGeneration = -1;
     private bool wasPresent;
     public PublicStateTracker(MahjongNetworkCapture capture, IFramework framework, AddonEmjReader reader,
         IPluginLog log, Action<CapturedMahjongPacket>? observer = null)
@@ -24,6 +24,11 @@ public sealed class PublicStateTracker : IDisposable
     }
     private void Update(IFramework _)
     {
+        if (admissionGeneration != capture.AdmissionGeneration)
+        {
+            state.Reset(); decoder = new();
+            admissionGeneration = capture.AdmissionGeneration;
+        }
         bool present = reader.LastObservation.Present;
         capture.PublicCaptureEnabled = present;
         if (!present && wasPresent) Reset();
@@ -39,8 +44,15 @@ public sealed class PublicStateTracker : IDisposable
             try { observer?.Invoke(packet); } catch (Exception ex) { log.Warning(ex, "[Mahjong] Packet archive rejected write."); }
             try
             {
+                if (capture.LimitedTrialActive && DomanMortalTrialGuard.RejectPacket(packet.MessageId, packet.Payload) is { } packetReason)
+                    throw new InvalidDataException(packetReason);
                 foreach (var evt in decoder.Process(packet.MessageId, packet.Payload))
+                {
+                    if (capture.LimitedTrialActive && evt is MjaiStartKyoku start
+                        && DomanMortalTrialGuard.RejectStart(start) is { } startReason)
+                        throw new InvalidDataException(startReason);
                     state.Apply(evt, knownCounters: false);
+                }
             }
             catch (Exception ex)
             {
@@ -49,7 +61,8 @@ public sealed class PublicStateTracker : IDisposable
             }
         }
     }
-    public StateSnapshot Merge(StateSnapshot snapshot) => capture.ProtocolVerified ? state.Merge(snapshot) : snapshot;
+    public StateSnapshot Merge(StateSnapshot snapshot) =>
+        capture.ProtocolAdmitted && state.Complete ? state.Merge(snapshot) : snapshot;
     public void Reset() { state.Reset(); decoder = new(); while (capture.TryDequeuePublic(out _)) { } }
     public void Dispose() { framework.Update -= Update; capture.PublicCaptureEnabled = false; Reset(); }
 }

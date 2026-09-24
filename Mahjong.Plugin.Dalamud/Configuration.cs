@@ -46,6 +46,9 @@ public sealed record Configuration : IPluginConfiguration
     /// <summary>Use the live packet/MJAI bridge instead of the built-in heuristic policy.</summary>
     public bool MortalEnabled { get; init; } = false;
 
+    /// <summary>Opt-in only: admit explicitly scoped protocol evidence, with per-hand guards.</summary>
+    public bool MortalLimitedTrial { get; init; } = false;
+
     public string MortalWslDistribution { get; init; } = "";
 
     public string MortalWorkingDirectory { get; init; } = "";
