@@ -12,6 +12,7 @@ import statistics
 import subprocess
 import sys
 from mjai_adapter import PolicyEngine
+from rule_profile import rule_profile, REQUESTED_MODES
 
 SPLITS = {"train": 100_000, "development": 1_000_000, "acceptance": 10_000_000}
 
@@ -24,7 +25,8 @@ def paired_interval(values, replicates=10000):
     return [means[int(replicates * .025)], means[int(replicates * .975)]]
 
 
-def report(groups, split, opponent="mortal"):
+def report(groups, split, opponent="mortal", match_mode="libriichi-hanchan"):
+    rules = rule_profile(match_mode)
     rank_delta = [statistics.mean(m["rank"] for m in g["candidate"]) - statistics.mean(m["rank"] for m in g["baseline"]) for g in groups]
     fourth_delta = [statistics.mean(m["rank"] == 4 for m in g["candidate"]) - statistics.mean(m["rank"] == 4 for m in g["baseline"]) for g in groups]
     rank_ci, fourth_ci = paired_interval(rank_delta), paired_interval(fourth_delta)
@@ -44,9 +46,11 @@ def report(groups, split, opponent="mortal"):
         and summary["rank_delta"]<=-.03 and rank_ci[1]<0 and fourth_ci[1]<=.01)
     summary["promotion_requires_clean_protocol_and_action_regressions"] = True
     summary["scope"] = "libriichi strategy results; not live-game win rate or execution reliability"
-    summary["rule_differences"] = ["libriichi standard four-player hanchan; game client match length must be separately confirmed",
-        "Doman timing, UI prompts, call legality, abortive draws and placement/tie rules require live validation",
-        "No gameplay input latency or process timeout loss is simulated"]
+    summary["match_mode"] = rules["match_mode"]
+    summary["scheduled_rounds"] = rules["scheduled_rounds"]
+    summary["rule_differences"] = rules["rule_differences"]
+    # Passing standard-arena statistics is insufficient to change the live Doman default.
+    summary["doman_promotion_eligible"] = False
     return summary
 
 
@@ -84,7 +88,12 @@ def main():
     p.add_argument("--offset",type=int,default=0)
     p.add_argument("--output",type=Path,required=True)
     p.add_argument("--calibration-path",help="Path understood by the C# process; trained artifact only")
+    p.add_argument("--match-mode", default="libriichi-hanchan", choices=REQUESTED_MODES)
     args=p.parse_args()
+    try:
+        rules = rule_profile(args.match_mode)
+    except ValueError as ex:
+        p.error(str(ex))
     if not 1<=args.groups<=100000 or not 0<=args.offset<100000 or args.offset+args.groups>100000:
         p.error("groups/offset must stay within the split's disjoint 100000-seed range")
     if args.output.exists():
@@ -106,7 +115,7 @@ def main():
     engine_commit = subprocess.check_output(["git","-C",str(args.mortal_dir),"rev-parse","HEAD"],text=True).strip()
     manifest = dict(schema=1,engine="libriichi",engine_commit=engine_commit,model_sha256=model_hash,
                     policy_command=json.loads(args.policy_command),split=args.split,seed_start=SPLITS[args.split]+args.offset,
-                    groups=args.groups,opponent=args.opponent,rule_set="libriichi",candidate="enhanced",baseline="stable",
+                    groups=args.groups,opponent=args.opponent,rule_set=rules["rule_set"],rules=rules,candidate="enhanced",baseline="stable",
                     policy_build=json.loads(subprocess.check_output(json.loads(args.policy_command)+["--describe"],text=True)),
                     calibration_path=args.calibration_path)
     (args.output/"manifest.json").write_text(json.dumps(manifest,indent=2))
@@ -115,7 +124,7 @@ def main():
         seed=SPLITS[args.split]+args.offset+index
         group=dict(seed=seed,key=42)
         for name in ("candidate","baseline"):
-            engine = PolicyEngine(manifest["policy_command"],name,enhanced=name=="candidate",calibration_path=args.calibration_path if name=="candidate" else None)
+            engine = PolicyEngine(manifest["policy_command"],name,enhanced=name=="candidate",calibration_path=args.calibration_path if name=="candidate" else None,match_mode=args.match_mode)
             try:
                 arena=OneVsThree(disable_progress_bar=True,log_dir=str(args.output/f"seed-{seed}"/name))
                 arena.py_vs_py(engine,opponent,(seed,42),1)
@@ -132,7 +141,7 @@ def main():
         with (args.output/"results.jsonl").open("a") as f:
             f.write(json.dumps(group)+"\n")
         print(f"completed seed group {index+1}/{args.groups}",flush=True)
-    (args.output/"report.json").write_text(json.dumps(report(groups,args.split,args.opponent),indent=2))
+    (args.output/"report.json").write_text(json.dumps(report(groups,args.split,args.opponent,args.match_mode),indent=2))
 
 
 if __name__=="__main__":

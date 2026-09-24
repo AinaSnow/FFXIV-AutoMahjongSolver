@@ -10,6 +10,8 @@ from calibrate import fit
 from mortal_runner import serve
 from mjai_adapter import public_events
 from arena import paired_interval, report, SPLITS
+from rule_profile import rule_profile
+from mjai_adapter import PolicyEngine
 
 class Bot:
     def react(self,line):
@@ -40,6 +42,23 @@ class BridgeTests(unittest.TestCase):
         group=dict(candidate=[dict(rank=1,score=40000)]*4,baseline=[dict(rank=4,score=10000)]*4)
         self.assertFalse(report([group],"acceptance")["promotion_statistics_pass"])
         self.assertEqual(len(set(SPLITS.values())),3)
+
+    def test_doman_modes_fail_before_starting_a_policy_process(self):
+        with patch("mjai_adapter.subprocess.Popen") as process:
+            for mode in ("doman-quick", "doman-full"):
+                with self.assertRaisesRegex(ValueError, "not implemented"):
+                    PolicyEngine(["unused"], match_mode=mode)
+            process.assert_not_called()
+        self.assertEqual(rule_profile()["scheduled_rounds"], 2)
+
+    def test_standard_arena_statistics_cannot_promote_a_doman_default(self):
+        group=dict(candidate=[dict(rank=1,score=40000)]*4,baseline=[dict(rank=4,score=10000)]*4)
+        with patch("arena.paired_interval",return_value=[-1,-0.5]):
+            result=report([group]*1000,"acceptance","mortal")
+        self.assertTrue(result["promotion_statistics_pass"])
+        self.assertFalse(result["doman_promotion_eligible"])
+        self.assertEqual(result["match_mode"], "libriichi-hanchan")
+        self.assertTrue(any("30000" in difference for difference in result["rule_differences"]))
 
     def test_smoke_opponent_cannot_satisfy_promotion_gate(self):
         group=dict(candidate=[dict(rank=1,score=40000)]*4,baseline=[dict(rank=4,score=10000)]*4)

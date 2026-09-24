@@ -2,6 +2,7 @@
 import copy
 import json
 import subprocess
+from rule_profile import rule_profile
 
 HONORS = ("E", "S", "W", "N", "P", "F", "C")
 
@@ -89,7 +90,8 @@ def legal_actions(state, player):
 
 class PolicyEngine:
     engine_type = "mjai-log"
-    def __init__(self, command, name="stable", enhanced=False, calibration_path=None):
+    def __init__(self, command, name="stable", enhanced=False, calibration_path=None, match_mode="libriichi-hanchan"):
+        self.rules = rule_profile(match_mode)
         self.name, self.enhanced = name, enhanced
         self.process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
         self.results = []
@@ -120,7 +122,7 @@ class PolicyEngine:
             player = self.player_ids[game.game_index]
             events = public_events(json.loads(game.events_json),player)
             legal = legal_actions(game.state,player)
-            request = dict(events=events,legal=legal,scheduled_rounds=2,enhanced=self.enhanced,calibration_path=self.calibration_path)
+            request = dict(events=events,legal=legal,scheduled_rounds=self.rules["scheduled_rounds"],match_mode=self.rules["match_mode"],enhanced=self.enhanced,calibration_path=self.calibration_path)
             self.process.stdin.write(json.dumps(request)+"\n")
             self.process.stdin.flush()
             line = self.process.stdout.readline()

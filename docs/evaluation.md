@@ -17,7 +17,7 @@ python3 -m unittest discover -s tools/tests -v
 cd "$MORTAL_DIR"
 ./venv/bin/python "$REPO/tools/evaluation/arena.py" \
   --policy-command "[\"dotnet\",\"$REPO/Mahjong.Policy.Mjai/bin/Release/net8.0/Mahjong.Policy.Mjai.dll\"]" \
-  --mortal-dir "$MORTAL_DIR" --opponent mortal \
+  --mortal-dir "$MORTAL_DIR" --opponent mortal --match-mode libriichi-hanchan \
   --split development --groups 1 --output "$REPO/artifacts/evaluation/dev-001"
 ```
 
@@ -31,7 +31,7 @@ WSL 可把 `--policy-command` 指向 Windows `dotnet.exe` 和 Windows DLL 路径
 
 - 输出 `manifest.json` 记录引擎 commit、原模型 SHA256、策略程序集哈希、schema、种子、规则和模式；`results.jsonl` 记录每场座位/得分/名次/和牌/放铳，压缩 MJAI 日志可重放。
 - `report.json` 汇总平均名次、一位/四位率、平均得失分、和牌/放铳率。以 seed 组为单位计算配对 bootstrap 95% 区间；一个 seed 组返回空区间，不允许晋级。
-- 只有固定 Mortal 对手的 acceptance ≥1000 组才检查统计门槛：名次差 ≤ -0.03 且区间上界 <0，四位率差区间上界 ≤0.01。报告的统计通过仍需要独立操作/协议回归通过；脚本不会修改插件默认配置。
+- 只有固定 Mortal 对手的 acceptance ≥1000 组才检查统计门槛：名次差 ≤ -0.03 且区间上界 <0，四位率差区间上界 ≤0.01。报告的统计通过只属于当前引擎环境；`doman_promotion_eligible=false` 阻止将其用于 FF14 默认策略晋级。还需兼容引擎及独立操作/协议回归；脚本不会修改插件默认配置。
 - `--opponent tsumogiri` 只用于连接测试，不能晋级。开发/训练集不能用于最终验收结论。
 
 ## 训练校准与影子比较
@@ -54,4 +54,4 @@ CI 普通测试不更新 golden：缺文件或空样本目录即失败。显式 
 
 ### 官方规则核对补充（2026-09-24）
 
-官方已明确快速/完整比赛、同分排序及特殊结算的规则文本，见 [规则差距审查](reviews/20260924-official-rules-audit.md)。待验证的是本机当前模式识别和引擎实现差异，不需要重新用实战证明规则存在。当前适配器固定 `scheduled_rounds=2`，仍只能把结果称为半庄环境评测；在增加快速模式的对战与结束条件适配前，不能宣称它代表 FF14 快排上分效果。
+官方已明确快速/完整比赛、同分排序及特殊结算的规则文本，见 [规则差距审查](reviews/20260924-official-rules-audit.md)。待验证的是本机当前模式识别和引擎实现差异，不需要重新用实战证明规则存在。已检查本机引擎源码，当前 `--match-mode libriichi-hanchan` 对应标准半庄且可能延长局，末局庄家结束要求达到 30000 分。能力声明统一提供 `scheduled_rounds=2`；请求 `doman-quick` 或 `doman-full` 会在创建输出和启动进程前明确报错。报告逐项列出规则差异，并固定 `doman_promotion_eligible=false`。在引擎结束条件和特殊结算适配前，不能宣称它代表 FF14 快排上分效果。
