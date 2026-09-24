@@ -15,11 +15,12 @@ namespace Mahjong.Plugin.Dalamud.Logging;
 
 public sealed class GameLogger : IDisposable
 {
-    public const int SchemaVersion = 6;
+    public const int SchemaVersion = 7;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
     };
 
     private readonly StateAggregator? aggregator;
@@ -45,6 +46,7 @@ public sealed class GameLogger : IDisposable
     private readonly bool ownsIo;
     private readonly Func<bool>? externalEnabled;
     private int? lastDecisionKey;
+    private readonly Func<TrainingProvenance>? provenance;
     public Task FlushAsync() => io.FlushAsync();
 
     public string? CurrentPath => currentPath;
@@ -59,7 +61,7 @@ public sealed class GameLogger : IDisposable
         Func<IPolicy>? policyAccessor = null,
         InputEventLogger? eventLogger = null,
         Func<MeldTrackerStateDto>? meldTrackerAccessor = null,
-        BackgroundIoWorker? io = null, Func<bool>? externalEnabled = null)
+        BackgroundIoWorker? io = null, Func<bool>? externalEnabled = null, Func<TrainingProvenance>? provenance = null)
     {
         ArgumentNullException.ThrowIfNull(aggregator);
         ArgumentNullException.ThrowIfNull(configService);
@@ -69,6 +71,7 @@ public sealed class GameLogger : IDisposable
         this.configService = configService;
         this.log = log;
         this.externalEnabled = externalEnabled;
+        this.provenance = provenance;
         this.io = io ?? new BackgroundIoWorker();
         ownsIo = io is null;
         this.policyAccessor = policyAccessor;
@@ -81,7 +84,10 @@ public sealed class GameLogger : IDisposable
         aggregator.DecisionPublished += OnDecisionPublished;
         aggregator.ShadowCompared += OnShadowCompared;
         if (eventLogger is not null)
+        {
             eventLogger.CallPromptObserved += OnCallPromptObserved;
+            eventLogger.CallbackObserved += RecordInput;
+        }
     }
 
     /// <summary>Test-only: skips aggregator wiring.</summary>
@@ -117,7 +123,10 @@ public sealed class GameLogger : IDisposable
             aggregator.ShadowCompared -= OnShadowCompared;
         }
         if (eventLogger is not null)
+        {
             eventLogger.CallPromptObserved -= OnCallPromptObserved;
+            eventLogger.CallbackObserved -= RecordInput;
+        }
         if (ownsIo) io.Dispose();
     }
 
@@ -215,7 +224,15 @@ public sealed class GameLogger : IDisposable
         }
     }
 
-    public void RecordAction(ActionKind kind, Tile? tile, int? slot, string result, string reasoning)
+    internal void RecordInput(InputCallbackEvent input)
+    {
+        if (disposed || !configService.Current.EnableGameLogging || currentPath is null) return;
+        WriteLine(JsonSerializer.Serialize(new { t = input.ObservedAtUtc.ToString("O", CultureInfo.InvariantCulture),
+            e = "input-callback", hand_id = aggregator?.Latest?.HandId, revision = aggregator?.Latest?.Revision,
+            automated = input.IsAutomated, values = input.IntValues, callback_result = input.Result }, JsonOpts));
+    }
+
+    public void RecordAction(ActionKind kind, Tile? tile, int? slot, string result, string reasoning, bool? isRed = null)
     {
         if (!configService.Current.EnableGameLogging || disposed)
             return;
@@ -231,6 +248,7 @@ public sealed class GameLogger : IDisposable
                 Tile: tile?.Id,
                 Slot: slot,
                 Result: result,
+                IsRed: isRed,
                 Why: string.IsNullOrEmpty(reasoning) ? null : reasoning);
             WriteLine(JsonSerializer.Serialize(evt, JsonOpts));
         }
@@ -392,6 +410,7 @@ public sealed class GameLogger : IDisposable
         var h = new HashCode();
         h.Add(snap.AddonStateCode);
         h.Add(snap.HandId);
+        h.Add(snap.Revision);
         h.Add(snap.WallRemaining);
         h.Add(snap.TurnIndex);
         h.Add((int)snap.Legal.Flags);
@@ -460,6 +479,7 @@ public sealed class GameLogger : IDisposable
         Steps: choice.Steps is { Count: > 0 } steps
             ? steps.Select(r => new StepDto(K: r.Code, D: r.Display)).ToArray()
             : null,
+        Provenance: provenance?.Invoke(),
         Tracker: tracker is { } t
             ? new TrackerDto(
                 Melds: t.Melds,
@@ -486,7 +506,11 @@ public sealed class GameLogger : IDisposable
         Seats: snap.Seats.Select(ToSeatDto).ToArray(),
         DiscardRestrictionKnown: snap.Legal.DiscardRestrictionKnown,
         DiscardableTiles: snap.Legal.DiscardableTiles.Select(t => (int)t.Id).ToArray(),
-        InitialDealerSeat: snap.InitialDealerSeat);
+        InitialDealerSeat: snap.InitialDealerSeat,
+        HandId: snap.HandId, Revision: snap.Revision, Complete: snap.PublicStateConsistent,
+        OurSeat: snap.OurSeat, SeatWind: snap.SeatWind, SeatInfoKnown: snap.SeatInfoKnown,
+        RoundWind: snap.RoundWind, Dealer: snap.DealerSeat, Honba: snap.Honba, RiichiSticks: snap.RiichiSticks,
+        Kyoku: snap.Kyoku, ScheduledRounds: snap.ScheduledRounds);
 
     private static SeatDto ToSeatDto(SeatView s) => new(
         Dc: s.DiscardCount,
@@ -548,7 +572,19 @@ public sealed class GameLogger : IDisposable
         [property: JsonPropertyName("seats")] SeatDto[] Seats,
         [property: JsonPropertyName("discard_restriction_known")] bool DiscardRestrictionKnown,
         [property: JsonPropertyName("discardable_tiles")] int[] DiscardableTiles,
-        [property: JsonPropertyName("initial_dealer")] int? InitialDealerSeat);
+        [property: JsonPropertyName("initial_dealer")] int? InitialDealerSeat,
+        [property: JsonPropertyName("hand_id")] long HandId,
+        [property: JsonPropertyName("revision")] long Revision,
+        [property: JsonPropertyName("complete")] bool Complete,
+        [property: JsonPropertyName("our_seat")] int OurSeat,
+        [property: JsonPropertyName("seat_wind")] int? SeatWind,
+        [property: JsonPropertyName("seat_info_known")] bool SeatInfoKnown,
+        [property: JsonPropertyName("round_wind")] int RoundWind,
+        [property: JsonPropertyName("dealer")] int Dealer,
+        [property: JsonPropertyName("honba")] int Honba,
+        [property: JsonPropertyName("riichi_sticks")] int RiichiSticks,
+        [property: JsonPropertyName("kyoku")] int? Kyoku,
+        [property: JsonPropertyName("scheduled_rounds")] int? ScheduledRounds);
 
     private sealed record ActionEvent(
         [property: JsonPropertyName("action_id")] long ActionId,
@@ -560,6 +596,7 @@ public sealed class GameLogger : IDisposable
         [property: JsonPropertyName("tile")] int? Tile,
         [property: JsonPropertyName("slot")] int? Slot,
         [property: JsonPropertyName("result")] string Result,
+        [property: JsonPropertyName("is_red")] bool? IsRed,
         [property: JsonPropertyName("why")] string? Why);
 
     private sealed record DecisionEvent(
@@ -576,7 +613,8 @@ public sealed class GameLogger : IDisposable
         [property: JsonPropertyName("call_kind")] string? CallKind,
         [property: JsonPropertyName("why")] string? Why,
         [property: JsonPropertyName("steps")] StepDto[]? Steps,
-        [property: JsonPropertyName("tracker")] TrackerDto? Tracker);
+        [property: JsonPropertyName("tracker")] TrackerDto? Tracker,
+        [property: JsonPropertyName("provenance")] TrainingProvenance? Provenance);
 
     private sealed record StepDto(
         [property: JsonPropertyName("k")] string K,

@@ -1,7 +1,20 @@
 """Versioned acknowledgement envelope around unchanged MJAI events. Run in Mortal/mortal."""
+import hashlib
+import io
 import json
 import os
 import sys
+
+
+_model_identity = None
+
+
+def load_checkpoint(torch_module, path):
+    # Hash exactly the bytes passed to torch, not a later read of a replaceable checkpoint path.
+    with open(path, "rb") as checkpoint:
+        payload = checkpoint.read()
+    identity = {"checkpoint_sha256": hashlib.sha256(payload).hexdigest(), "checkpoint_bytes": len(payload)}
+    return torch_module.load(io.BytesIO(payload), weights_only=True, map_location="cpu"), identity
 
 
 def create_engine():
@@ -16,9 +29,13 @@ def create_engine():
     if str(device_name).startswith("cuda") and not torch.cuda.is_available():
         device_name = "cpu"
     device = torch.device(device_name)
-    state = torch.load(config["control"]["state_file"], weights_only=True, map_location="cpu")
+    global _model_identity
+    state, _model_identity = load_checkpoint(torch, config["control"]["state_file"])
     cfg = state["config"]
     version = cfg["control"].get("version", 1)
+    _model_identity["architecture_version"] = version
+    with open(__file__, "rb") as runner:
+        _model_identity["runner_sha256"] = hashlib.sha256(runner.read()).hexdigest()
     brain = Brain(version=version, **{k: cfg["resnet"][k] for k in ("num_blocks", "conv_channels")}).eval()
     dqn = DQN(version=version).eval()
     brain.load_state_dict(state["mortal"])
@@ -35,7 +52,7 @@ def create_bot():
     return Bot(engine, 0)
 
 
-def serve(bot, source, sink):
+def serve(bot, source, sink, model_identity=None):
     last_sequence = 0
     session = None
     for line in source:
@@ -47,6 +64,8 @@ def serve(bot, source, sink):
             if request["session"] != session or request["sequence"] != last_sequence + 1:
                 raise ValueError("session or input sequence mismatch")
             last_sequence = request["sequence"]
+            if last_sequence == 1 and model_identity is not None:
+                response["model"] = model_identity
             reaction = bot.react(json.dumps(request["event"], separators=(",", ":")))
             response["reaction"] = json.loads(reaction) if reaction and request["event"].get("can_act", True) else None
         except Exception as exc:
@@ -58,4 +77,5 @@ def serve(bot, source, sink):
 
 
 if __name__ == "__main__":
-    serve(create_bot(), sys.stdin, sys.stdout)
+    bot = create_bot()
+    serve(bot, sys.stdin, sys.stdout, _model_identity)

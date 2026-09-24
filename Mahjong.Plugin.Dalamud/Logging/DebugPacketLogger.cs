@@ -33,7 +33,7 @@ public sealed class DebugPacketLogger : IDisposable
     public string Status => !enabled() ? "Off" : recorder.Latest?.Error ??
         (!source.IsEnabled ? source.Status :
         recorder.IsRecording ? recorder.Latest!.Progress : present() && recorder.Latest is {} last ? last.Status : "Armed; waiting for mahjong table");
-    private bool disposed, recordingEnabled, tablePresent;
+    private bool disposed, recordingEnabled, tablePresent, closingUntilAbsent;
 
     public DebugPacketLogger(string pluginDirectory, MahjongNetworkCapture network, IFramework framework, string configDirectory,
         Func<bool> enabled, Func<bool> present, Func<MatchArchiveEnvironment> environment, IPluginLog? log = null)
@@ -59,6 +59,8 @@ public sealed class DebugPacketLogger : IDisposable
         // Arm pre-roll while connecting so the first received packet is retained.
         bool captureEnabled = active && !source.Status.StartsWith("Deucalion unavailable",StringComparison.Ordinal);
         bool visible = present();
+        if (!visible) closingUntilAbsent = false;
+        if (closingUntilAbsent) visible = false;
         if (captureEnabled != recordingEnabled || visible != tablePresent)
         {
             recorder.Update(captureEnabled, visible, environment());
@@ -78,6 +80,13 @@ public sealed class DebugPacketLogger : IDisposable
             warnedPath = session.Path;
             log?.Warning($"[PacketDebug] {session.Progress}. Saved=0; this capture cannot validate the protocol. File: {session.Path}");
         }
+    }
+
+    public DebugPacketSession? CloseForArchive()
+    {
+        closingUntilAbsent = true;
+        tablePresent = false;
+        return recorder.CloseForArchive();
     }
 
     private void Record(RawReceivedPacket packet) { recorder.Record(packet); network.Record(packet); }

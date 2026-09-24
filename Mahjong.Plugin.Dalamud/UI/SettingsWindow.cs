@@ -144,6 +144,17 @@ public sealed class SettingsWindow : Window, IDisposable
                 plugin.ConfigService.Update(c => c with { ArchiveMaxBytes = (long)Math.Clamp(mib, 1, 1048576) << 20 });
         }
 
+        using (Theme.BeginCard("settings-training-data"))
+        {
+            Theme.SectionHeader("Training data archive");
+            bool retain = cfg.RetainTrainingData;
+            if (ImGui.Checkbox("Keep completed matches for future training", ref retain))
+                plugin.ConfigService.Update(c => c with { RetainTrainingData = retain });
+            ImGui.TextWrapped("Keeps a separate local copy of game logs and sealed raw packets. No automatic expiry, upload or training. Stop collection if storage fails.");
+            Theme.Subtle(plugin.TrainingCorpus.Status);
+            if (ImGui.SmallButton("Copy training data folder")) ImGui.SetClipboardText(plugin.TrainingCorpus.RootDir);
+        }
+
         using (Theme.BeginCard("settings-mortal"))
         {
             Theme.SectionHeader("Mortal AI");

@@ -91,6 +91,8 @@ public sealed class LiveMortalBridge : IDisposable
 
     public bool Enabled => configService.Current.MortalEnabled && capture.ProtocolAdmitted && capture.TransportReady;
 
+    public string? ModelIdentityJson => client?.ModelIdentityJson;
+
     public bool IsRunning => client?.IsRunning == true;
 
     public bool CurrentHandQuarantined => waitingForNextHand || capture.LimitedTrialActive && !trialState.Active;

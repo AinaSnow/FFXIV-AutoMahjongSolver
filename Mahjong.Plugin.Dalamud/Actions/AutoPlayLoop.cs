@@ -982,7 +982,9 @@ public sealed class AutoPlayLoop : IDisposable
             var result = plugin.Dispatcher.DispatchDiscard(slot);
             LastActionDescription = $"auto-riichi-tsumogiri {tile} slot={slot} → {result}";
             log.Info($"[AutoPlayLoop] riichi-tsumogiri dispatch: {LastActionDescription}");
-            plugin.GameLogger.RecordAction(ActionKind.Discard, tile, slot, result.ToString(), "riichi-tsumogiri");
+            plugin.GameLogger.RecordAction(ActionKind.Discard, tile, slot, result.ToString(), "riichi-tsumogiri",
+                fsm.RiichiConfirmTile is not null ? fsm.RiichiConfirmTileIsRed :
+                    snap.Observations.HasFlag(SnapshotObservationFlags.HandRedIdentity) && snap.HandIsRed.Count > 13 ? snap.HandIsRed[13] : null);
             EmitDispatchFinding("riichi-tsumogiri", result, tile: tile, slot: slot, snap: snap);
             ClearRetryDebounceIfHookFailed(result);
             // Do not clear the latch here — ObserveWall clears it on the next hand; otherwise policy.Choose would re-approve riichi in the same hand.
@@ -1116,7 +1118,7 @@ public sealed class AutoPlayLoop : IDisposable
             int riichiIdx = ComputeAcceptIndex(ActionKind.Riichi, snap.Legal, null);
             var rResult = plugin.Dispatcher.DispatchCallOption(riichiIdx);
             LastActionDescription = $"auto-riichi[opt={riichiIdx}] (tile={tile}) → {rResult}";
-            plugin.GameLogger.RecordAction(ActionKind.Riichi, tile, riichiIdx, rResult.ToString(), choice.Reasoning);
+            plugin.GameLogger.RecordAction(ActionKind.Riichi, tile, riichiIdx, rResult.ToString(), choice.Reasoning, targetIsRed);
             EmitDispatchFinding("riichi", rResult, option: riichiIdx, tile: tile, snap: snap);
             if (rResult == InputDispatcher.DispatchResult.Ok)
             {
@@ -1129,7 +1131,7 @@ public sealed class AutoPlayLoop : IDisposable
 
         var result = plugin.Dispatcher.DispatchDiscard(slot);
         LastActionDescription = $"auto-discard {tile} slot={slot} → {result}";
-        plugin.GameLogger.RecordAction(ActionKind.Discard, tile, slot, result.ToString(), choice.Reasoning);
+        plugin.GameLogger.RecordAction(ActionKind.Discard, tile, slot, result.ToString(), choice.Reasoning, targetIsRed);
         EmitDispatchFinding("discard", result, tile: tile, slot: slot, snap: snap);
         ClearRetryDebounceIfHookFailed(result);
     }

@@ -85,6 +85,26 @@ public class BackgroundReliabilityTests
         await client.Completion.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
+    [Fact]
+    public async Task Model_identity_is_bound_to_validated_process_session()
+    {
+        var fake = new FakeProcess();
+        using var client = new MortalProcessClient(new StubPluginLog(), processFactory: _ => fake);
+        client.Start(new("test", "test", "python"));
+        client.Send(new MjaiReach(0));
+        string sent = await fake.Writes.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        var response = System.Text.Json.Nodes.JsonNode.Parse(Response(sent))!;
+        response["model"] = new System.Text.Json.Nodes.JsonObject { ["checkpoint_sha256"] = new string('a', 64) };
+        await fake.Stdout.Lines.Writer.WriteAsync(response.ToJsonString());
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (client.ModelIdentityJson is null && DateTime.UtcNow < deadline) await Task.Delay(1);
+        using var identity = JsonDocument.Parse(Assert.IsType<string>(client.ModelIdentityJson));
+        using var request = JsonDocument.Parse(sent);
+        Assert.Equal(request.RootElement.GetProperty("session").GetString(), identity.RootElement.GetProperty("session").GetString());
+        Assert.Equal(new string('a',64), identity.RootElement.GetProperty("model").GetProperty("checkpoint_sha256").GetString());
+        client.Dispose(); await client.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
     private static string Response(string input)
     {
         using var doc=JsonDocument.Parse(input); var r=doc.RootElement;

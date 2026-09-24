@@ -51,6 +51,7 @@ public sealed class ContinuousCollectionLoop : IDisposable
         if (!dutyVerified || plugin.NetworkCapture.GameVersion != SupportedBuild) return "This client build's matchmaking has not been verified.";
         controller.Restart();
         plugin.DebugPackets.AcknowledgeCollectionFailure();
+        plugin.TrainingCorpus.Retry();
         storageBlock = "Checking capture storage";
         lastStorageCheck = -60000;
         plugin.ConfigService.Update(c => c with
@@ -167,7 +168,7 @@ public sealed class ContinuousCollectionLoop : IDisposable
             QueueBlockReason = block,
             FatalReason = !dutyVerified || plugin.NetworkCapture.GameVersion != SupportedBuild ? "Unverified client build / duty; collection stopped" :
                 storageBlock is not null && storageCheck is null && storageBlock != "Checking capture storage" ? storageBlock :
-                !cfg.DebugAutoPacketLogging || !cfg.EnableGameLogging ? "Recording disabled; collection stopped" : plugin.DebugPackets.CollectionError,
+                !cfg.DebugAutoPacketLogging || !cfg.EnableGameLogging ? "Recording disabled; collection stopped" : plugin.DebugPackets.CollectionError ?? (cfg.RetainTrainingData ? plugin.TrainingCorpus.LastError : null),
         };
     }
 

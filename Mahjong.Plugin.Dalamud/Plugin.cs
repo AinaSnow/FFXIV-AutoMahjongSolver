@@ -64,6 +64,8 @@ public sealed class Plugin : IDalamudPlugin
     public InputDispatcher Dispatcher { get; }
     public GameLogger GameLogger { get; }
     public MatchArchiveWriter MatchArchive { get; }
+    public TrainingCorpusWriter TrainingCorpus { get; }
+    public TrainingProvenanceProvider TrainingProvenance { get; }
     public DebugPacketLogger DebugPackets { get; }
     private readonly BackgroundIoWorker archiveIo = new();
     public AutoPlayLoop AutoPlay { get; }
@@ -136,6 +138,8 @@ public sealed class Plugin : IDalamudPlugin
 
         // Sinks must exist before any reader construction — readers emit findings on probe.
         var configDir = PluginInterface.GetPluginConfigDirectory();
+        TrainingCorpus = new TrainingCorpusWriter(configDir, () => Configuration.RetainTrainingData, Log);
+        TrainingProvenance = new TrainingProvenanceProvider(Services.GetRequiredService<IWeightProvider>(), () => Configuration, () => MortalBridge?.ModelIdentityJson);
         ErrorSink = new ErrorSink(configDir);
         FindingsLog = new FindingsLog(configDir, ErrorSink);
         SigprobeLog = new SigprobeLog(configDir);
@@ -157,7 +161,7 @@ public sealed class Plugin : IDalamudPlugin
             FindingsLog, ClientState.ClientLanguage.ToString());
         // Accessor closes over AddonReader so state codes and the hand-array offset follow the active variant. Constructed after AddonReader so the closure resolves to the live profile by the time DispatchDiscard runs.
         Dispatcher = new InputDispatcher(mahjongAddon, () => AddonReader.ActiveLayout);
-        MatchArchive = new MatchArchiveWriter(configDir, Log, archiveIo, () => (ConfigService.Current.ArchiveRetentionDays, ConfigService.Current.ArchiveMaxBytes));
+        MatchArchive = new MatchArchiveWriter(configDir, Log, archiveIo, () => (ConfigService.Current.ArchiveRetentionDays, ConfigService.Current.ArchiveMaxBytes), trainingCorpus: TrainingCorpus);
         NetworkCapture = new MahjongNetworkCapture(Log,
             () => AddonReader.ProtocolVariant, Path.Combine(pluginAssemblyDir, "protocols"),
             trialEnabled: () => Configuration.MortalLimitedTrial);
@@ -175,7 +179,7 @@ public sealed class Plugin : IDalamudPlugin
             Aggregator, ConfigService, Log, configDir,
             policyAccessor: () => Policy,
             eventLogger: EventLogger,
-            meldTrackerAccessor: () => MeldTracker.SerializeState(), io: archiveIo, externalEnabled: () => MortalBridge?.Enabled == true);
+            meldTrackerAccessor: () => MeldTracker.SerializeState(), io: archiveIo, externalEnabled: () => MortalBridge?.Enabled == true, provenance: TrainingProvenance.Snapshot);
         MortalBridge = new LiveMortalBridge(
             NetworkCapture,
             Framework,
@@ -259,6 +263,9 @@ public sealed class Plugin : IDalamudPlugin
     {
         AutoPlay?.CancelForTableExit();
         GameLogger.CompleteSession();
+        var raw = DebugPackets.CloseForArchive();
+        var training = new TrainingArchiveContext(raw?.Path, raw?.Completion ?? Task.CompletedTask,
+            TrainingProvenance.Snapshot(), TrainingProvenance.WeightsJson);
         _ = MatchArchive.FinalizeSessionAsync(
             GameLogger.SnapshotSessionPaths(),
             new MatchArchiveMortalStats(
@@ -272,7 +279,7 @@ public sealed class Plugin : IDalamudPlugin
                 RecoveredDiscards: MortalBridge.RecoveredDiscardEvents,
                 LastModelEvalMilliseconds: MortalBridge.LastModelEvalMilliseconds),
             new MatchArchiveEnvironment(NetworkCapture.GameVersion, AddonReader.ProtocolVariant,
-                NetworkCapture.ProtocolVerified, NetworkCapture.ProtocolStatus, typeof(Plugin).Module.ModuleVersionId.ToString(), AddonReader.ActiveLayout?.Name));
+                NetworkCapture.ProtocolVerified, NetworkCapture.ProtocolStatus, typeof(Plugin).Module.ModuleVersionId.ToString(), AddonReader.ActiveLayout?.Name), training);
     }
 
     public void Dispose()

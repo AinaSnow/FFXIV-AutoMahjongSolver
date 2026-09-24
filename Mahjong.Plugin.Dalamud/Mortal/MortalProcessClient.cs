@@ -24,6 +24,7 @@ internal interface IMortalProcessClient : IDisposable
     event Action<string>? ReactionReceived;
     event Action<int?>? Exited;
     bool IsRunning { get; }
+    string? ModelIdentityJson => null;
     void Start(MortalProcessSettings settings);
     void Send(IMjaiEvent evt);
     void SendReplay(string serializedEvent);
@@ -42,6 +43,8 @@ internal sealed class MortalProcessClient : IMortalProcessClient
     private long sequence, hand;
     private volatile bool running, disposed;
     private Task? worker;
+    private string? modelIdentityJson;
+    public string? ModelIdentityJson => Volatile.Read(ref modelIdentityJson);
     private readonly Func<MortalProcessSettings, IManagedJsonProcess> processFactory;
     internal Task Completion => worker ?? Task.CompletedTask;
     public event Action<string>? ReactionReceived;
@@ -157,6 +160,11 @@ internal sealed class MortalProcessClient : IMortalProcessClient
             if (seq != ++acknowledged) throw new IOException("Mortal acknowledgement sequence mismatch");
             long resultHand = result.GetProperty("hand").GetInt64();
             if (result.TryGetProperty("error", out var error)) throw new IOException(error.GetString());
+            if (result.TryGetProperty("model", out var model) && model.ValueKind == JsonValueKind.Object)
+            {
+                var identity = JsonSerializer.Serialize(new { session, model });
+                Volatile.Write(ref modelIdentityJson, identity);
+            }
             if (result.TryGetProperty("reaction", out var reaction) && reaction.ValueKind == JsonValueKind.Object)
             {
                 string json = reaction.GetRawText();

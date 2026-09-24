@@ -59,6 +59,9 @@ public sealed record Configuration : IPluginConfiguration
 
     public string MortalPythonExecutable { get; init; } = "python";
 
+    /// <summary>Keep an independent local corpus outside normal archive expiry; never uploads or trains.</summary>
+    public bool RetainTrainingData { get; init; } = true;
+
     public int ArchiveRetentionDays { get; init; } = 30;
     public long ArchiveMaxBytes { get; init; } = 1L << 30;
     public bool EnhancedStrategy { get; init; } = false;

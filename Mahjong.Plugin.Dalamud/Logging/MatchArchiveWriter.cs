@@ -48,13 +48,15 @@ public sealed class MatchArchiveWriter : IDisposable
     private readonly BackgroundIoWorker io;
     private readonly bool ownsIo;
     private readonly Func<(int Days, long Bytes)> retention;
+    private readonly TrainingCorpusWriter? trainingCorpus;
     public Task FlushAsync() => io.FlushAsync();
 
-    public MatchArchiveWriter(string pluginConfigDir, IPluginLog log, BackgroundIoWorker? io = null, Func<(int Days, long Bytes)>? retention = null)
+    public MatchArchiveWriter(string pluginConfigDir, IPluginLog log, BackgroundIoWorker? io = null, Func<(int Days, long Bytes)>? retention = null, TrainingCorpusWriter? trainingCorpus = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(pluginConfigDir);
         ArgumentNullException.ThrowIfNull(log);
         this.log = log;
+        this.trainingCorpus = trainingCorpus;
         this.io = io ?? new BackgroundIoWorker();
         ownsIo = io is null;
         this.retention = retention ?? (() => (30, 1L << 30));
@@ -110,10 +112,10 @@ public sealed class MatchArchiveWriter : IDisposable
     /// Copies this table session's per-hand logs and seals the archive with a summary.
     /// Returns the archive directory, or <see langword="null"/> when no match data existed.
     /// </summary>
-    public Task<string?> FinalizeSessionAsync(IReadOnlyList<string> gamePaths, MatchArchiveMortalStats mortalStats, MatchArchiveEnvironment? environment = null)
+    public Task<string?> FinalizeSessionAsync(IReadOnlyList<string> gamePaths, MatchArchiveMortalStats mortalStats, MatchArchiveEnvironment? environment = null, TrainingArchiveContext? training = null)
     {
         var paths = gamePaths.ToArray();
-        return io.RunAfterWritesAsync(() => FinalizeSessionCore(paths, mortalStats, environment));
+        return io.RunAfterWritesAsync(() => FinalizeSessionCore(paths, mortalStats, environment, training));
     }
 
     // Synchronous compatibility entry for offline consumers. Runtime uses FinalizeSessionAsync.
@@ -123,7 +125,7 @@ public sealed class MatchArchiveWriter : IDisposable
     private string? FinalizeSessionCore(
         IReadOnlyList<string> gamePaths,
         MatchArchiveMortalStats mortalStats,
-        MatchArchiveEnvironment? environment)
+        MatchArchiveEnvironment? environment, TrainingArchiveContext? training)
     {
         ArgumentNullException.ThrowIfNull(gamePaths);
         ArgumentNullException.ThrowIfNull(mortalStats);
@@ -136,7 +138,7 @@ public sealed class MatchArchiveWriter : IDisposable
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
-            if (currentDir is null && existingGames.Length == 0)
+            if (currentDir is null && existingGames.Length == 0 && training?.RawPath is null)
                 return null;
 
             string completedDir = currentDir ?? rootDir;
@@ -196,6 +198,12 @@ public sealed class MatchArchiveWriter : IDisposable
                     JsonSerializer.Serialize(summary, JsonOpts));
                 File.WriteAllText(Path.Combine(completedDir, "managed-complete.json"),
                     JsonSerializer.Serialize(new { version = 1, incomplete = packetWriteFailed || io.Failures > 0 || metrics.MalformedLines > 0 }));
+                if (trainingCorpus?.Enabled == true)
+                {
+                    string pending = Path.Combine(completedDir, "training-pending.json");
+                    File.WriteAllText(pending, JsonSerializer.Serialize(new { raw_path = training?.RawPath, reason = "pending-preservation" }));
+                    if (trainingCorpus.Preserve(completedDir, training)) File.Delete(pending);
+                }
                 ApplyRetention(completedDir);
                 log.Information(
                     $"[MatchArchive] Saved local match archive: {completedDir} " +
@@ -237,6 +245,7 @@ public sealed class MatchArchiveWriter : IDisposable
         var archives = root.EnumerateDirectories("match-*")
             .Where(d => d.Parent?.FullName == root.FullName && !d.Attributes.HasFlag(FileAttributes.ReparsePoint))
             .Where(d => File.Exists(Path.Combine(d.FullName, "managed-complete.json")))
+            .Where(d => !File.Exists(Path.Combine(d.FullName, "training-pending.json")))
             .Where(d => !d.EnumerateFileSystemInfos("*", SearchOption.AllDirectories).Any(f => f.Attributes.HasFlag(FileAttributes.ReparsePoint)))
             .Select(d => new { Dir = d, End = File.GetLastWriteTimeUtc(Path.Combine(d.FullName, "managed-complete.json")),
                 Size = d.EnumerateFiles("*", SearchOption.AllDirectories).Sum(f => f.Length) })

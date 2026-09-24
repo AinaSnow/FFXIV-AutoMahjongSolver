@@ -11,7 +11,7 @@ public sealed class AutoPacketRecorder : IDisposable
     private readonly Func<long> timestamp;
     private readonly List<Task> closing = [];
     private DebugPacketSession? current;
-    private DebugPacketSession? latest;
+    private DebugPacketSession? latest, archived;
     private bool armed, disposed;
     private int preRollBytes;
     private long preRollDropped, preRollRejected, lastPreRollFailure;
@@ -50,6 +50,18 @@ public sealed class AutoPacketRecorder : IDisposable
             if (preRollDropped > 0 || preRollRejected > 0) current.Reject("pre-roll-incomplete");
             while (preRoll.TryDequeue(out var packet)) current.TryRecord(packet);
             ClearPreRoll();
+        }
+    }
+
+    public DebugPacketSession? CloseForArchive()
+    {
+        lock (gate)
+        {
+            var session = current ?? latest;
+            if (session is null || ReferenceEquals(session, archived)) return null;
+            Stop("left-table");
+            archived = session;
+            return session;
         }
     }
 
