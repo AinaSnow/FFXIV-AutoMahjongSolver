@@ -7,23 +7,28 @@ namespace Mahjong.Plugin.Game.Tests;
 public sealed class LiveLaterHandsCaptureTests
 {
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Live_capture_matches_self_hands_and_reports_public_history_gaps(bool fullMatch)
+    [InlineData("20260924-later-hands.json", "EmjL", 72, 118, 57, 57, 9, 4, 483, 18, 2)]
+    [InlineData("20260924-full-match.json", "Emj", 0, 129, 62, 62, 0, 5, 524, 7, 8)]
+    [InlineData("20260924-added-kan-match.json", "Emj", 0, 97, 47, 45, 3, 5, 388, 2, 7)]
+    public void Live_capture_matches_self_hands_and_reports_public_history_gaps(
+        string fixtureName, string variant, int expectedPrefix, int expectedCompared,
+        int expectedDraws, int expectedDiscards, int expectedGaps, int expectedHands,
+        int expectedEvents, int expectedCalls, int expectedRiichi)
     {
         string fixtures = Path.Combine(AppContext.BaseDirectory, "RegressionFixtures");
         var profile = JsonSerializer.Deserialize<MahjongProtocolProfile>(
-            File.ReadAllText(Path.Combine(fixtures, fullMatch ? "candidate-profile.json" : "emjl-candidate-profile.json")),
+            File.ReadAllText(Path.Combine(fixtures, variant == "Emj" ? "candidate-profile.json" : "emjl-candidate-profile.json")),
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
         Assert.False(profile.Verified);
-        Assert.False(profile.Matches("2026.09.15.0000.0000", fullMatch ? "Emj" : "EmjL"));
-        using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(fixtures, fullMatch ? "20260924-full-match.json" : "20260924-later-hands.json")));
+        Assert.False(profile.Matches("2026.09.15.0000.0000", variant));
+        using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(fixtures, fixtureName)));
         var decoder = new MahjongPacketMjaiDecoder();
         var publicState = new PublicStateReducer();
         var hand = new List<string>();
         var events = new List<IMjaiEvent>();
         int compared = 0, gaps = 0, prefix = 0, results = 0, selfSeat = -1;
         int selfDraws = 0, selfDiscards = 0;
+        bool historyGap = false;
         foreach (var packet in document.RootElement.GetProperty("packets").EnumerateArray())
         {
             ushort opcode = Convert.ToUInt16(packet.GetProperty("opcode").GetString()![2..], 16);
@@ -36,6 +41,7 @@ public sealed class LiveLaterHandsCaptureTests
                 var error = Assert.Throws<InvalidDataException>(() => decoder.Process(spec.MessageId, payload));
                 Assert.Contains(unsupported.GetString()!, error.Message);
                 publicState.Invalidate(error.Message);
+                historyGap = true;
                 Assert.False(publicState.Complete);
                 gaps++;
                 continue;
@@ -50,7 +56,9 @@ public sealed class LiveLaterHandsCaptureTests
             {
                 events.Add(evt);
                 publicState.Apply(evt, knownCounters: false);
-                if (fullMatch && evt is not MjaiStartGame) Assert.True(publicState.Complete, publicState.Failure);
+                if (evt is MjaiStartKyoku) historyGap = false;
+                if (evt is not MjaiStartGame)
+                    Assert.Equal(!historyGap, publicState.Complete); // Only a real opening repairs a gap.
                 switch (evt)
                 {
                     case MjaiStartKyoku start:
@@ -65,7 +73,7 @@ public sealed class LiveLaterHandsCaptureTests
                         Assert.Equal(Ints(packet.GetProperty("ui_scores")), start.Scores);
                         Assert.All(start.Tehais.Skip(1).SelectMany(x => x), tile => Assert.Equal("?", tile));
                         Assert.True(publicState.Complete); // Next observed opening clears quarantine.
-                        if (fullMatch)
+                        if (variant == "Emj")
                         {
                             Assert.True(MjaiTile.TryParse(start.DoraMarker, out var marker, out _));
                             Assert.Equal(packet.GetProperty("ui_dora")[0].GetInt32(), marker.Id);
@@ -97,23 +105,24 @@ public sealed class LiveLaterHandsCaptureTests
                 results++;
             }
         }
-        Assert.Equal(fullMatch ? 0 : 72, prefix);
-        Assert.Equal(fullMatch ? 129 : 118, compared);
-        Assert.Equal(fullMatch ? 62 : 57, selfDraws);
-        Assert.Equal(fullMatch ? 62 : 57, selfDiscards);
-        Assert.Equal(fullMatch ? 0 : 9, gaps); // 2 open kans + 1 closed kan + 3 rinshan draws + 3 unverified discard flags.
-        Assert.Equal(fullMatch ? 5 : 4, results);
-        Assert.Equal(fullMatch ? 524 : 483, events.Count);
+        Assert.Equal(expectedPrefix, prefix);
+        Assert.Equal(expectedCompared, compared);
+        Assert.Equal(expectedDraws, selfDraws);
+        Assert.Equal(expectedDiscards, selfDiscards);
+        Assert.Equal(expectedGaps, gaps);
+        Assert.Equal(expectedHands, results);
+        Assert.Equal(expectedEvents, events.Count);
         Assert.Single(events.OfType<MjaiStartGame>());
-        Assert.Equal(fullMatch ? 5 : 4, events.OfType<MjaiStartKyoku>().Count());
-        Assert.Equal(fullMatch ? 5 : 4, events.OfType<MjaiEndKyoku>().Count());
-        Assert.Equal(fullMatch ? 7 : 18, events.OfType<MjaiOpenCall>().Count());
-        Assert.Equal(fullMatch ? 8 : 2, events.OfType<MjaiReach>().Count());
-        Assert.Equal(fullMatch ? 8 : 2, events.OfType<MjaiReachAccepted>().Count());
+        Assert.Equal(expectedHands, events.OfType<MjaiStartKyoku>().Count());
+        Assert.Equal(expectedHands, events.OfType<MjaiEndKyoku>().Count());
+        Assert.Equal(expectedCalls, events.OfType<MjaiOpenCall>().Count());
+        Assert.Equal(expectedRiichi, events.OfType<MjaiReach>().Count());
+        Assert.Equal(expectedRiichi, events.OfType<MjaiReachAccepted>().Count());
         Assert.All(events.OfType<MjaiTsumo>().Where(e => e.Actor != 0), e => Assert.Equal("?", e.Pai));
-        if (fullMatch)
+        if (variant == "Emj")
         {
-            Assert.Contains(events, e => e is MjaiDahai { Actor: 0, Pai: "5mr" });
+            string expectedRedDiscard = fixtureName == "20260924-full-match.json" ? "5mr" : "5sr";
+            Assert.Contains(events.OfType<MjaiDahai>(), e => e.Actor == 0 && e.Pai == expectedRedDiscard);
             Assert.Equal(new[] { 0, 1, 2, 3 }, events.OfType<MjaiStartKyoku>().Select(e => e.Oya).Distinct().Order());
         }
         else
