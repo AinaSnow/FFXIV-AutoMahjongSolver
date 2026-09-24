@@ -24,6 +24,25 @@ public class PlacementAdjusterTests
     }
 
     [Fact]
+    public void Tied_first_with_unknown_initial_order_does_not_get_a_secured_lead_bonus()
+    {
+        var state = State([35000,35000,20000,10000], roundWind: 1);
+        Assert.Equal(0, PlacementAdjuster.RankOf(state, 0));
+        Assert.Equal(PlacementMultipliers.Neutral, Adjuster.ComputeFor(state));
+        var known = state with { InitialDealerSeat = 1 };
+        Assert.Equal(2, PlacementAdjuster.RankOf(known, 0));
+    }
+
+    [Theory]
+    [InlineData(1, 0, true)] [InlineData(2, 0, false)] [InlineData(2, 1, true)]
+    public void Last_hand_uses_observed_match_length(int rounds, int wind, bool expected)
+    {
+        var state = State([35000,25000,20000,20000], roundWind: wind) with { ScheduledRounds = rounds };
+        Assert.Equal(expected, PlacementAdjuster.IsLastHand(state));
+        Assert.False(PlacementAdjuster.IsLastHand(state with { ScheduledRounds = null }));
+    }
+
+    [Fact]
     public void RankOf_reports_1_for_highest_score()
     {
         var s = State([40000, 25000, 20000, 15000]);

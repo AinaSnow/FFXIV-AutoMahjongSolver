@@ -29,12 +29,16 @@ public sealed class EnhancedCallPolicy(IRuleSet rules) : ICallPolicy
             }
             var counts=new int[34]; foreach(var tile in hand) counts[tile.Id]++;
             bool stillClosed=melds.All(m=>m.Kind==MeldKind.AnKan);
-            if(!stillClosed && HeuristicCallPolicy.EstimateReachableHan(counts,melds.Count,state,call,rules.DoraRule)<rules.MinHan) continue;
+            if(!stillClosed && HeuristicCallPolicy.EstimateReachableHan(counts,melds.Count,state,call,rules.DoraRule,rules.AllowsKuitan)<rules.MinHan) continue;
             int shanten; int waits=0;
             if(hand.Count + 3*melds.Count==14)
             {
-                var best=UkeireEnumerator.Enumerate(Hand.FromTiles(hand,melds),DiscardScorer.BuildVisibleWall(state))
-                    .OrderBy(c=>c.ShantenAfter).ThenByDescending(c=>c.WeightedCount).First();
+                var forbidden = Kuikae.ForbiddenDiscards(call);
+                var choices=UkeireEnumerator.Enumerate(Hand.FromTiles(hand,melds),DiscardScorer.BuildVisibleWall(state))
+                    .Where(c=>!forbidden.Contains(c.Discard))
+                    .OrderBy(c=>c.ShantenAfter).ThenByDescending(c=>c.WeightedCount).ToArray();
+                if (choices.Length == 0) continue;
+                var best = choices[0];
                 shanten=best.ShantenAfter;waits=best.WeightedCount;
             }
             else shanten=Shanten(hand,melds.Count);

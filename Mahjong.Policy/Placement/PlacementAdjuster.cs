@@ -35,16 +35,9 @@ public sealed class PlacementAdjuster : IPlacementPolicy
         };
     }
 
-    /// <summary>1-indexed rank (1 = highest score).</summary>
+    /// <summary>1-indexed rank, or zero when tied and the initial order is unknown.</summary>
     public static int RankOf(StateSnapshot state, int seat)
-    {
-        int ourScore = state.Scores[seat];
-        int rank = 1;
-        for (int i = 0; i < state.Scores.Count; i++)
-            if (i != seat && state.Scores[i] > ourScore)
-                rank++;
-        return rank;
-    }
+        => SeatRanking.Rank(state.Scores, seat, state.InitialDealerSeat) ?? 0;
 
     private static int ScoreGapToLowerRank(StateSnapshot state, int ourRank)
     {
@@ -52,6 +45,7 @@ public sealed class PlacementAdjuster : IPlacementPolicy
             return int.MaxValue;
         int ourScore = state.Scores[state.OurSeat];
         int minGap = int.MaxValue;
+        if (state.Scores.Count(s => s == ourScore) > 1) return 0;
         foreach (var s in state.Scores)
             if (s < ourScore && ourScore - s < minGap)
                 minGap = ourScore - s;

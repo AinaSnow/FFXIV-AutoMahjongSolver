@@ -45,8 +45,8 @@ public sealed class HeuristicCallPolicy : ICallPolicy
 
             foreach (var t in c.HandTiles)
                 counts[t.Id]--;
-            int meldsAfter = state.OurMelds.Count + 1;
-            int reachableHan = EstimateReachableHan(counts, meldsAfter, state, c, ruleSet.DoraRule);
+            int meldsAfter = state.OurMelds.Count + (c.Kind == MeldKind.ShouMinKan ? 0 : 1);
+            int reachableHan = EstimateReachableHan(counts, meldsAfter, state, c, ruleSet.DoraRule, ruleSet.AllowsKuitan);
             foreach (var t in c.HandTiles)
                 counts[t.Id]++;
 
@@ -100,16 +100,26 @@ public sealed class HeuristicCallPolicy : ICallPolicy
 
     private static int? TryShantenAfter(MeldCandidate candidate, int[] counts, int currentMelds)
     {
-        foreach (var t in candidate.HandTiles)
+        foreach (var group in candidate.HandTiles.GroupBy(t => t.Id))
+            if (counts[group.Key] < group.Count()) return null;
+        foreach (var t in candidate.HandTiles) counts[t.Id]--;
+        int meldsAfter = currentMelds + (candidate.Kind == MeldKind.ShouMinKan ? 0 : 1);
+        int shantenAfter;
+        if (candidate.Kind is MeldKind.Chi or MeldKind.Pon)
         {
-            if (counts[t.Id] <= 0)
-                return null;
+            var forbidden = Kuikae.ForbiddenDiscards(candidate);
+            shantenAfter = int.MaxValue;
+            for (int id = 0; id < Tile.Count34; id++)
+            {
+                if (counts[id] == 0 || forbidden.Contains(Tile.FromId(id))) continue;
+                counts[id]--;
+                shantenAfter = Math.Min(shantenAfter, ComputeShanten(counts, meldsAfter));
+                counts[id]++;
+            }
         }
-        foreach (var t in candidate.HandTiles)
-            counts[t.Id]--;
-        int shantenAfter = ComputeShanten(counts, currentMelds + 1);
-        foreach (var t in candidate.HandTiles)
-            counts[t.Id]++;
+        else shantenAfter = ComputeShanten(counts, meldsAfter);
+        foreach (var t in candidate.HandTiles) counts[t.Id]++;
+        if (shantenAfter == int.MaxValue) return null;
         return shantenAfter;
     }
 
@@ -125,10 +135,10 @@ public sealed class HeuristicCallPolicy : ICallPolicy
     /// Sum reachable han across yaku families plus dora retained on the post-call concealed hand.
     /// Treats families as independent so rulesets with a raised minimum can reject thin yaku paths.
     /// </summary>
-    internal static int EstimateReachableHan(int[] counts, int meldsAfter, StateSnapshot state, MeldCandidate thisCall, IDoraRule doraRule)
+    internal static int EstimateReachableHan(int[] counts, int meldsAfter, StateSnapshot state, MeldCandidate thisCall, IDoraRule doraRule, bool allowsKuitan = true)
     {
         int han = ReachableYakuhaiHan(counts, state, thisCall);
-        if (HasReachableTanyao(counts, state, thisCall)) han++;
+        if (allowsKuitan && HasReachableTanyao(counts, state, thisCall)) han++;
         if (HasReachableSuitFlush(counts)) han += 2;
         if (HasReachableToitoi(counts, state, thisCall)) han += 2;
         if (HasReachableSanshokuDoujun(counts, state, thisCall)) han++;

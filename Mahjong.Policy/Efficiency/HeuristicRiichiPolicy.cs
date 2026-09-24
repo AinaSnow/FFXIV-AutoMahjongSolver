@@ -10,6 +10,8 @@ public sealed class HeuristicRiichiPolicy : IRiichiPolicy
 
     public Decision<bool> Evaluate(StateSnapshot state, ScoredDiscard plannedDiscard)
     {
+        if (state.OurRiichi)
+            return Decline("already-riichi", "riichi already committed");
         if (plannedDiscard.ShantenAfter != 0)
             return Decline("not-tenpai", "not tenpai after discard");
 
