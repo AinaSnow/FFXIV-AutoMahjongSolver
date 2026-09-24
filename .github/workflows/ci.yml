@@ -54,6 +54,8 @@ jobs:
           for project in tests/*.Tests/*.csproj; do
             if [[ "$project" != *Dalamud* ]]; then dotnet test "$project" -c Release -p:RestoreLockedMode=true --verbosity minimal; fi
           done
+      - name: Offline packet replay command
+        run: dotnet build tools/Mahjong.PacketReplay/Mahjong.PacketReplay.csproj -c Release -p:RestoreLockedMode=true --verbosity minimal
       - name: Python bridge and evaluation tests
         run: python3 -m unittest discover -s tools/tests -v
       - uses: actions/setup-node@v4

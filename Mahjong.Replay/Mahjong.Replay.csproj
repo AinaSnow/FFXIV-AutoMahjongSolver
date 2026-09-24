@@ -1,7 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Mahjong.Replay — Tenhou log parser and replay harness.
+    Mahjong.Replay — Tenhou replay and captured Doman packet diagnostics.
+
+    CapturedPacketReplay reuses the production decoder for offline Mortal diagnostics;
+    its candidate exports never approve a live protocol or claim strategy strength.
 
     Tenhou games are played under standard Japanese riichi rules; any
     consumer that scores replay decisions MUST pair this project's output

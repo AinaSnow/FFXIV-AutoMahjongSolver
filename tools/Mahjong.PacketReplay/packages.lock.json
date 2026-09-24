@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net8.0": {
+      "mahjong.core": {
+        "type": "Project"
+      },
+      "mahjong.plugin.game": {
+        "type": "Project",
+        "dependencies": {
+          "Mahjong.Core": "[0.1.2.3, )",
+          "Mahjong.Policy.Abstractions": "[0.1.2.3, )"
+        }
+      },
+      "mahjong.policy.abstractions": {
+        "type": "Project",
+        "dependencies": {
+          "Mahjong.Core": "[0.1.2.3, )"
+        }
+      },
+      "mahjong.replay": {
+        "type": "Project",
+        "dependencies": {
+          "Mahjong.Core": "[0.1.2.3, )",
+          "Mahjong.Plugin.Game": "[0.1.2.3, )",
+          "Mahjong.Policy.Abstractions": "[0.1.2.3, )"
+        }
+      }
+    }
+  }
+}
