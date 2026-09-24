@@ -2,7 +2,7 @@
   "gameVersion": "2026.09.15.0000.0000",
   "variant": "EmjL",
   "verified": false,
-  "evidence": "Partial opening (Emj) and four complete later hands (EmjL); docs/reviews/20260924-international-match.md. Neither variant is verified. Second capture SHA-256 d933f96c46d11f3f536070cd990ee92cb04f7a41f7c14f629d24e6b1d06b26eb",
+  "evidence": "Partial opening (Emj) and four complete later hands (EmjL); docs/reviews/20260924-international-match.md. Neither variant is verified. Second capture SHA-256 d933f96c46d11f3f536070cd990ee92cb04f7a41f7c14f629d24e6b1d06b26eb; Full five-hand Emj match: docs/reviews/20260924-complete-match.md, SHA-256 714166c003e588285f23f9d906f54d628abd4ffec58094e4e46827c1d4baa809. Kan/dora/kyotaku remain unverified; 0x113 is a candidate combined flag.",
   "packets": {
     "0x023F": {
       "messageId": 636,

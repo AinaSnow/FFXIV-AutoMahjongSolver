@@ -20,4 +20,5 @@ assert.equal(auditCapture(line(641,32,"2026-09-23",0xa10),version).packets[0].un
 const conflict=auditCapture([line(636,48),line(637,104).replace("0x27d","0x27c")].join("\n"),version);
 assert(conflict.blockers.some(b=>b.startsWith("opcode_name_conflict:")));
 assert.throws(()=>auditCapture("", "wrong"));
+assert.equal(auditCapture(line(641,32,"2026-09-24",0x113),version).packets[0].unknownActions.length,0);
 console.log("capture audit: all checks passed");

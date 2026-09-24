@@ -93,6 +93,7 @@ assert.deepEqual(decodePhysicalTile(140), {
   red: true,
 });
 assert.equal(decodePhysicalTile(0xffff), null);
+assert.equal(decodePhysicalTile(0x104 * 4), null, "hand-kind aliases are not physical tile IDs");
 
 const parsed = parsePacketLine(line(637, "0x018E", handStart()));
 assert.equal(parsed.messageId, 637);
@@ -179,4 +180,24 @@ const decoder = new MahjongPacketDecoder({ includeUnknown: true });
 assert.equal(decoder.processLine(line(640, "0x039C", Buffer.alloc(504)))[0].type, "hand_end");
 assert.deepEqual(decoder.processLine(line(642, "0x01EB", Buffer.alloc(576))), [], "roster packets must stay private");
 
+// Keep offline export semantics aligned with the current C# candidate decoder.
+for (const id of [4, 13, 22]) {
+  assert.equal(decodePhysicalTile(id * 4 + 1).red, true);
+  assert.equal(decodePhysicalTile(id * 4).red, false);
+}
+const currentStart = handStart();
+[0x104, 0x10d, 0x116].forEach((tile, i) => currentStart.writeInt32LE(tile, 48 + i * 4));
+currentStart.writeInt32LE(2, 12);
+const currentEvents = decodeMahjongLog([
+  line(637, "0x0133", currentStart),
+  line(641, "0x0214", discard(3, 60, 0x113)),
+].join("\n"));
+const currentMjai = convertEventsToMjai(currentEvents);
+assert.equal(currentMjai[1].honba, 2);
+assert.deepEqual(currentMjai[1].tehais[0].slice(0, 3), ["5mr", "5pr", "5sr"]);
+assert.deepEqual(currentMjai.slice(2, 5), [
+  { type: "reach", actor: 0 },
+  { type: "dahai", actor: 0, pai: "7p", tsumogiri: true },
+  { type: "reach_accepted", actor: 0 },
+]);
 console.log("All Mahjong packet parser assertions passed.");

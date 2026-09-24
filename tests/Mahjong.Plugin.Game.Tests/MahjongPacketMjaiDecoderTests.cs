@@ -53,6 +53,8 @@ public sealed class MahjongPacketMjaiDecoderTests
     }
 
     [Theory]
+    [InlineData(17, "5mr")]
+    [InlineData(16, "5m")]
     [InlineData(53, "5pr")]
     [InlineData(52, "5p")]
     [InlineData(89, "5sr")]
@@ -160,6 +162,18 @@ public sealed class MahjongPacketMjaiDecoderTests
         var decoder = new MahjongPacketMjaiDecoder();
         decoder.Process(637, HandStart());
         Assert.Throws<InvalidDataException>(() => decoder.Process(638, Call(1, 0x500, 20, 20)));
+    }
+
+    [Fact]
+    public void Combined_riichi_tsumogiri_flags_preserve_both_events()
+    {
+        var decoder = new MahjongPacketMjaiDecoder();
+        decoder.Process(637, HandStart());
+        var events = decoder.Process(641, Discard(3, 60, 0x113));
+        Assert.Collection(events,
+            e => Assert.Equal(new MjaiReach(0), e),
+            e => Assert.Equal(new MjaiDahai(0, "7p", true), e),
+            e => Assert.Equal(new MjaiReachAccepted(0), e));
     }
 
     private static byte[] MatchStart() => new byte[48];

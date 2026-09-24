@@ -26,7 +26,9 @@ export function formatTile(tileId) {
 function decodeTileKind(tileId) {
   if (!Number.isInteger(tileId)) return null;
   if (tileId >= 0 && tileId < 34) return { id: tileId, tile: formatTile(tileId), red: false };
-  const redFiveId = tileId === 34 ? 4 : tileId === 35 ? 13 : tileId === 36 ? 22 : null;
+  const redFiveId = tileId === 34 || tileId === 0x104 ? 4
+    : tileId === 35 || tileId === 0x10d ? 13
+    : tileId === 36 || tileId === 0x116 ? 22 : null;
   return redFiveId === null ? null : { id: redFiveId, tile: formatTile(redFiveId), red: true };
 }
 
@@ -36,6 +38,7 @@ export function decodePhysicalTile(value) {
   const copy = value & 3;
 
   if (encodedId >= 34) {
+    if (encodedId > 36) return null;
     const alias = decodeTileKind(encodedId);
     return alias ? {
       physical: value,
@@ -47,11 +50,8 @@ export function decodePhysicalTile(value) {
   }
   const id = encodedId;
 
-  // Only the 5s/copy-1 mapping has been verified against AtkValue red flags.
-  // Keep unverified suited-five mappings explicit instead of guessing.
-  let red = false;
-  if (id === 4 || id === 13) red = null;
-  if (id === 22) red = copy === 1 ? true : copy === 0 ? false : null;
+  // Self-hand UI observations confirm copy 1 for all three red fives.
+  const red = [4, 13, 22].includes(id) && copy === 1;
 
   return { physical: value, id, tile: formatTile(id), copy, red };
 }
@@ -169,6 +169,7 @@ export class MahjongPacketDecoder {
       ...packetFields(packet),
       type: "hand_start",
       handIndex: readInt32(packet.payload, 8),
+      honba: readInt32(packet.payload, 12),
       selfSeat,
       selfSeatName: seatFields(selfSeat).seatName,
       doraIndicator: decodeTileKind(doraIndicatorId),
@@ -240,8 +241,8 @@ export class MahjongPacketDecoder {
       ...seatFields(seat, this.selfSeat),
       type: "discard",
       tile,
-      tsumogiri: action === 0x112,
-      riichi: action === 0x111,
+      tsumogiri: action === 0x112 || action === 0x113,
+      riichi: action === 0x111 || action === 0x113,
       afterCall: action === 0xa10,
       actionRaw: action,
       flagsRaw: readUInt32(packet.payload, 4),
@@ -393,7 +394,7 @@ export class MjaiStreamConverter {
           bakaze: SEAT_NAMES[roundIndex] ?? "E",
           dora_marker: mjaiTile(event.doraIndicator),
           kyoku: (event.handIndex % 4) + 1,
-          honba: 0,
+          honba: event.honba ?? 0,
           kyotaku: 0,
           oya: relativeSeat(0, event.selfSeat),
           scores: relativeScores(event.scores, event.selfSeat),

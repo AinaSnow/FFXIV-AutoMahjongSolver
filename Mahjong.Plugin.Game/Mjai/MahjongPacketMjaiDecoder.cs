@@ -114,8 +114,8 @@ public sealed class MahjongPacketMjaiDecoder
             return MjaiTile.Unknown;
 
         int copy = physical & 3;
-        // Captured self draws/discards confirm copy 1 for 5p and 5s. 5m is still unverified.
-        bool isVerifiedRed = id is 13 or 22 && copy == 1;
+        // Captured self draws/discards confirm the red flag for all three suited fives.
+        bool isVerifiedRed = id is 4 or 13 or 22 && copy == 1;
         return MjaiTile.Format(new Tile((byte)id), isVerifiedRed);
     }
 
@@ -233,16 +233,16 @@ public sealed class MahjongPacketMjaiDecoder
         uint action = ReadUInt32(payload, 8);
         // 0xA10 is the captured discard after chi/pon. Kan-related 0x212 has not
         // yet been verified for tsumogiri; do not silently label it tedashi.
-        if (action is not (0x110 or 0x111 or 0x112 or 0xA10))
+        if (action is not (0x110 or 0x111 or 0x112 or 0x113 or 0xA10))
             throw new InvalidDataException($"Unsupported discard action 0x{action:X}; hand history is incomplete.");
         ushort physical = ReadUInt16(payload, 12);
         LastDiscardPhysical = physical;
         LastDiscardAction = action;
         string tile = DecodePhysicalTile(physical);
-        bool riichi = action == 0x111;
+        bool riichi = action is 0x111 or 0x113;
         if (riichi)
             output.Add(new MjaiReach(actor));
-        output.Add(new MjaiDahai(actor, tile, action == 0x112));
+        output.Add(new MjaiDahai(actor, tile, action is 0x112 or 0x113));
         if (riichi)
             output.Add(new MjaiReachAccepted(actor));
         lastDiscard = new LastDiscard(actor, tile);

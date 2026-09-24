@@ -6,7 +6,7 @@ import { parsePacketLine } from "./parse-mahjong-packets.mjs";
 
 const EXPECTED = new Map([[636,48],[637,104],[638,24],[639,256],[640,504],[641,32]]);
 const DRAW_ACTIONS = new Set([0x100,0x500,0x600]);
-const DISCARD_ACTIONS = new Set([0x110,0x111,0x112,0xa10]);
+const DISCARD_ACTIONS = new Set([0x110,0x111,0x112,0x113,0xa10]);
 
 export function auditCapture(text, gameVersion, region = "international") {
   if (!/^\d{4}\.\d{2}\.\d{2}\.\d{4}\.\d{4}$/.test(gameVersion)) throw new Error("Expected game version YYYY.MM.DD.NNNN.NNNN");
