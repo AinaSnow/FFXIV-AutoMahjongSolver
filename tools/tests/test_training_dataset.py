@@ -35,6 +35,33 @@ class DatasetTests(unittest.TestCase):
     def imported(self):
         return import_archive(self.archive, self.corpus)
 
+    def test_model_at_close_flag_does_not_override_exact_decision_provenance(self):
+        d = self.imported()
+        for flag in ("mortal_model_unknown", "mortal_model_at_close_unknown"):
+            m = read_manifest(d)
+            m["quality_flags"].append(flag)
+            rows, report = export_match(d, m)
+            self.assertIn("mortal_model_at_close_unknown", report["quality_flags"])
+            self.assertNotIn("mortal_model_unknown", rows[0]["quality_flags"])
+            self.assertNotIn("mortal_model_at_close_unknown", rows[0]["quality_flags"])
+            self.assertEqual(rows[0]["provenance"]["mortal_model"], self.decision["provenance"]["mortal_model"])
+
+    def test_mortal_decision_without_model_remains_unknown_even_with_close_identity(self):
+        self.decision["provenance"].pop("mortal_model")
+        self.write([self.state, self.decision, self.action, self.final])
+        d = self.imported()
+        rows, _ = export_match(d, read_manifest(d))
+        self.assertIn("mortal_model_unknown", rows[0]["quality_flags"])
+        self.assertNotIn("mortal_model", rows[0]["provenance"])
+
+    def test_mortal_decision_with_no_provenance_cannot_lose_model_unknown_flag(self):
+        self.decision.pop("provenance")
+        self.write([self.state, self.decision, self.action, self.final])
+        d = self.imported()
+        rows, _ = export_match(d, read_manifest(d))
+        self.assertIn("mortal_model_unknown", rows[0]["quality_flags"])
+        self.assertIn("decision_provenance_unknown", rows[0]["quality_flags"])
+
     def test_actions_and_results_stay_distinct_and_private_raw_is_not_exported(self):
         d=self.imported(); m=read_manifest(d)
         rows, _=export_match(d,m); row=rows[0]

@@ -85,7 +85,7 @@ public sealed class TrainingCorpusWriter
             {
                 File.WriteAllText(Path.Combine(staging, "provenance.json"), JsonSerializer.Serialize(context.Provenance, Json));
                 File.WriteAllText(Path.Combine(staging, "policy-weights.json"), context.WeightsJson);
-                if (context.Provenance.MortalEnabled && context.Provenance.MortalModel is null) flags.Add("mortal_model_unknown");
+                if (context.Provenance.MortalEnabled && context.Provenance.MortalModel is null) flags.Add("mortal_model_at_close_unknown");
                 if (context.Provenance.CalibrationIdentity.StartsWith("unknown", StringComparison.Ordinal)) flags.Add("calibration_unknown");
             }
             else flags.Add("provenance_unknown");

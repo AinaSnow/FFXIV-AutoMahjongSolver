@@ -15,6 +15,7 @@ internal sealed record CollectionObservation
     public bool InTargetDuty { get; init; }
     public bool InOtherDuty { get; init; }
     public bool AtTable { get; init; }
+    public bool MatchCompleted { get; init; }
     public bool FinalResult { get; init; }
     public bool CanLeave { get; init; }
     public string? QueueBlockReason { get; init; }
@@ -28,7 +29,7 @@ internal sealed class ContinuousCollectionController(TimeProvider? timeProvider 
     private long nextActionAt;
     private long? finalSince, queueSentAt, readySince;
     private int queueAttempts, acceptAttempts, leaveAttempts, cancelAttempts;
-    private bool ownedQueue, finishingMatch;
+    private bool ownedQueue, finishingMatch, matchCompleted;
     private CollectionQueueState previousQueue;
     public string Status { get; private set; } = "Stopped";
     public string? Fault { get; private set; }
@@ -56,10 +57,10 @@ internal sealed class ContinuousCollectionController(TimeProvider? timeProvider 
 
     public CollectionAction Tick(bool enabled, CollectionObservation s)
     {
-        if (!s.LoggedIn) { finalSince = null; Status = "Waiting for login"; return CollectionAction.None; }
+        if (!s.LoggedIn) { finalSince = null; matchCompleted = false; Status = "Waiting for login"; return CollectionAction.None; }
         if (!s.SameCharacter)
         {
-            finishingMatch = ownedQueue = false;
+            finishingMatch = ownedQueue = matchCompleted = false;
             Fail("Character changed; start collection again on this character");
             return CollectionAction.None;
         }
@@ -75,6 +76,10 @@ internal sealed class ContinuousCollectionController(TimeProvider? timeProvider 
         bool running = enabled && Fault is null && s.AutomationAllowed;
         if (running && s.OwnQueue && s.QueueState != CollectionQueueState.None) ownedQueue = true;
         if ((running || ownedQueue) && s.InTargetDuty && s.AtTable) finishingMatch = true;
+        // Completion is independent of who clicks Leave. The adapter only
+        // supplies FinalResult after the duty-completed event, never from the
+        // transient state-27 scores shown between hands.
+        if (finishingMatch && (s.MatchCompleted || s.FinalResult)) matchCompleted = true;
 
         // Stopping only withdraws this mode's queue. Never withdraw an already accepted duty.
         if (!running && ownedQueue && s.OwnQueue && (s.QueueState != CollectionQueueState.Ready || s.OwnPop)
@@ -116,8 +121,8 @@ internal sealed class ContinuousCollectionController(TimeProvider? timeProvider 
         if (s.InTargetDuty || s.AtTable) { Status = "Waiting for table transition"; return CollectionAction.None; }
         if (finishingMatch)
         {
-            if (leaveAttempts > 0) CompletedMatches++;
-            finishingMatch = false;
+            if (matchCompleted) CompletedMatches++;
+            finishingMatch = matchCompleted = false;
             leaveAttempts = 0;
             nextActionAt = clock.GetTimestamp() + 10 * clock.TimestampFrequency;
         }

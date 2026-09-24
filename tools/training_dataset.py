@@ -251,6 +251,12 @@ def action_matches(decision, action):
 def export_match(directory, m):
     flags, events, opening, final, summary = match_quality(directory, m["files"])
     flags.update(m.get("quality_flags", []))
+    # Legacy manifests used a per-decision flag for missing identity at archive
+    # close (e.g. a quarantined process). Keep that fact in the match report;
+    # each sample must use its own decision's model identity.
+    if "mortal_model_unknown" in flags:
+        flags.remove("mortal_model_unknown")
+        flags.add("mortal_model_at_close_unknown")
     if bool(m.get("match_start_observed")) != opening or bool(m.get("final_result_observed")) != (final is not None):
         raise ValueError("Boundary evidence disagrees with manifest")
     states, decisions, outcomes = {}, defaultdict(list), defaultdict(list)
@@ -278,7 +284,7 @@ def export_match(directory, m):
             rank = order.index(0) + 1
     rows = []
     for order, name, line, action in actions:
-        quality = set(flags)
+        quality = flags - {"mortal_model_at_close_unknown"}
         if action.get("dispatch_context") != "before-input":
             quality.add("action_context_unverified")
         k = key(action)
@@ -303,7 +309,7 @@ def export_match(directory, m):
         provenance = recommendation.get("provenance") if recommendation else None
         if not provenance:
             quality.add("decision_provenance_unknown")
-        elif recommendation.get("source") == "mortal" and not provenance.get("mortal_model"):
+        if recommendation and recommendation.get("source") == "mortal" and not (provenance or {}).get("mortal_model"):
             quality.add("mortal_model_unknown")
         if rank is None:
             quality.add("final_rank_unknown")

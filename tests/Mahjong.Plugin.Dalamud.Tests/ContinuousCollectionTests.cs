@@ -31,6 +31,50 @@ public class ContinuousCollectionTests
         public void Advance(int amount) => seconds += amount;
     }
 
+    [Theory]
+    [InlineData(true)] [InlineData(false)]
+    public void Completion_counts_once_even_when_game_or_user_leaves_before_automatic_leave(bool enabled)
+    {
+        var clock = new Clock(); var c = new ContinuousCollectionController(clock);
+        c.Tick(true, Playing);
+        var completed = Playing with { MatchCompleted = true, FinalResult = true, CanLeave = true };
+        Assert.Equal(CollectionAction.None, c.Tick(enabled, completed));
+        clock.Advance(1); // Captured results can disappear before the five-second Leave timer.
+        Assert.Equal(CollectionAction.None, c.Tick(enabled, Idle));
+        Assert.Equal(1, c.CompletedMatches);
+        c.Tick(enabled, Idle); Assert.Equal(1, c.CompletedMatches);
+        clock.Advance(10);
+        Assert.Equal(enabled ? CollectionAction.Queue : CollectionAction.None, c.Tick(enabled, Idle));
+    }
+
+    [Fact]
+    public void Completion_on_table_exit_counts_but_abandonment_and_another_character_do_not()
+    {
+        var c = new ContinuousCollectionController(new Clock());
+        c.Tick(true, Playing); c.Tick(true, Idle with { MatchCompleted = true });
+        Assert.Equal(1, c.CompletedMatches);
+        c.Tick(true, Playing); c.Tick(true, Idle);
+        Assert.Equal(1, c.CompletedMatches);
+        c.Tick(true, Playing); c.Tick(true, Idle with { MatchCompleted = true, SameCharacter = false });
+        Assert.Equal(1, c.CompletedMatches);
+    }
+
+    [Fact]
+    public void Brief_state_27_between_hands_is_not_final_standings_or_match_completion()
+    {
+        var scores = Mahjong.Core.StateSnapshot.Empty with { AddonStateCode = 27, Scores = [71000,1400,13300,12300] };
+        Assert.False(ContinuousCollectionLoop.IsFinalResult(false, true, "Emj", scores));
+        Assert.False(ContinuousCollectionLoop.IsFinalResult(true, false, "Emj", scores));
+        Assert.True(ContinuousCollectionLoop.IsFinalResult(true, true, "Emj", scores));
+        var clock = new Clock(); var c = new ContinuousCollectionController(clock);
+        c.Tick(true, Playing);
+        var intermediate = Playing with { FinalResult = ContinuousCollectionLoop.IsFinalResult(false, true, "Emj", scores), CanLeave = true };
+        c.Tick(true, intermediate); clock.Advance(30);
+        Assert.Equal(CollectionAction.None, c.Tick(true, intermediate));
+        Assert.Equal("Playing and recording", c.Status);
+        c.Tick(true, Idle); Assert.Equal(0, c.CompletedMatches);
+    }
+
     [Fact]
     public void Complete_match_queues_confirms_leaves_and_repeats_without_day_limit()
     {

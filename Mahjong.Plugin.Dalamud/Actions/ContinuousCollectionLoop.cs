@@ -1,4 +1,5 @@
 using Dalamud.Game;
+using Dalamud.Game.DutyState;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game.Event;
@@ -22,6 +23,7 @@ public sealed class ContinuousCollectionLoop : IDisposable
     private readonly IPluginLog log;
     private readonly ContinuousCollectionController controller = new();
     private bool disposed, wasEnabled, engaged;
+    private int completionSignal;
     private string? lastStatus;
     private readonly bool dutyVerified;
     private Task<string?>? storageCheck;
@@ -40,7 +42,17 @@ public sealed class ContinuousCollectionLoop : IDisposable
                 && duty.TerritoryType.RowId == TerritoryId && duty.Content.RowId == ContentId && duty.ContentType.RowId == 19;
         }
         catch (Exception e) { log.Warning($"[Collection] Duty sheet verification failed: {e.Message}"); }
+        Plugin.DutyState.DutyCompleted += OnDutyCompleted;
         framework.Update += Update;
+    }
+
+    private void OnDutyCompleted(IDutyStateEventArgs args)
+    {
+        if (disposed || !engaged || args.TerritoryType.RowId != TerritoryId
+            || args.ContentFinderCondition.RowId != DutyId || !Plugin.ClientState.IsLoggedIn
+            || plugin.Configuration.CollectionCharacterId != Plugin.PlayerState.ContentId) return;
+        Interlocked.Exchange(ref completionSignal, 1);
+        log.Information("[Collection] Observed player East-only duty completion");
     }
 
     public string Start()
@@ -99,6 +111,8 @@ public sealed class ContinuousCollectionLoop : IDisposable
             if (cfg.ContinuousCollection) RefreshStorage();
             var observation = Observe(cfg);
             var action = controller.Tick(cfg.ContinuousCollection, observation);
+            if (!observation.LoggedIn || !observation.SameCharacter || (!observation.InTargetDuty && !observation.AtTable))
+                Interlocked.Exchange(ref completionSignal, 0);
             if (controller.Fault is not null && cfg.ContinuousCollection) Stop();
             if (action != CollectionAction.None) Execute(action);
             if (!plugin.Configuration.ContinuousCollection && !controller.NeedsUpdate) engaged = false;
@@ -117,6 +131,10 @@ public sealed class ContinuousCollectionLoop : IDisposable
         }
     }
 
+    internal static bool IsFinalResult(bool completed, bool present, string? variant, StateSnapshot? snap) =>
+        completed && present && variant == "Emj" && snap is { AddonStateCode: 27 }
+        && snap.Hand.Count == 0 && UiHandBoundaryTracker.ScoresKnown(snap.Scores);
+
     private unsafe CollectionObservation Observe(Configuration cfg)
     {
         bool loggedIn = Plugin.ClientState.IsLoggedIn && Plugin.PlayerState.IsLoaded;
@@ -132,8 +150,8 @@ public sealed class ContinuousCollectionLoop : IDisposable
         uint currentDuty = game == null ? 0u : game->CurrentContentFinderConditionId;
         var snap = plugin.Aggregator.Latest;
         bool present = plugin.AddonReader.LastObservation.Present;
-        bool final = present && plugin.AddonReader.ProtocolVariant == "Emj"
-            && snap is { AddonStateCode: 27 } && snap.Hand.Count == 0 && UiHandBoundaryTracker.ScoresKnown(snap.Scores);
+        bool completed = Volatile.Read(ref completionSignal) != 0;
+        bool final = IsFinalResult(completed, present, plugin.AddonReader.ProtocolVariant, snap);
         var confirm = GetConfirmation();
         var agent = AgentContentsFinder.Instance();
         bool transitioning = Plugin.Condition[ConditionFlag.BetweenAreas] || Plugin.Condition[ConditionFlag.BetweenAreas51]
@@ -163,7 +181,7 @@ public sealed class ContinuousCollectionLoop : IDisposable
             OwnQueue = ownQueue, OwnPop = IsTarget(queue->PoppedQueueEntry),
             InTargetDuty = currentDuty == DutyId && Plugin.ClientState.TerritoryType == TerritoryId,
             InOtherDuty = currentDuty != 0 && currentDuty != DutyId,
-            AtTable = present, FinalResult = final,
+            AtTable = present, MatchCompleted = completed, FinalResult = final,
             CanLeave = final && currentDuty == DutyId && EventFramework.CanLeaveCurrentContent(),
             QueueBlockReason = block,
             FatalReason = !dutyVerified || plugin.NetworkCapture.GameVersion != SupportedBuild ? "Unverified client build / duty; collection stopped" :
@@ -240,6 +258,7 @@ public sealed class ContinuousCollectionLoop : IDisposable
         if (disposed) return;
         disposed = true;
         framework.Update -= Update;
+        Plugin.DutyState.DutyCompleted -= OnDutyCompleted;
         // Keep the saved switch for hot reload, but withdraw an owned queue while no plugin can accept it.
         try
         {

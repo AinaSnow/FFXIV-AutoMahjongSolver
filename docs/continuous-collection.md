@@ -11,7 +11,7 @@
 - 开启会启用 Auto-play、每手自动下一局、自动录包和游戏日志。首次使用的用户须先完成原有 Auto-play 确认。
 - 停止撤回此模式的待匹配队列；已确认进场或正在打的比赛继续打完并离场，不再排下一场。
 - 主窗口 **Off / Hints** 或 `/mjauto off` 停止自动打牌并关闭持续采集。不会自动中途退出正在进行的比赛。
-- 主界面显示等待原因及本次插件加载以来自动完成的场数。无需打开开发工具。
+- 主界面显示等待原因及本次插件加载以来已确认完成并离桌的场数。无需打开开发工具。
 
 ## 适配与保护
 
@@ -28,7 +28,9 @@
 队列必须只有一个目标任务且不是随机任务，进场还必须核对弹出的任务 ID。
 点击当前 Commence 按钮登记的 ButtonClick 事件，绝不自动确认通用 Yes/No 对话框。
 
-离场同时要求目标任务、实际 Emj 窗口、空手牌、状态 27 和有效最终分数，稳定 5 秒且游戏允许离开。
+离场同时要求目标任务的 Dalamud `DutyCompleted` 完成通知、实际 Emj 窗口、空手牌、状态 27 和有效最终分数，稳定 5 秒且游戏允许离开。
+状态 27 也会短暂出现在局间，因此不再单独将它当成整场结束；完成后由游戏或玩家提前离桌，同样只计一次，不要求插件发出 Leave。
+完成通知按任务、场地和角色核对，注销与换角色清除通知。没有收到确认时不把中途离开计为完成；它不是归档文件数。
 状态 29/32 的小局结算不能触发离场。离场后至少等待 10 秒再排；原有后台归档流程照常封口。
 卸载立即停用本组件的自动动作。若卸载发生在游戏线程之外，不安排延迟游戏调用；不重新加载时，已有排队需手动取消。
 每个动作都在游戏更新线程重新检查配置和状态；排队、进场、离场、撤队各有间隔与有限重试。
@@ -44,12 +46,11 @@
 
 自动测试覆盖完整循环、超过一天继续运行、停止时的排队状态、热重载接管、角色切换、错误任务、
 晚到的排队确认、最终结算稳定性、有限重试、录制故障以及旧配置兼容。
-这些是状态机与本机接口测试；新排队和进场按钮调用仍需首次游戏循环确认，不能称为已完成实机验收。
-第一次使用观察一次“排队 → 进场 → 最终结算 → 再排”；异常时状态与 `[Collection]` 日志可用于定位。
+2026-09-24 六场实机日志已确认连续排队、确认进场和归档循环。此次新增的完成通知计数和离场条件已通过状态机回归，仍需后续正常对局核对 `[Collection] Observed player East-only duty completion`；旧记录没有这一信号，无法离线证明新通知在麻将中到达。无需为此专门随机补采。
 
 接口依据为本机 Dalamud/FFXIVClientStructs 绑定与上游声明：
 [ContentsFinder](https://github.com/aers/FFXIVClientStructs/blob/main/FFXIVClientStructs/FFXIV/Client/Game/UI/ContentsFinder.cs)、
 [AtkEvent](https://github.com/aers/FFXIVClientStructs/blob/main/FFXIVClientStructs/FFXIV/Component/GUI/AtkEvent.cs)、
 [EventFramework](https://github.com/aers/FFXIVClientStructs/blob/main/FFXIVClientStructs/FFXIV/Client/Game/Event/EventFramework.cs)。
 
-本次回归：完整解决方案 1,028 项测试通过，其中插件 476 项、此次新增 28 项。Release 构建无警告或错误。
+回归测试位于 `tests/Mahjong.Plugin.Dalamud.Tests/ContinuousCollectionTests.cs`；最近修复的验证记录见 [六场日志复核](reviews/20260924-six-match-log-review.md)。

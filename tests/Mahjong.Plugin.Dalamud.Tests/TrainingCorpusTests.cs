@@ -30,6 +30,18 @@ public class TrainingCorpusTests
     }
 
     [Fact]
+    public void Quarantined_model_at_close_does_not_claim_all_decisions_have_unknown_models()
+    {
+        using var tmp = new TempDir(); string archive = Archive(tmp.Path);
+        var writer = new TrainingCorpusWriter(tmp.Path, () => true, new StubPluginLog());
+        var context = new TrainingArchiveContext(null, Task.CompletedTask, Provenance with { MortalEnabled = true }, "{}");
+        Assert.True(writer.Preserve(archive, context));
+        var flags = Manifest(writer.RootDir).GetProperty("quality_flags").EnumerateArray().Select(v => v.GetString()).ToArray();
+        Assert.Contains("mortal_model_at_close_unknown", flags);
+        Assert.DoesNotContain("mortal_model_unknown", flags);
+    }
+
+    [Fact]
     public void Preserved_copy_has_hashes_stable_partition_and_never_claims_training_readiness()
     {
         using var tmp = new TempDir(); string archive = Archive(tmp.Path);

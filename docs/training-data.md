@@ -76,3 +76,7 @@ python tools/training_dataset.py --corpus $corpus --import-archives $archives
 
 本次改动通过全套 1,039 项 C# 测试及 25 项 Python 测试。覆盖原始包封口顺序、磁盘失败保护、独立留存、配置兼容、模型指纹、精确局面关联、整场分组、重复与损坏拒绝及未知标签保留。
 第一场新版本实测已完成，发现并修复抓包重启遗漏及同步回调的动作关联问题，详见 [首场验收记录](reviews/20260924-training-first-match.md)。后续修复通过 489 项插件测试及 28 项 Python 测试，并重新导出这场原始记录。修复后的 schema 8 尚未做新的实机对局验证。
+
+## 模型身份标记的作用范围（2026-09-24 修复）
+
+归档关闭时 Mortal 可能已经隔离或停止，此时 manifest 用 `mortal_model_at_close_unknown` 描述关闭时状态。该标记只进入比赛报告，不传播为每一条动作的模型缺失；每条 Mortal 推荐使用当时决策中的模型身份。旧 manifest 的 `mortal_model_unknown` 在读取时按关闭时状态解释，原文件不改写。实际缺少模型身份的 Mortal 决策仍得到样本级 `mortal_model_unknown`，不会拿其他时刻的模型身份补齐。
