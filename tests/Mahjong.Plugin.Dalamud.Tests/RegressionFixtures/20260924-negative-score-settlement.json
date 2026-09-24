@@ -1,0 +1,104 @@
+{
+  "source_capture_sha256": "65c6ecbbe33401649646d8ad8e319a9b2ee2f7622b738be3d1d5a4313f8b23a6",
+  "game_version": "2026.09.15.0000.0000",
+  "variant": "Emj",
+  "note": "Selected chronological UI observations; final screen recovered from memory dump because the old score guard dropped it. Not a full-match replay.",
+  "states": [
+    {
+      "t": "2026-09-24T08:10:57.7116695Z",
+      "state_code": 2,
+      "hand": [
+        0,
+        4,
+        9,
+        16,
+        17,
+        18,
+        18,
+        20,
+        21,
+        26,
+        27,
+        29,
+        32
+      ],
+      "scores": [
+        200,
+        35000,
+        40400,
+        24400
+      ],
+      "discard_counts": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "t": "2026-09-24T08:13:54.1112034Z",
+      "state_code": 29,
+      "hand": [
+        0,
+        8,
+        9,
+        13,
+        17,
+        18,
+        26,
+        27,
+        29,
+        30,
+        32,
+        33,
+        33
+      ],
+      "scores": [
+        200,
+        35000,
+        40400,
+        24400
+      ],
+      "discard_counts": [
+        18,
+        18,
+        17,
+        17
+      ]
+    },
+    {
+      "t": "2026-09-24T08:13:58.3627998Z",
+      "state_code": 35,
+      "hand": [],
+      "scores": [
+        200,
+        35000,
+        40400,
+        24400
+      ],
+      "discard_counts": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "t": "2026-09-24T08:15:30.0566520Z",
+      "state_code": 27,
+      "hand": [],
+      "scores": [
+        -800,
+        37000,
+        39400,
+        23400
+      ],
+      "discard_counts": [
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ]
+}

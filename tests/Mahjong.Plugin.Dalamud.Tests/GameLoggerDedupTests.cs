@@ -209,6 +209,7 @@ public class GameLoggerDedupTests
     [InlineData(new[] { 1500, -1500, 1500, -1500 }, "draw", (object?)null, (object?)null)]
     [InlineData(new[] { 0, 0, 0, 0 }, "draw", (object?)null, (object?)null)]
     [InlineData(new[] { -1000, -3000, 4000, 0 }, "unknown", (object?)null, (object?)null)]
+    [InlineData(new[] { -1000, 2000, -1000, -1000 }, "unknown", (object?)null, (object?)null)]
     public void InferResultKind_classifies_delta_shapes(int[] deltas, string expectedKind, object? expectedWinner, object? expectedLoser)
     {
         var (kind, winner, loser) = GameLogger.InferResultKind(deltas);

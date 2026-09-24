@@ -51,7 +51,7 @@ internal sealed class BaseEmjVariant : IEmjVariant
             return false;
 
         int selfScore = *(int*)((byte*)unit + profile.Offsets.SelfScore);
-        if (selfScore < 0 || selfScore > profile.Limits.ScoreSanityMax)
+        if (!ScorePlausible(selfScore))
             return false;
 
         if (unit->GetNodeById(profile.NodeIds.CallModalHost) == null)
@@ -202,12 +202,16 @@ internal sealed class BaseEmjVariant : IEmjVariant
 
     private bool ScoresPlausible(int[] scores)
     {
-        int max = profile.Limits.ScoreSanityMax;
         foreach (var s in scores)
-            if (s < 0 || s > max)
+            if (!ScorePlausible(s))
                 return false;
         return true;
     }
+
+    // A player can go below zero at settlement. Reject corrupt memory, not bankruptcy.
+    // Probe and snapshot reads must agree or the final score screen disappears.
+    private bool ScorePlausible(int score) =>
+        score >= -profile.Limits.ScoreSanityMax && score <= profile.Limits.ScoreSanityMax;
 
     private List<Tile> ReadDoraIndicators(ReadOnlySpan<byte> memory, bool? traditional)
     {

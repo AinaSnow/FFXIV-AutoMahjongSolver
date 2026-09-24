@@ -164,6 +164,45 @@ public class MatchArchiveWriterTests
         Assert.Equal(1, summary.RootElement.GetProperty("settled_hands").GetInt32());
     }
 
+    [Theory]
+    [InlineData(-1000)]
+    [InlineData(1000)]
+    public async Task Ui_settlement_with_riichi_sticks_counts_without_network_or_following_state(int stickDelta)
+    {
+        using var tmp = new TempDir();
+        string game = Path.Combine(tmp.Path, "game.ndjson");
+        int[] scores = [33000, 17000, 25000 + stickDelta, 25000];
+        File.WriteAllLines(game, [
+            JsonSerializer.Serialize(new { e = "hand-start", scores = new[] { 25000, 25000, 25000, 25000 } }),
+            JsonSerializer.Serialize(new { e = "hand-end", kind = "unknown", deltas = new[] { 8000, -8000, stickDelta, 0 }, scores_after = scores }),
+        ]);
+        using var writer = new MatchArchiveWriter(tmp.Path, new StubPluginLog());
+        string archive = Assert.IsType<string>(await writer.FinalizeSessionAsync([game], Stats));
+        var summary = ReadSummary(archive);
+        Assert.Equal(1, summary.GetProperty("settled_hands").GetInt32());
+        Assert.Equal(scores, summary.GetProperty("final_scores").EnumerateArray().Select(x => x.GetInt32()).ToArray());
+        Assert.False(summary.GetProperty("packet_write_failed").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData("[0,0,0]", "[25000,25000,25000,25000]")]
+    [InlineData("[0,0,0,0]", "[null,25000,25000,25000]")]
+    public async Task Malformed_settlement_is_not_counted_and_archive_is_marked_incomplete(string deltas, string scores)
+    {
+        using var tmp = new TempDir();
+        string game = Path.Combine(tmp.Path, "game.ndjson");
+        File.WriteAllLines(game, [
+            """{"e":"hand-start"}""",
+            $$"""{"e":"hand-end","deltas":{{deltas}},"scores_after":{{scores}}}""",
+        ]);
+        using var writer = new MatchArchiveWriter(tmp.Path, new StubPluginLog());
+        string archive = Assert.IsType<string>(await writer.FinalizeSessionAsync([game], Stats));
+        var summary = ReadSummary(archive);
+        Assert.Equal(0, summary.GetProperty("settled_hands").GetInt32());
+        Assert.True(summary.GetProperty("packet_write_failed").GetBoolean());
+        Assert.Equal(1, summary.GetProperty("decision_health").GetProperty("malformed_lines").GetInt32());
+    }
+
     [Fact]
     public void Empty_session_does_not_create_an_archive()
     {

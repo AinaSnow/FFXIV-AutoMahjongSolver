@@ -50,11 +50,14 @@ public class BuildSnapshotFromMemoryTests
         Assert.Empty(snap.OurMelds);
     }
 
-    [Fact]
-    public void Implausible_scores_return_null()
+    [Theory]
+    [InlineData(99999999)]
+    [InlineData(-200001)]
+    [InlineData(int.MinValue)]
+    public void Implausible_scores_return_null(int score)
     {
         var memory = new AddonMemoryBuilder(EmjProfile)
-            .WithScores(99999999, 25000, 25000, 25000)
+            .WithScores(score, 25000, 25000, 25000)
             .WithHand("1234m456p789s1234z")
             .Build();
 
@@ -63,6 +66,27 @@ public class BuildSnapshotFromMemoryTests
             memory, [AtkValueRecord.OfInt(30)], ctx, callModalVisible: false);
 
         Assert.Null(snap);
+    }
+
+    [Theory]
+    [InlineData("emj.json", 0)]
+    [InlineData("emj.json", 1)]
+    [InlineData("emj_l.json", 2)]
+    [InlineData("jp.json", 3)]
+    public void Negative_score_in_any_seat_does_not_hide_the_current_hand(string layout, int seat)
+    {
+        int[] scores = [25000, 25000, 25000, 25000];
+        scores[seat] = -800;
+        var profile = LoadProfile(layout);
+        var memory = new AddonMemoryBuilder(profile)
+            .WithScores(scores[0], scores[1], scores[2], scores[3])
+            .WithHand("1234m456p789s1234z").Build();
+        var (variant, ctx) = MakeVariant(profile);
+        var snap = variant.BuildSnapshotFromMemory(memory, [AtkValueRecord.OfInt(30)], ctx, false);
+        Assert.NotNull(snap);
+        Assert.Equal(scores, snap.Scores);
+        Assert.Equal(14, snap.Hand.Count);
+        Assert.True(snap.Legal.Can(ActionFlags.Discard));
     }
 
     [Fact]

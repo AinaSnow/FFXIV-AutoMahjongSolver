@@ -327,6 +327,10 @@ public sealed class GameLogger : IDisposable
 
     internal static (string kind, int? winner, int? loser) InferResultKind(int[] deltas)
     {
+        // Outstanding/awarded riichi sticks change the score total. Without an
+        // observed result event these deltas cannot distinguish a draw from a win.
+        if (deltas.Length != 4 || deltas.Sum(d => (long)d) != 0)
+            return ("unknown", null, null);
         int pos = 0, neg = 0;
         int winnerIdx = -1, loserIdx = -1;
         int maxPos = 0, minNeg = 0;

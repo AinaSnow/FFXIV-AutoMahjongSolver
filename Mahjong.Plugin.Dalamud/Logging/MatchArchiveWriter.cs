@@ -357,16 +357,19 @@ public sealed class MatchArchiveWriter : IDisposable
                             break;
 
                         case "hand-end":
+                            // A hand-end records an observed boundary/final screen. Its
+                            // deltas need not sum to zero: riichi sticks can remain on the table.
                             if (!root.TryGetProperty("deltas", out var deltas)
-                                || deltas.ValueKind != JsonValueKind.Array)
+                                || deltas.ValueKind != JsonValueKind.Array || deltas.GetArrayLength() != 4
+                                || deltas.EnumerateArray().Any(item => item.ValueKind != JsonValueKind.Number || !item.TryGetInt32(out _))
+                                || !root.TryGetProperty("scores_after", out var scores)
+                                || TryReadScores(scores) is not { } handEndScores)
+                            {
+                                malformedLines++;
                                 break;
-                            int sum = deltas.EnumerateArray().Sum(item => item.GetInt32());
-                            if (Math.Abs(sum) > 100)
-                                break;
+                            }
                             settledHands++;
-                            if (root.TryGetProperty("scores_after", out var scores)
-                                && TryReadScores(scores) is { } handEndScores)
-                                finalScores = handEndScores;
+                            finalScores = handEndScores;
                             break;
 
                         case "state":
@@ -433,13 +436,17 @@ public sealed class MatchArchiveWriter : IDisposable
 
     private static int[]? TryReadScores(JsonElement element)
     {
-        if (element.ValueKind != JsonValueKind.Array)
+        if (element.ValueKind != JsonValueKind.Array || element.GetArrayLength() != 4)
             return null;
 
-        int[] scores = element.EnumerateArray().Select(item => item.GetInt32()).ToArray();
-        if (scores.Length != 4 || scores.All(score => score == 0))
-            return null;
-        return scores;
+        int[] scores = new int[4];
+        for (int i = 0; i < scores.Length; i++)
+        {
+            if (element[i].ValueKind != JsonValueKind.Number || !element[i].TryGetInt32(out scores[i])
+                || scores[i] is < -200000 or > 200000)
+                return null;
+        }
+        return scores.All(score => score == 0) ? null : scores;
     }
 
     private sealed record PacketArchiveEvent(
