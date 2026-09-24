@@ -237,4 +237,38 @@ public class ActionStateMachineTests
 
         Assert.True(fsm.ShouldSuppressForContext(Ctx, afterCooldown + TimeSpan.FromSeconds(1)));
     }
+    [Fact]
+    public void Committed_riichi_discard_drops_its_tile_but_keeps_the_declaration_latch()
+    {
+        var fsm = NewFsm();
+        var tile = Tile.FromId(23); // Captured stale 6s target, later hand still contains another 6s.
+        fsm.LatchRiichiConfirm(tile, false, ownDiscardCount: 10);
+        fsm.ObserveOwnDiscardCount(10);
+        Assert.Equal(tile, fsm.RiichiConfirmTile);
+        fsm.LatchRiichiConfirm(null, ownDiscardCount: 11); // Repeated popup cannot move the original baseline.
+        fsm.ObserveOwnDiscardCount(11);
+        Assert.True(fsm.IsRiichiConfirmPending);
+        Assert.Null(fsm.RiichiConfirmTile);
+        Assert.Null(fsm.RiichiConfirmTileIsRed);
+        fsm.LatchRiichiConfirm(tile, ownDiscardCount: 11);
+        Assert.Null(fsm.RiichiConfirmTile); // No stale target is revived in this hand.
+        fsm.ObserveWall(10);
+        fsm.ObserveWall(70);
+        Assert.False(fsm.IsRiichiConfirmPending);
+        fsm.LatchRiichiConfirm(Tile.FromId(4), true, ownDiscardCount: 2);
+        Assert.True(fsm.RiichiConfirmTileIsRed);
+        fsm.ObserveOwnDiscardCount(3);
+        Assert.Null(fsm.RiichiConfirmTile);
+    }
+
+    [Fact]
+    public void Missing_discard_count_does_not_invent_a_riichi_confirmation()
+    {
+        var fsm = NewFsm();
+        fsm.LatchRiichiConfirm(Tile.FromId(4), true);
+        fsm.ObserveOwnDiscardCount(10);
+        Assert.Equal(Tile.FromId(4), fsm.RiichiConfirmTile);
+        Assert.True(fsm.RiichiConfirmTileIsRed);
+    }
+
 }

@@ -16,10 +16,13 @@ public class LiveHandBoundaryTests
         Scores = scores ?? [25000,25000,25000,25000],
     };
 
-    [Fact]
-    public async Task Full_live_state_sequence_has_seven_settlements_and_no_phantom_eighth_hand()
+    [Theory]
+    [InlineData("live-match-20260923-boundaries.json", 7, 48000, new[] { 3900, 12300, 0, -5200, -1000, 0, 13000 })]
+    [InlineData("live-match-20260924-exhaustion.json", 5, 30900, new[] { -1000, 8000, 0, -3100, 2000 })]
+    public async Task Full_live_state_sequence_has_only_real_hand_boundaries(
+        string fileName, int expectedHands, int expectedScore, int[] expectedOurDeltas)
     {
-        string fixturePath = Path.Combine(AppContext.BaseDirectory,"RegressionFixtures","live-match-20260923-boundaries.json");
+        string fixturePath = Path.Combine(AppContext.BaseDirectory,"RegressionFixtures",fileName);
         using var fixture = JsonDocument.Parse(await File.ReadAllTextAsync(fixturePath));
         using var temp = new TempDir();
         var config = new DalamudConfigService(_ => {}, new Configuration());
@@ -33,16 +36,17 @@ public class LiveHandBoundaryTests
             Assert.Equal(0,r.GetProperty("meld_count").GetInt32());
             var snap = Snapshot(r.GetProperty("wall").GetInt32(),r.GetProperty("hand_count").GetInt32(),
                 r.GetProperty("scores").EnumerateArray().Select(x=>x.GetInt32()).ToArray(),r.GetProperty("state_code").GetInt32());
+            if (r.TryGetProperty("discard_counts", out var counts))
+                snap = snap with { Seats = snap.Seats.Select((seat, i) => seat with { DiscardCount = counts[i].GetInt32() }).ToArray() };
             if (boundary.Observe(snap)) handId++;
             logger.OnStateChanged(snap with { HandId = handId });
         }
         logger.CompleteSession();
         logger.CompleteSession(); // Both leave and unload can attempt finalization.
         await logger.FlushAsync();
-        Assert.Equal(7, handId);
+        Assert.Equal(expectedHands, handId);
         var files = logger.SnapshotSessionPaths();
-        Assert.Equal(7, files.Count);
-        int[] expectedOurDeltas = [3900,12300,0,-5200,-1000,0,13000];
+        Assert.Equal(expectedHands, files.Count);
         for (int i=0;i<files.Count;i++)
         {
             var records = File.ReadAllLines(files[i]).Select(line=>JsonSerializer.Deserialize<JsonElement>(line)).ToArray();
@@ -57,9 +61,9 @@ public class LiveHandBoundaryTests
         var stats = new MatchArchiveMortalStats("UI-only",0,0,0,0,0,0,0,0);
         string completed = Assert.IsType<string>(await archive.FinalizeSessionAsync(files,stats));
         using var summary = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(completed,"summary.json")));
-        Assert.Equal(7,summary.RootElement.GetProperty("hand_count").GetInt32());
-        Assert.Equal(7,summary.RootElement.GetProperty("settled_hands").GetInt32());
-        Assert.Equal(48000,summary.RootElement.GetProperty("our_score").GetInt32());
+        Assert.Equal(expectedHands,summary.RootElement.GetProperty("hand_count").GetInt32());
+        Assert.Equal(expectedHands,summary.RootElement.GetProperty("settled_hands").GetInt32());
+        Assert.Equal(expectedScore,summary.RootElement.GetProperty("our_score").GetInt32());
     }
 
     [Fact]

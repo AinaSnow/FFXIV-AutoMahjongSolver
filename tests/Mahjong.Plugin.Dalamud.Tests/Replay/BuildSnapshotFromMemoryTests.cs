@@ -298,4 +298,17 @@ public class BuildSnapshotFromMemoryTests
         Assert.False(unknown.Observations.HasFlag(SnapshotObservationFlags.Dora));
     }
 
+    [Fact]
+    public void Late_hand_discard_total_does_not_wrap_an_exhausted_wall_to_seventy()
+    {
+        var memory = new AddonMemoryBuilder(EmjProfile)
+            .WithScores(25000, 25000, 25000, 25000)
+            .WithHand("111p678p1133358s")
+            .WithDiscardCounts(18, 17, 18, 18).Build();
+        var (variant, ctx) = MakeVariant(EmjProfile);
+        var snapshot = variant.BuildSnapshotFromMemory(memory, [AtkValueRecord.OfInt(17)], ctx, callModalVisible: false)!;
+        Assert.Equal(0, snapshot.WallRemaining);
+        Assert.Equal(71, snapshot.Seats.Sum(s => s.DiscardCount));
+    }
+
 }

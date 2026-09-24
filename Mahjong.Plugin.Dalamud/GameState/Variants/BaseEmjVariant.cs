@@ -262,7 +262,9 @@ internal sealed class BaseEmjVariant : IEmjVariant
         foreach (var c in discardCounts)
             totalDiscards += c;
         int derived = profile.Limits.WallInitial - totalDiscards;
-        return derived >= 0 && derived <= profile.Limits.WallInitial ? derived : profile.Limits.WallInitial;
+        // Calls can make discard count exceed the live-wall estimate. Exhaustion
+        // must stay at zero; wrapping to 70 creates a fictitious new hand.
+        return Math.Clamp(derived, 0, profile.Limits.WallInitial);
     }
 
     private (SeatView[] Seats, SnapshotObservationFlags Observations) BuildSeatViews(

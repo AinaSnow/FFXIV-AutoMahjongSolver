@@ -17,7 +17,9 @@ internal sealed class UiHandBoundaryTracker
         int effectiveCount = snapshot.Hand.Count + snapshot.OurMelds.Count * 3;
         if (effectiveCount is not (13 or 14) || snapshot.Hand.Count == 0 || !ScoresKnown(snapshot.Scores)) return false;
         bool first = HandsObserved == 0;
-        bool newDeal = snapshot.OurMelds.Count == 0 && snapshot.WallRemaining >= 60
+        // A wall jump with the previous rivers still present is not a new deal.
+        bool riversReset = snapshot.Seats.All(s => s.DiscardCount == 0 && s.Discards.Count == 0);
+        bool newDeal = riversReset && snapshot.OurMelds.Count == 0 && snapshot.WallRemaining >= 60
             && (snapshot.WallRemaining > lastWall + 5 || pendingEmptyDeal && snapshot.WallRemaining >= lastWall);
         if (first || newDeal)
         {

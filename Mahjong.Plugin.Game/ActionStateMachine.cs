@@ -20,6 +20,8 @@ public sealed class ActionStateMachine
     private Tile? riichiConfirmTile;
     private bool? riichiConfirmTileIsRed;
     private int lastObservedWall = -1;
+    private int? riichiDiscardBaseline;
+    private bool riichiDiscardCommitted;
 
     public ActionStateMachine(TimeSpan dispatchTimeout, TimeSpan retryCooldown)
     {
@@ -33,8 +35,8 @@ public sealed class ActionStateMachine
     public bool IsRiichiConfirmPending => riichiConfirmLatched;
 
     /// <summary>
-    /// Tile the policy chose for the post-riichi tsumogiri; null when the latch was set via a
-    /// probe-accept path without an explicit tile decision.
+    /// Tile chosen for the declaration discard; cleared when our river count advances.
+    /// Null also covers probe-accept without a tile; later draws use the drawn tile.
     /// </summary>
     public Tile? RiichiConfirmTile => riichiConfirmTile;
 
@@ -69,9 +71,11 @@ public sealed class ActionStateMachine
     public void ClearContext() => lastContext = null;
 
     /// <summary>A null <paramref name="target"/> preserves any previously-latched tile.</summary>
-    public void LatchRiichiConfirm(Tile? target = null, bool? targetIsRed = null)
+    public void LatchRiichiConfirm(Tile? target = null, bool? targetIsRed = null, int? ownDiscardCount = null)
     {
         riichiConfirmLatched = true;
+        if (riichiDiscardCommitted) return;
+        riichiDiscardBaseline ??= ownDiscardCount;
         if (target is not null)
         {
             riichiConfirmTile = target;
@@ -79,9 +83,21 @@ public sealed class ActionStateMachine
         }
     }
 
+    /// <summary>After the declaration discard lands, future draws must not reuse its tile choice.</summary>
+    public void ObserveOwnDiscardCount(int count)
+    {
+        if (!riichiConfirmLatched || riichiDiscardBaseline is not { } baseline || count <= baseline) return;
+        riichiDiscardCommitted = true;
+        riichiConfirmTile = null;
+        riichiConfirmTileIsRed = null;
+        // Keep the hand-scoped latch: a repeated popup must not redeclare riichi.
+    }
+
     public void ClearRiichiConfirm()
     {
         riichiConfirmLatched = false;
+        riichiDiscardBaseline = null;
+        riichiDiscardCommitted = false;
         riichiConfirmTile = null;
         riichiConfirmTileIsRed = null;
     }
@@ -94,9 +110,7 @@ public sealed class ActionStateMachine
     {
         if (lastObservedWall >= 0 && wall > lastObservedWall + 5)
         {
-            riichiConfirmLatched = false;
-            riichiConfirmTile = null;
-            riichiConfirmTileIsRed = null;
+            ClearRiichiConfirm();
             lastContext = null;
         }
         lastObservedWall = wall;

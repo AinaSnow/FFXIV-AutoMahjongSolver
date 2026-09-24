@@ -214,6 +214,8 @@ public sealed class AutoPlayLoop : IDisposable
 
         // Riichi-confirm latch is hand-scoped via ObserveWall — popup signature drops mid-hand and clearing per-tick would let the loop redeclare riichi 20+ times in one hand.
         fsm.ObserveWall(snap.WallRemaining);
+        if (snap.Seats.Count > 0)
+            fsm.ObserveOwnDiscardCount(Math.Max(snap.Seats[0].DiscardCount, snap.Seats[0].Discards.Count));
 
         if (!isCallPrompt && !isDiscardTurn)
         {
@@ -936,6 +938,9 @@ public sealed class AutoPlayLoop : IDisposable
         });
     }
 
+    private static int? OwnDiscardCount(StateSnapshot snap) => snap.Seats.Count > 0
+        ? Math.Max(snap.Seats[0].DiscardCount, snap.Seats[0].Discards.Count) : null;
+
     private void ScheduleRiichiTsumogiri(DispatchContext context)
     {
         ScheduleAction("riichi-tsumogiri", context, RiichiTsumogiriDelayMs, () =>
@@ -1094,7 +1099,7 @@ public sealed class AutoPlayLoop : IDisposable
             LastActionDescription = $"auto-riichi[opt={riichiIdx}] (tile={tile}) → {rResult}";
             plugin.GameLogger.RecordAction(ActionKind.Riichi, tile, riichiIdx, rResult.ToString(), choice.Reasoning);
             EmitDispatchFinding("riichi", rResult, option: riichiIdx, tile: tile, snap: snap);
-            fsm.LatchRiichiConfirm(tile, targetIsRed);
+            fsm.LatchRiichiConfirm(tile, targetIsRed, OwnDiscardCount(snap));
             ClearRetryDebounceIfHookFailed(rResult);
             return;
         }
@@ -1321,7 +1326,7 @@ public sealed class AutoPlayLoop : IDisposable
 
         // Yaku-preview confirm popup shares the Riichi-flag signature — latch to prevent retry-dispatch and carry the probe's chosen discard.
         if (acceptRiichiPopup)
-            fsm.LatchRiichiConfirm(riichiProbeTile);
+            fsm.LatchRiichiConfirm(riichiProbeTile, ownDiscardCount: OwnDiscardCount(snap));
 
         // ShouMinKan: addon shrinks the closed hand by 1 and the existing pon ought to grow to a kan,
         // but ObserveSnapshot can't infer that from a delta=1. Upgrade the meld in-place so meld-tile

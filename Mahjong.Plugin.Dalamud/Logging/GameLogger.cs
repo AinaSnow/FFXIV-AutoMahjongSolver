@@ -349,7 +349,11 @@ public sealed class GameLogger : IDisposable
             return ("ron", winnerIdx, loserIdx);
         if (pos == 1 && neg == 3)
             return ("tsumo", winnerIdx, null);
-        return ("draw", null, null);
+        // Riichi payments and multiple winners can produce other shapes. Do not
+        // report them as an observed draw just because ron/tsumo heuristics fail.
+        bool drawShape = deltas.All(d => d == 0)
+            || deltas.Length == 4 && pos == 2 && neg == 2 && deltas.All(d => Math.Abs(d) == 1500);
+        return (drawShape ? "draw" : "unknown", null, null);
     }
 
     private void RollWriter()

@@ -11,7 +11,9 @@ entry.
 - 🔴 **Broken** — observed not committing in live play; needs fix.
 - ⚫ **Unknown** — no capture, no implementation, no live exposure yet.
 
-Last updated: 2026-05-24.
+Last updated: 2026-09-24.
+
+Historical inventory below includes May observations. Current capture evidence and release limits are in [implementation status](implementation-status.md) and the [complete-match review](reviews/20260924-complete-match.md); old unverified entries do not authorize a current-client protocol.
 
 ---
 
@@ -90,7 +92,7 @@ The post-draw self-declare popup (state-6 hand=14) offers AnKan/ShouMinKan as bu
 |---|---|---|---|
 | Riichi/Pass popup — policy declines | Closed hand stays clickable; bot must fall through to discard handshake instead of pressing `[11, passIdx]` | 🟡 awaiting live re-test in next session | Live freeze 2026-05-23T15:03: `auto-pass[opt=1] → Ok` looped indefinitely because variant didn't emit `Discard` flag at state-6 hand=14 popup. Fixed in BaseEmjVariant + AutoPlayLoop dispatch-routing 2026-05-23T15:08. |
 | Riichi/Pass popup — policy accepts | `[11, riichiOptionIndex]` then `LatchRiichiConfirm(chosenTile)` then next-tick tsumogiri on the latched tile. | 🟡 unverified live | Pre-fix used the dead opcode-8 path; corrected 2026-05-23T15:08. Tile-latching added 2026-05-24 — previously tsumogiri'd slot 13 (last drawn) regardless of the policy's choice, which would chombo if the wait IS the drawn tile. |
-| Post-riichi yaku-preview popup | Re-fires the same Riichi+Discard offer; loop tsumogiris the latched tile (or slot 13 if no tile was latched) | 🟡 | `ActionStateMachine.LatchRiichiConfirm` + `ScheduleRiichiTsumogiri` cover this; subsequent latches with `null` preserve the originally-chosen tile |
+| Post-riichi yaku-preview popup | Use the declaration target only until our discard count increases; clear that tile/red identity afterwards and use drawn slot 13 on later draws. Keep the hand-scoped declaration latch to prevent redeclaration. | 🟡 fix regression-tested; live re-test pending | 2026-09-24 full match reproduced a stale 6s target after the server discarded drawn 5m. `ObserveOwnDiscardCount` now releases the target; null relatches cannot restore it after confirmation. |
 | `OurRiichi` flag visible to policy | **NOT IMPLEMENTED** — addon offset unknown, snapshot always reports `OurRiichi = false` | 🔴 | Policy doesn't apply tsumogiri restriction on subsequent turns |
 
 ### 6. Tsumo (self-win)
@@ -126,7 +128,7 @@ The dispatcher is only half the protocol — the policy needs an accurate snapsh
 | `Scores` (per-seat) | `BaseEmjVariant.ReadScores` | ✅ |
 | `DoraIndicators` | First visible tile at `+0x0FD8`, normalized with `EmjModule.ShowTraditionalDoraIndicator` | Doman bonus-tile display is converted to a traditional indicator; unknown mode omitted. Additional kan indicators and ura-dora are not read |
 | `UraDoraIndicators` | empty | 🔴 Riichi ura-dora not read |
-| `WallRemaining` | derived from per-seat discard counts | ✅ |
+| `WallRemaining` | UI estimate from per-seat discard counts, clamped to 0–70 | Estimate only; calls make discard count differ from live-wall draws. A jump with old rivers present cannot open a new hand. Full 2026-09-24 boundary replay covered. |
 | `TurnIndex` | hardcoded `0` | 🟡 Not currently used by policy |
 | `DealerSeat` | hardcoded `0` | 🔴 Same root cause as OurSeat |
 | `Seats[].Discards` (opp pools) | partial — discard arrays read but tile-by-tile mapping not fully verified | 🟡 |
