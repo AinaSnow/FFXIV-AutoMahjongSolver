@@ -29,6 +29,8 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static ICommandManager CommandManager { get; private set; } = null!;
     [PluginService] internal static IChatGui ChatGui { get; private set; } = null!;
     [PluginService] internal static IClientState ClientState { get; private set; } = null!;
+    [PluginService] internal static IPlayerState PlayerState { get; private set; } = null!;
+    [PluginService] internal static IPartyList PartyList { get; private set; } = null!;
     [PluginService] internal static IFramework Framework { get; private set; } = null!;
     [PluginService] internal static IDataManager DataManager { get; private set; } = null!;
     [PluginService] internal static ICondition Condition { get; private set; } = null!;
@@ -65,6 +67,7 @@ public sealed class Plugin : IDalamudPlugin
     public DebugPacketLogger DebugPackets { get; }
     private readonly BackgroundIoWorker archiveIo = new();
     public AutoPlayLoop AutoPlay { get; }
+    public ContinuousCollectionLoop Collection { get; }
     public MahjongNetworkCapture NetworkCapture { get; }
     public LiveMortalBridge MortalBridge { get; }
     public PublicStateTracker PublicState { get; }
@@ -185,6 +188,7 @@ public sealed class Plugin : IDalamudPlugin
             mahjongAddon.KnownAddonNames,
             OnMahjongAddonPreFinalize);
         AutoPlay = new AutoPlayLoop(this, Framework, Log, mahjongAddon);
+        Collection = new ContinuousCollectionLoop(this, Framework, Log);
 
         DiscardCapture = DiscardCaptureFactory.Create(
             Log, Framework, SigScanner, Aggregator, SeatPoolRegistry, SigprobeLog);
@@ -273,6 +277,7 @@ public sealed class Plugin : IDalamudPlugin
 
     public void Dispose()
     {
+        Collection.Dispose();
         MeldTracker.DeferralTimedOut -= OnMeldTrackerDeferralTimedOut;
         AddonLifecycle.UnregisterListener(OnMahjongAddonPreFinalize);
         ArchiveCurrentMatch();

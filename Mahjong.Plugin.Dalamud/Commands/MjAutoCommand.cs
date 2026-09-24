@@ -102,8 +102,17 @@ public sealed class MjAutoCommand : IDisposable
                 break;
 
             case "off":
-                plugin.ConfigService.Update(c => c with { AutomationArmed = false });
+                plugin.ConfigService.Update(c => c with { AutomationArmed = false, ContinuousCollection = false });
                 chatGui.Print("[MjAuto] Automation disarmed.");
+                break;
+
+            case "collect":
+                switch (rest.Trim().ToLowerInvariant())
+                {
+                    case "on": case "start": chatGui.Print("[MjAuto] " + plugin.Collection.Start()); break;
+                    case "off": case "stop": plugin.Collection.Stop(); chatGui.Print("[MjAuto] Collection stopped; current match will finish."); break;
+                    default: chatGui.Print("[MjAuto] " + plugin.Collection.Status + " | /mjauto collect on|off"); break;
+                }
                 break;
 
             case "debug":
@@ -201,6 +210,7 @@ public sealed class MjAutoCommand : IDisposable
     {
         chatGui.Print("Doman Mahjong Solver — /mjauto commands");
         chatGui.Print("  /mjauto — open the plugin window");
+        chatGui.Print("  /mjauto collect on | off — continuous player East-only collection; no time limit");
         chatGui.Print("  /mjauto on | off — arm / disarm automation");
         chatGui.Print("  /mjauto help — show this help");
 

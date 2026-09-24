@@ -14,6 +14,17 @@ public sealed class DebugPacketLogger : IDisposable
     private string? warnedPath, warnedHookError;
     private readonly Func<bool> enabled, present;
     private readonly Func<MatchArchiveEnvironment> environment;
+    private DebugPacketSession? acknowledgedCollectionFailure;
+    // An explicit restart can retry after an old file failure; active recordings are never excused.
+    public void AcknowledgeCollectionFailure()
+    {
+        if (!present()) acknowledgedCollectionFailure = recorder.Latest;
+    }
+    public bool ReadyForCollection => enabled() && source.IsEnabled && CollectionError is null;
+    public string? CollectionError =>
+        (source.Status.StartsWith("Deucalion unavailable", StringComparison.Ordinal) ? source.Status : null) ??
+        (ReferenceEquals(recorder.Latest, acknowledgedCollectionFailure) ? null : recorder.Latest?.Error ??
+            (recorder.Latest?.Status == "size-limit" ? "Packet capture reached its 64 MiB limit; collection stopped" : null));
     public string DirectoryPath => recorder.DirectoryPath;
     public string? CurrentPath => recorder.Latest?.Path;
     public long Packets => recorder.Latest?.Written ?? 0;

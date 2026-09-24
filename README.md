@@ -32,6 +32,7 @@ Sit at a mahjong table and a small window watches your hand, suggesting the best
 ## Features
 
 - Three modes: Off / Hints / Auto-play, one click each.
+- Optional [continuous player East-only collection](docs/continuous-collection.md): `/mjauto collect on` queues, confirms, plays, records and repeats until `/mjauto collect off`. No time limit; the switch persists across reloads. Available for the scoped international client build.
 - Hand, score, and discard-count readout from addon memory.
 - Top-3 discard candidates with short reasoning.
 - Full call handling: Pon · Chi · Kan · Riichi · Tsumo · Ron.

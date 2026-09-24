@@ -45,6 +45,8 @@ public sealed class MainWindow : Window, IDisposable
 
         DrawModeCard(cfg);
         ImGui.Dummy(new Vector2(0, 4));
+        DrawCollectionCard(cfg);
+        ImGui.Dummy(new Vector2(0, 4));
         DrawLiveCard();
 
         DrawAutoPlayConfirmModal(cfg);
@@ -215,6 +217,7 @@ public sealed class MainWindow : Window, IDisposable
         {
             AutomationArmed = mode > 0,
             SuggestionOnly = mode == 1,
+            ContinuousCollection = mode == 2 && c.ContinuousCollection,
         });
 
     private void DrawAutoPlayConfirmModal(Configuration cfg)
@@ -257,6 +260,25 @@ public sealed class MainWindow : Window, IDisposable
             ImGui.CloseCurrentPopup();
 
         ImGui.EndPopup();
+    }
+
+    private void DrawCollectionCard(Configuration cfg)
+    {
+        using (Theme.BeginCard("collection"))
+        {
+            Theme.SectionHeader("Continuous collection · Player East-only");
+            bool enabled = cfg.ContinuousCollection;
+            if (!cfg.AutoPlayConfirmed) ImGui.BeginDisabled();
+            if (ImGui.Checkbox("Auto-queue, commence and repeat until stopped", ref enabled))
+            {
+                if (enabled) Plugin.ChatGui.Print("[MjAuto] " + plugin.Collection.Start());
+                else plugin.Collection.Stop();
+            }
+            if (!cfg.AutoPlayConfirmed) ImGui.EndDisabled();
+            ImGui.TextWrapped(plugin.Collection.Status);
+            Theme.Subtle($"Completed this load: {plugin.Collection.CompletedMatches}. No time limit; resumes after reload.");
+            Theme.Subtle("Stop withdraws the queue or finishes the current match. Off stops all play.");
+        }
     }
 
     private void DrawLiveCard()
