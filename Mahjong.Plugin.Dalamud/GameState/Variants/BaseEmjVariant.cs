@@ -140,6 +140,7 @@ internal sealed class BaseEmjVariant : IEmjVariant
         ctx.MeldTracker.ObserveWall(wallRemaining);
         ctx.MeldTracker.ObserveSnapshot(hand, discardCounts, ourSeat: 0, currentAkadora: akaDora);
         var ourMelds = ctx.MeldTracker.Melds.ToArray();
+        legal = NormalizeSelfKanPrompt(legal, hand, ourMelds);
         int totalAkadora = akaDora + ctx.MeldTracker.MeldAkadora;
 
         return StateSnapshot.Empty with
@@ -360,9 +361,9 @@ internal sealed class BaseEmjVariant : IEmjVariant
                 ActionFlags.MinKan | ActionFlags.ShouMinKan |
                 ActionFlags.Ron | ActionFlags.Riichi | ActionFlags.Tsumo;
             LegalActions scanned;
-            // State-6 is a list widget: its live labels are on the visible
-            // child rows, while parent AtkValues can retain an older prompt.
-            if (isSelfDeclareState && listWidgetLabels is { Count: > 0 })
+            // Live child rows take precedence in every call state. Parent
+            // AtkValues can retain a previous chi/pon label after its window closes.
+            if (listWidgetLabels is { Count: > 0 })
             {
                 scanned = BuildCallPromptLegalFromListItems(hand, atkValues, listWidgetLabels);
             }
@@ -415,6 +416,28 @@ internal sealed class BaseEmjVariant : IEmjVariant
             PonCandidates = [],
             ChiCandidates = [],
         };
+    }
+
+    /// <summary>The generic Kan label denotes our quad/added tile on a discard turn, never an opponent discard.</summary>
+    internal static LegalActions NormalizeSelfKanPrompt(
+        LegalActions legal, IReadOnlyList<Tile> hand, IReadOnlyList<Meld> melds)
+    {
+        if (!legal.Can(ActionFlags.Discard) || !legal.Can(ActionFlags.MinKan)
+            || hand.Count == 0 || hand.Count % 3 != 2)
+            return legal;
+
+        var candidates = new List<MeldCandidate>();
+        foreach (var group in hand.GroupBy(t => t))
+        {
+            if (group.Count() == 4)
+                candidates.Add(new(MeldKind.AnKan, group.Key, group.ToArray(), 0));
+            else if (group.Count() == 1 && melds.Any(m => m.Kind == MeldKind.Pon && m.Tiles[0] == group.Key))
+                candidates.Add(new(MeldKind.ShouMinKan, group.Key, [group.Key], 0));
+        }
+        var flags = legal.Flags & ~(ActionFlags.MinKan | ActionFlags.AnKan | ActionFlags.ShouMinKan);
+        if (candidates.Any(c => c.Kind == MeldKind.AnKan)) flags |= ActionFlags.AnKan;
+        if (candidates.Any(c => c.Kind == MeldKind.ShouMinKan)) flags |= ActionFlags.ShouMinKan;
+        return legal with { Flags = flags, KanCandidates = candidates };
     }
 
     internal static LegalActions NormalizeCallPromptForHandShape(
@@ -470,7 +493,7 @@ internal sealed class BaseEmjVariant : IEmjVariant
         if (host == null)
             return false;
         // Component node types are >= 1000; type-check guards against a future patch renumbering host to a native node.
-        if ((int)host->Type < 1000)
+        if ((int)host->Type < 1000 || !host->IsVisible())
             return false;
         var comp = ((AtkComponentNode*)host)->Component;
         if (comp == null)

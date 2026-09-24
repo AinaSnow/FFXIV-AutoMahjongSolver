@@ -214,7 +214,7 @@ public sealed class StateAggregator : IDisposable
         return current?.Source switch
         {
             "mortal" when externalRecommendationCurrent => current,
-            "local-fallback" or "terminal-guard" => current,
+            "local-fallback" or "terminal-guard" or "ui-recovery" => current,
             _ => null,
         };
     }

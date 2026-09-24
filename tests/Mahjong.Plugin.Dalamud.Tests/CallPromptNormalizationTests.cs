@@ -146,6 +146,41 @@ public sealed class CallPromptNormalizationTests
         Assert.Equal("Mortal variant 1", note);
     }
 
+    [Theory]
+    [InlineData("567m26p45s7777z", 33)]
+    [InlineData("77779m778p23788s7z", 6)]
+    public void Captured_self_quad_shapes_become_ankan_and_keep_discard(string tiles, int quadId)
+    {
+        // Exact closed-hand shapes from 2026-09-24 15:06 and 15:31 UTC.
+        var hand = Tiles.Parse(tiles).ToArray();
+        var legal = BaseEmjVariant.NormalizeSelfKanPrompt(
+            Legal(ActionFlags.Discard | ActionFlags.MinKan | ActionFlags.Pass), hand, []);
+        Assert.True(legal.Can(ActionFlags.Discard));
+        Assert.True(legal.Can(ActionFlags.AnKan));
+        Assert.False(legal.Can(ActionFlags.MinKan));
+        var candidate = Assert.Single(legal.KanCandidates);
+        Assert.Equal(MeldKind.AnKan, candidate.Kind);
+        Assert.Equal(4, candidate.HandTiles.Length);
+        Assert.All(candidate.HandTiles, tile => Assert.Equal(quadId, tile.Id));
+    }
+
+    [Fact]
+    public void Added_kan_requires_an_existing_pon_and_a_visible_kan_offer()
+    {
+        var hand = Tiles.Parse("123m123p123s11z").ToArray();
+        var pon = Meld.Pon(Tile.FromId(0), Tile.FromId(0), 2);
+        var offered = Legal(ActionFlags.Discard | ActionFlags.MinKan | ActionFlags.Pass);
+        var normalized = BaseEmjVariant.NormalizeSelfKanPrompt(offered, hand, [pon]);
+        Assert.True(normalized.Can(ActionFlags.ShouMinKan));
+        Assert.False(normalized.Can(ActionFlags.MinKan));
+        Assert.Single(Assert.Single(normalized.KanCandidates).HandTiles);
+        Assert.Empty(BaseEmjVariant.NormalizeSelfKanPrompt(offered, hand, []).KanCandidates);
+        var noOffer = Legal(ActionFlags.Discard);
+        Assert.Same(noOffer, BaseEmjVariant.NormalizeSelfKanPrompt(noOffer, hand, [pon]));
+        var response = Legal(ActionFlags.MinKan | ActionFlags.Pass);
+        Assert.Same(response, BaseEmjVariant.NormalizeSelfKanPrompt(response, hand.Take(10).ToArray(), [pon]));
+    }
+
     private static LegalActions Legal(ActionFlags flags) =>
         new(flags, [], [], [], []);
 }

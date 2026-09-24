@@ -903,11 +903,11 @@ public sealed class AutoPlayLoop : IDisposable
                 log.Info($"[AutoPlayLoop] {LastActionDescription}");
                 return;
             }
-            if ((snap.Legal.Flags & (ActionFlags.Ron | ActionFlags.Tsumo)) != 0
-                && !plugin.Dispatcher.IsCallPromptVisible())
+            if ((snap.Legal.Flags & CallPromptFlags) == 0 || !plugin.Dispatcher.IsCallPromptVisible())
             {
                 pendingTerminalWin = null;
-                LastActionDescription = $"call aborted: terminal prompt is no longer visible (state={currentState})";
+                hasMortalWait = false;
+                LastActionDescription = $"call aborted: prompt is no longer actionable/visible (state={currentState})";
                 log.Info($"[AutoPlayLoop] {LastActionDescription}");
                 return;
             }
@@ -1241,13 +1241,30 @@ public sealed class AutoPlayLoop : IDisposable
 
         if (plugin.MortalBridge.Enabled && !plugin.MortalBridge.CurrentHandQuarantined)
         {
+            if (plugin.MortalBridge.HasExpiredOpponentPrompt(snapshot))
+            {
+                choice = ActionChoice.Pass("UI recovery: opponent call window already closed by a confirmed draw");
+                int expiredKey = HashCode.Combine(snapshot.HandId, ComputeMortalDecisionKey(snapshot), "expired-prompt");
+                if (!hasMortalWait || mortalWaitKey != expiredKey)
+                {
+                    mortalWaitKey = expiredKey;
+                    mortalWaitStartedAt = clock.UtcNow;
+                    hasMortalWait = true;
+                    return false;
+                }
+                if (clock.UtcNow - mortalWaitStartedAt < TimeSpan.FromMilliseconds(400))
+                    return false;
+                hasMortalWait = false;
+                plugin.Aggregator.PublishLocalExecution(snapshot, choice, "ui-recovery");
+                return true;
+            }
             if (plugin.MortalBridge.TryChoose(snapshot, out choice))
             {
                 hasMortalWait = false;
                 return true;
             }
 
-            int key = ComputeMortalDecisionKey(snapshot);
+            int key = HashCode.Combine(snapshot.HandId, ComputeMortalDecisionKey(snapshot));
             var now = clock.UtcNow;
             if (!hasMortalWait || mortalWaitKey != key)
             {
@@ -1413,7 +1430,8 @@ public sealed class AutoPlayLoop : IDisposable
     {
         // Pass index = count of accept buttons (multi-chi adds one slot per chi candidate).
         int passIndex = ComputePassIndex(legal);
-        var result = plugin.Dispatcher.DispatchCallOption(passIndex, ActionKind.Pass, snap);
+        var result = plugin.Dispatcher.DispatchCallOption(passIndex, ActionKind.Pass, snap,
+            cancelExpiredPrompt: plugin.MortalBridge.HasExpiredOpponentPrompt(snap));
         LastActionDescription = $"auto-pass[opt={passIndex}] → {result}";
         string reasoning = string.IsNullOrEmpty(reasonOverride) ? choice.Reasoning : reasonOverride;
         plugin.GameLogger.RecordAction(ActionKind.Pass, null, passIndex, result.ToString(), reasoning);

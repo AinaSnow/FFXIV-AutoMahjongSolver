@@ -1098,8 +1098,25 @@ public sealed class LiveMortalBridge : IDisposable
     internal bool HasAuthoritativeOpponentDiscard =>
         lastNetworkDiscard is { Actor: > 0 };
 
-    private static bool IsOpponentResponseWindow(ActionFlags flags) =>
-        (flags & (ActionFlags.Pon | ActionFlags.Chi | ActionFlags.MinKan | ActionFlags.Ron)) != 0;
+    internal static bool IsOpponentResponseWindow(ActionFlags flags) =>
+        (flags & ActionFlags.Discard) == 0
+        && (flags & (ActionFlags.Pon | ActionFlags.Chi | ActionFlags.MinKan | ActionFlags.Ron)) != 0;
+
+    /// <summary>A confirmed following draw closes an old call window. Unknown history is not evidence of expiry.</summary>
+    internal bool HasExpiredOpponentPrompt(StateSnapshot snapshot) =>
+        Enabled && !CurrentHandQuarantined && snapshot.PublicStateConsistent
+        && (!capture.LimitedTrialActive || trialState.Merge(snapshot).PublicStateConsistent)
+        && lastNetworkDrawActor is > 0
+        && IsCancellableOpponentPrompt(snapshot);
+
+    internal static bool IsCancellableOpponentPrompt(StateSnapshot snapshot)
+    {
+        const ActionFlags calls = ActionFlags.Chi | ActionFlags.Pon | ActionFlags.MinKan;
+        return snapshot.Hand.Count > 0 && snapshot.Hand.Count % 3 == 1
+            && snapshot.Legal.Can(ActionFlags.Pass)
+            && (snapshot.Legal.Flags & calls) != 0
+            && (snapshot.Legal.Flags & ~(calls | ActionFlags.Pass)) == 0;
+    }
 
     private static bool HasCompleteObservedDiscard(
         StateSnapshot snapshot,

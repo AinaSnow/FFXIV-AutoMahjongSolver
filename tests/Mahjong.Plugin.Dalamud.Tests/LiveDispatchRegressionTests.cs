@@ -42,6 +42,23 @@ public class LiveDispatchRegressionTests
     }
 
     [Fact]
+    public void Expired_chi_cancel_is_limited_to_pass_in_the_observed_response_state()
+    {
+        var snap = StateSnapshot.Empty with { AddonStateCode = 15,
+            Hand = Tiles.Parse("345p6778s").ToArray(),
+            Legal = new LegalActions(ActionFlags.Chi | ActionFlags.Pass, [], [], [], []) };
+        Assert.True(InputDispatcher.UseExpiredCallCancel(15, 15, ActionKind.Pass, snap));
+        Assert.False(InputDispatcher.UseExpiredCallCancel(6, 15, ActionKind.Pass, snap));
+        Assert.False(InputDispatcher.UseExpiredCallCancel(15, 15, ActionKind.Chi, snap));
+        Assert.False(InputDispatcher.UseExpiredCallCancel(15, 15, ActionKind.Pass, snap with { AddonStateCode = 6 }));
+        Assert.False(InputDispatcher.UseExpiredCallCancel(15, 15, ActionKind.Pass, snap with {
+            Legal = snap.Legal with { Flags = snap.Legal.Flags | ActionFlags.Ron } }));
+        Assert.False(InputDispatcher.UseExpiredCallCancel(15, 15, ActionKind.Pass, snap with {
+            Legal = snap.Legal with { Flags = snap.Legal.Flags | ActionFlags.Discard } }));
+        Assert.False(InputDispatcher.UseExpiredCallCancel(15, 15, ActionKind.Pass, snap with { Hand = [] }));
+    }
+
+    [Fact]
     public void Recorded_no_op_pass_remains_pending_until_timeout_not_next_retry()
     {
         var snap = RiichiKanPrompt;

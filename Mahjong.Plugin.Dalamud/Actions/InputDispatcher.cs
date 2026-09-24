@@ -107,6 +107,10 @@ public sealed class InputDispatcher
             && snap.Hand.GroupBy(t => t.Id).Any(g => g.Count() == 4);
     }
 
+    internal static bool UseExpiredCallCancel(int liveState, int callState, ActionKind? action, StateSnapshot? snap) =>
+        action == ActionKind.Pass && liveState == callState && snap?.AddonStateCode == liveState
+        && Mortal.LiveMortalBridge.IsCancellableOpponentPrompt(snap);
+
     /// <summary>
     /// Discard the tile at the given closed-hand slot (0..13). Slot 13 = last-drawn tile.
     ///
@@ -303,13 +307,30 @@ public sealed class InputDispatcher
     /// expected to have verified the modal-visibility gate before dispatching —
     /// that's the real "should we click" predicate.</para>
     /// </summary>
-    public unsafe DispatchResult DispatchCallOption(int option, ActionKind? action = null, StateSnapshot? context = null)
+    public unsafe DispatchResult DispatchCallOption(int option, ActionKind? action = null, StateSnapshot? context = null, bool cancelExpiredPrompt = false)
     {
         LastDispatchPath = "call-unavailable";
         if (!addon.TryGet(out var unit, out _))
             return DispatchResult.AddonNotFound;
         if (!unit->IsVisible)
             return DispatchResult.AddonNotVisible;
+
+        if (!IsListWidgetPopupActive(unit))
+        {
+            LastDispatchPath = "call:prompt-not-visible";
+            return DispatchResult.HookFailed;
+        }
+        // 2026-09-24 15:48 UTC: [11,1] left the old chi list open; [8]
+        // dismissed it. The caller must confirm that a subsequent network draw
+        // closed the offer, and this final gate excludes wins and self turns.
+        if (cancelExpiredPrompt && UseExpiredCallCancel(ReadStateCode(unit), CallPromptCode, action, context))
+        {
+            LastDispatchPath = "call:opcode-8(expired-opponent-prompt)";
+            var cancel = stackalloc AtkValue[1];
+            cancel[0].SetInt(8);
+            unit->FireCallback(1, cancel, true);
+            return DispatchResult.Ok;
+        }
 
         // Captured on 2026-09-24: riichi self-kan Cancel emits [8]. Selecting
         // the retained list row silently does nothing. Restrict this callback

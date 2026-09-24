@@ -241,6 +241,53 @@ public sealed class MortalLimitedTrialTests
         Assert.Equal("EmjL", json.RootElement.GetProperty("ui_layout").GetString());
     }
 
+    [Theory]
+    [InlineData(ActionFlags.MinKan)] // Legacy generic UI label must not block an already queued discard.
+    [InlineData(ActionFlags.AnKan)]
+    [InlineData(ActionFlags.ShouMinKan)]
+    public void Self_kan_offer_consumes_queued_discard_without_waiting_for_opponent(ActionFlags kan)
+    {
+        using var h = new Harness(); h.Open(); h.Send(0x02BB, Draw());
+        var snapshot = h.Snapshot with { AddonStateCode = 6,
+            Legal = new LegalActions(ActionFlags.Discard | kan | ActionFlags.Pass, [], [], [], []) };
+        h.Client.Emit("""{"type":"dahai","actor":0,"pai":"5sr"}""");
+        Assert.True(h.Bridge.TryChoose(snapshot, out var choice));
+        Assert.Equal(ActionKind.Discard, choice.Kind);
+        Assert.True(choice.DiscardIsRed);
+        Assert.Equal(1, h.Bridge.DecisionsMapped);
+        Assert.Equal(0, h.Bridge.DecisionTimeouts);
+        Assert.Single(h.Clients);
+        Assert.False(h.Bridge.HasExpiredOpponentPrompt(snapshot));
+    }
+
+    [Fact]
+    public void Only_confirmed_following_draw_expires_an_opponent_prompt_and_next_discard_reopens_it()
+    {
+        using var h = new Harness(); h.Open();
+        StateSnapshot Prompt() => h.Snapshot with { AddonStateCode = 15,
+            Legal = new LegalActions(ActionFlags.Chi | ActionFlags.Pass, [], [], [], []) };
+        Assert.False(h.Bridge.HasExpiredOpponentPrompt(Prompt())); // Missing history alone cannot cancel.
+        var discard = Discard(0x110);
+        BinaryPrimitives.WriteInt32LittleEndian(discard, 3);
+        h.Send(0x0214, discard);
+        Assert.False(h.Bridge.HasExpiredOpponentPrompt(Prompt()));
+        var draw = Draw(); BinaryPrimitives.WriteInt32LittleEndian(draw, 1);
+        h.Send(0x02BB, draw);
+        Assert.True(h.Bridge.HasExpiredOpponentPrompt(Prompt()));
+        Assert.False(h.Bridge.HasExpiredOpponentPrompt(Prompt() with { PublicStateConsistent = false }));
+        Assert.False(h.Bridge.HasExpiredOpponentPrompt(Prompt() with {
+            Legal = new LegalActions(ActionFlags.Ron | ActionFlags.Pass, [], [], [], []) }));
+        Assert.False(h.Bridge.HasExpiredOpponentPrompt(Prompt() with { Hand = [] }));
+        h.Send(0x0214, discard);
+        Assert.False(h.Bridge.HasExpiredOpponentPrompt(Prompt()));
+        h.Client.Emit("""{"type":"none"}""");
+        Assert.True(h.Bridge.TryChoose(Prompt(), out var choice));
+        Assert.Equal(ActionKind.Pass, choice.Kind);
+        h.Send(0x018D, new byte[264]);
+        Assert.False(h.Bridge.HasExpiredOpponentPrompt(Prompt()));
+        Assert.Single(h.Clients); Assert.Equal(0, h.Bridge.DecisionTimeouts);
+    }
+
     private static List<CapturedMahjongPacket> Drain(MahjongNetworkCapture capture)
     {
         List<CapturedMahjongPacket> result = [];
