@@ -15,7 +15,7 @@ namespace Mahjong.Plugin.Dalamud.Logging;
 
 public sealed class GameLogger : IDisposable
 {
-    public const int SchemaVersion = 5;
+    public const int SchemaVersion = 6;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -345,6 +345,10 @@ public sealed class GameLogger : IDisposable
                 { minNeg = deltas[i]; loserIdx = i; }
             }
         }
+        bool notenShape = deltas.Length == 4 && deltas.Sum() == 0 && (
+            pos == 1 && neg == 3 && deltas.All(d => d is 3000 or -1000)
+            || pos == 3 && neg == 1 && deltas.All(d => d is 1000 or -3000));
+        if (notenShape) return ("unknown", null, null);
         if (pos == 1 && neg == 1)
             return ("ron", winnerIdx, loserIdx);
         if (pos == 1 && neg == 3)
@@ -387,6 +391,9 @@ public sealed class GameLogger : IDisposable
         h.Add(snap.WallRemaining);
         h.Add(snap.TurnIndex);
         h.Add((int)snap.Legal.Flags);
+        h.Add(snap.Legal.DiscardRestrictionKnown);
+        foreach (var tile in snap.Legal.DiscardableTiles) h.Add(tile.Id);
+        h.Add(snap.InitialDealerSeat);
         h.Add(snap.OurRiichi);
         h.Add(snap.OurIppatsu);
         h.Add(snap.OurSeat);
@@ -472,7 +479,10 @@ public sealed class GameLogger : IDisposable
         OurIppatsu: snap.OurIppatsu,
         Legal: snap.Legal.Flags.ToString(),
         Scores: snap.Scores.ToArray(),
-        Seats: snap.Seats.Select(ToSeatDto).ToArray());
+        Seats: snap.Seats.Select(ToSeatDto).ToArray(),
+        DiscardRestrictionKnown: snap.Legal.DiscardRestrictionKnown,
+        DiscardableTiles: snap.Legal.DiscardableTiles.Select(t => (int)t.Id).ToArray(),
+        InitialDealerSeat: snap.InitialDealerSeat);
 
     private static SeatDto ToSeatDto(SeatView s) => new(
         Dc: s.DiscardCount,
@@ -531,7 +541,10 @@ public sealed class GameLogger : IDisposable
         [property: JsonPropertyName("our_ippatsu")] bool OurIppatsu,
         [property: JsonPropertyName("legal")] string Legal,
         [property: JsonPropertyName("scores")] int[] Scores,
-        [property: JsonPropertyName("seats")] SeatDto[] Seats);
+        [property: JsonPropertyName("seats")] SeatDto[] Seats,
+        [property: JsonPropertyName("discard_restriction_known")] bool DiscardRestrictionKnown,
+        [property: JsonPropertyName("discardable_tiles")] int[] DiscardableTiles,
+        [property: JsonPropertyName("initial_dealer")] int? InitialDealerSeat);
 
     private sealed record ActionEvent(
         [property: JsonPropertyName("action_id")] long ActionId,

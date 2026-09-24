@@ -7,6 +7,16 @@ namespace Mahjong.Plugin.Dalamud.Tests;
 public class StateAggregatorHashTests
 {
     [Fact]
+    public void Known_empty_legal_set_and_initial_order_invalidate_cached_analysis()
+    {
+        var state = StateSnapshot.Empty;
+        Assert.NotEqual(StateAggregator.ComputeContentHash(state), StateAggregator.ComputeContentHash(
+            state with { Legal = state.Legal with { DiscardRestrictionKnown = true } }));
+        Assert.NotEqual(StateAggregator.ComputeContentHash(state), StateAggregator.ComputeContentHash(
+            state with { InitialDealerSeat = 2 }));
+    }
+
+    [Fact]
     public void Candidate_identity_changes_content_hash()
     {
         var first = SnapshotWithPon(claimedTileId: 4);

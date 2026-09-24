@@ -1136,7 +1136,7 @@ public sealed class LiveMortalBridge : IDisposable
         {
             case "dahai" when legal.Can(ActionFlags.Discard)
                 && TryReactionTile(reaction, out var discard, out bool requestedDiscardRed)
-                && snapshot.Hand.Contains(discard):
+                && snapshot.Hand.Contains(discard) && legal.AllowsDiscard(discard):
                 bool discardRed = ResolveReactionRedIdentity(
                     snapshot, discard, requestedDiscardRed);
                 choice = ActionChoice.Discard(
@@ -1149,7 +1149,7 @@ public sealed class LiveMortalBridge : IDisposable
 
             case "riichi" when legal.Can(ActionFlags.Riichi)
                 && TryReactionTile(reaction, out var reachDiscard, out bool requestedReachDiscardRed)
-                && snapshot.Hand.Contains(reachDiscard):
+                && snapshot.Hand.Contains(reachDiscard) && legal.AllowsDiscard(reachDiscard):
                 bool reachDiscardRed = ResolveReactionRedIdentity(
                     snapshot, reachDiscard, requestedReachDiscardRed);
                 choice = ActionChoice.DeclareRiichi(

@@ -27,7 +27,7 @@ while (Console.ReadLine() is { } line)
             c.GetProperty("consumed").EnumerateArray().Select(t => Parse(t.GetString()!)).ToArray(), c.GetProperty("target").GetInt32())).ToArray();
         var actions = new LegalActions((ActionFlags)legal.GetProperty("flags").GetInt32(), discards,
             calls.Where(c=>c.Kind==MeldKind.Pon).ToArray(),calls.Where(c=>c.Kind==MeldKind.Chi).ToArray(),
-            calls.Where(c=>c.Kind is MeldKind.AnKan or MeldKind.MinKan or MeldKind.ShouMinKan).ToArray());
+            calls.Where(c=>c.Kind is MeldKind.AnKan or MeldKind.MinKan or MeldKind.ShouMinKan).ToArray(), DiscardRestrictionKnown: true);
         var state = reducer.Snapshot(actions);
         if (!state.PublicStateConsistent) throw new InvalidDataException(reducer.Failure ?? "inconsistent state");
         var result = policy.Analyze(state);

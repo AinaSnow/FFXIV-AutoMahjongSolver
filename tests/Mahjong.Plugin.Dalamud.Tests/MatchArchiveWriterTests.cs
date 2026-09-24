@@ -19,6 +19,19 @@ public class MatchArchiveWriterTests
         RecoveredDiscards: 1,
         LastModelEvalMilliseconds: 8.5);
 
+    [Theory]
+    [InlineData(0, 1)] [InlineData(1, 4)] [InlineData(2, 3)] [InlineData(3, 2)]
+    public async Task Archive_breaks_ties_only_with_recorded_initial_order(int east, int rank)
+    {
+        using var tmp = new TempDir();
+        string game = Path.Combine(tmp.Path, "game.ndjson");
+        File.WriteAllText(game, JsonSerializer.Serialize(new { e = "state", scores = new[] {25000,25000,25000,25000}, initial_dealer = east }));
+        using var writer = new MatchArchiveWriter(tmp.Path, new StubPluginLog());
+        var archive = Assert.IsType<string>(await writer.FinalizeSessionAsync([game], Stats));
+        using var summary = JsonDocument.Parse(File.ReadAllText(Path.Combine(archive, "summary.json")));
+        Assert.Equal(rank, summary.RootElement.GetProperty("our_rank").GetInt32());
+    }
+
     [Fact]
     public async Task Truncated_log_is_marked_incomplete_and_decision_health_survives()
     {

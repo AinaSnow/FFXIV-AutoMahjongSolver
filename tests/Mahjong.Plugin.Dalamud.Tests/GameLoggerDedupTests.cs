@@ -202,6 +202,8 @@ public class GameLoggerDedupTests
     }
 
     [Theory]
+    [InlineData(new[] { 3000, -1000, -1000, -1000 }, "unknown", (object?)null, (object?)null)]
+    [InlineData(new[] { 1000, 1000, -3000, 1000 }, "unknown", (object?)null, (object?)null)]
     [InlineData(new[] { 8000, -2000, -4000, -2000 }, "tsumo", 0, (object?)null)]
     [InlineData(new[] { 0, 5200, 0, -5200 }, "ron", 1, 3)]
     [InlineData(new[] { 1500, -1500, 1500, -1500 }, "draw", (object?)null, (object?)null)]

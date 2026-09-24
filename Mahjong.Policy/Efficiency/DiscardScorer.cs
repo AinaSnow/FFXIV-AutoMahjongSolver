@@ -26,7 +26,7 @@ public static class DiscardScorer
         // the current hand are already known.
         var effectiveWall = wall ?? BuildVisibleWall(state);
         var ukeire = UkeireEnumerator.Enumerate(hand, effectiveWall)
-            .Where(u => state.Legal.DiscardableTiles.Count == 0 || state.Legal.DiscardableTiles.Contains(u.Discard)).ToArray();
+            .Where(u => state.Legal.AllowsDiscard(u.Discard)).ToArray();
         var result = new ScoredDiscard[ukeire.Length];
 
         for (int i = 0; i < ukeire.Length; i++)

@@ -165,6 +165,8 @@ public sealed class PublicStateReducer
         {
             OurSeat = 0, SeatWind = (4 - dealer) % 4, DealerSeat = dealer, RoundWind = round,
             SeatInfoKnown = Complete, Kyoku = kyoku, ScheduledRounds = ScheduledRounds,
+            // Dealer advances exactly once per kyoku; repeats do not advance it.
+            InitialDealerSeat = Complete ? (dealer - (kyoku - 1) + 4) % 4 : null,
             Honba = countersKnown ? honba : ui.Honba, RiichiSticks = countersKnown ? sticks : ui.RiichiSticks,
             Scores = (int[])scores.Clone(), OurRiichi = riichi[0], OurIppatsu = ippatsu[0], AkaDora = hand.Count(t => t.Red) + meldRed[0], TurnIndex = rivers[0].Count, OurMelds = melds[0].ToArray(),
             Seats = Enumerable.Range(0, 4).Select(i => new SeatView(rivers[i], tedashi[i], melds[i], riichi[i], reachIndex[i], ippatsu[i], false, rivers[i].Count, redRivers[i], called[i])).ToArray(),

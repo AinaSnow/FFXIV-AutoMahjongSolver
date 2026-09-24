@@ -74,9 +74,10 @@ public sealed record StateSnapshot(
     int? ScheduledRounds = null,
     long HandId = 0,
     long Revision = 0,
-    bool PublicStateConsistent = true)
+    bool PublicStateConsistent = true,
+    int? InitialDealerSeat = null)
 {
-    public const int CurrentSchemaVersion = 6;
+    public const int CurrentSchemaVersion = 7;
 
     // Legacy offline callers use absolute indexes; live state supplies SeatWind explicitly.
     public int EffectiveSeatWind => SeatWind ?? OurSeat;

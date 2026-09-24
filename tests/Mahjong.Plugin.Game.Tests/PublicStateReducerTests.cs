@@ -14,6 +14,7 @@ public class PublicStateReducerTests
     {
         var r = new PublicStateReducer { ScheduledRounds = 2 }; r.ApplyJson(Start(dealer));
         var s = r.Snapshot(LegalActions.None);
+        Assert.Equal((dealer + 1) % 4,s.InitialDealerSeat);
         Assert.Equal(0,s.OurSeat); Assert.Equal(wind,s.SeatWind); Assert.Equal(4,s.Kyoku);
         Assert.Equal(2,s.Honba); Assert.Equal(3,s.RiichiSticks); Assert.Equal(1,s.AkaDora);
         Assert.True(s.PublicStateConsistent);

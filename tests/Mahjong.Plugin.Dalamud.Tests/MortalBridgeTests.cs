@@ -22,6 +22,18 @@ public sealed class MortalBridgeTests
         Assert.Equal(payloadLength, actualLength);
     }
 
+    [Theory]
+    [InlineData("dahai", ActionFlags.Discard)]
+    [InlineData("riichi", ActionFlags.Riichi)]
+    public void Model_cannot_discard_a_forbidden_tile(string type, ActionFlags flags)
+    {
+        var tile = Tile.FromId(4);
+        var snapshot = Snapshot([tile, Tile.FromId(5)], new LegalActions(flags, [Tile.FromId(5)], [], [], []));
+        Assert.False(LiveMortalBridge.TryMapDecision(new MortalReaction(type, 0, null, "5m", []), snapshot, out _));
+        snapshot = snapshot with { Legal = snapshot.Legal with { DiscardableTiles = [], DiscardRestrictionKnown = true } };
+        Assert.False(LiveMortalBridge.TryMapDecision(new MortalReaction(type, 0, null, "5m", []), snapshot, out _));
+    }
+
     [Fact]
     public void Capture_does_not_map_roster_opcode()
     {

@@ -19,6 +19,7 @@ public sealed class StateAggregator : IDisposable
     private long revision;
     private long uiHandId = 1;
     private readonly UiHandBoundaryTracker uiBoundary = new();
+    private readonly DomanTurnTracker domanTurn = new();
     public PolicyEvaluation? LastLocalEvaluation { get; private set; }
     private PolicyEvaluation? searchBaseline;
     public event Action<PolicyEvaluation, PolicyEvaluation>? ShadowCompared;
@@ -106,6 +107,7 @@ public sealed class StateAggregator : IDisposable
             if (!reader.LastObservation.Present && uiBoundary.HandsObserved > 0)
             {
                 uiBoundary.Reset();
+                domanTurn.Reset();
                 uiHandId++;
             }
             // Addon gone (player left the table) — drop cached state so the UI reverts to the "waiting" empty state.
@@ -128,7 +130,7 @@ public sealed class StateAggregator : IDisposable
 
         if (uiBoundary.Observe(next) && uiBoundary.HandsObserved > 1 && next.HandId == 0)
             uiHandId++;
-        next = Enrich(next);
+        next = domanTurn.Observe(MergeState(next));
         int hash = ComputeContentHash(next);
         var currentConfiguration = configuration?.Invoke();
         if (hasContentHash && hash == lastContentHash && Equals(currentConfiguration, analyzedConfiguration))
@@ -215,11 +217,17 @@ public sealed class StateAggregator : IDisposable
         };
     }
 
-    public StateSnapshot Enrich(StateSnapshot snapshot)
+    public StateSnapshot Enrich(StateSnapshot snapshot) => domanTurn.Apply(MergeState(snapshot));
+
+    private StateSnapshot MergeState(StateSnapshot snapshot)
     {
         var merged = merge?.Invoke(snapshot) ?? snapshot;
         return merged.HandId == 0 ? merged with { HandId = uiHandId } : merged;
     }
+
+    public void CancelUnconfirmedRiichiDeclaration() => domanTurn.CancelUnconfirmedDeclaration();
+
+    public void RiichiDeclarationDispatched(StateSnapshot snapshot) => domanTurn.DeclarationDispatched(Enrich(snapshot));
 
     public ActionChoice Choose(StateSnapshot snapshot)
     {
@@ -238,6 +246,7 @@ public sealed class StateAggregator : IDisposable
         h.Add(snap.SeatWind);
         h.Add(snap.Kyoku);
         h.Add(snap.ScheduledRounds);
+        h.Add(snap.InitialDealerSeat);
         h.Add(snap.PublicStateConsistent);
         h.Add(snap.SeatInfoKnown);
         h.Add(snap.OurDoubleRiichi);
@@ -245,6 +254,7 @@ public sealed class StateAggregator : IDisposable
         h.Add(snap.WallRemaining);
         h.Add(snap.TurnIndex);
         h.Add((int)snap.Legal.Flags);
+        h.Add(snap.Legal.DiscardRestrictionKnown);
         foreach (var tile in snap.Legal.DiscardableTiles)
             h.Add(tile.Id);
         AddCandidates(ref h, snap.Legal.PonCandidates);

@@ -34,7 +34,7 @@ public sealed class AutoPlayLoop : IDisposable
 
     private const ActionFlags CallPromptFlags =
         ActionFlags.Pon | ActionFlags.Chi |
-        ActionFlags.MinKan | ActionFlags.ShouMinKan |
+        ActionFlags.AnKan | ActionFlags.MinKan | ActionFlags.ShouMinKan |
         ActionFlags.Ron | ActionFlags.Riichi | ActionFlags.Tsumo;
 
     private readonly Plugin plugin;
@@ -119,6 +119,7 @@ public sealed class AutoPlayLoop : IDisposable
         CompletePendingOutcome("cancelled", plugin.Aggregator.Latest);
         dispatchGeneration++;
         fsm.CompleteDispatch(); fsm.ClearContext(); fsm.ClearRiichiConfirm();
+        plugin.Aggregator.CancelUnconfirmedRiichiDeclaration();
         pendingTerminalWin = null; terminalWinConfirmation.Reset(); hasMortalWait = false;
     }
 
@@ -614,7 +615,7 @@ public sealed class AutoPlayLoop : IDisposable
     /// <summary>Post-declaration Riichi: complete via tsumogiri instead of re-clicking the list (the list click no-ops at this point).</summary>
     private bool TryHandleRiichiConfirmTsumogiri(StateSnapshot snap, DispatchContext context, bool isCallPrompt)
     {
-        if (!fsm.IsRiichiConfirmPending)
+        if (snap.OurRiichi || !fsm.IsRiichiConfirmPending)
             return false;
         if (!isCallPrompt || !snap.Legal.Can(ActionFlags.Riichi))
             return false;
@@ -946,7 +947,8 @@ public sealed class AutoPlayLoop : IDisposable
         ScheduleAction("riichi-tsumogiri", context, RiichiTsumogiriDelayMs, () =>
         {
             var snap = plugin.AddonReader.TryBuildSnapshot();
-            if (snap is null || snap.Hand.Count < 14)
+            if (snap is not null) snap = plugin.Aggregator.Enrich(snap);
+            if (snap is null || snap.OurRiichi || snap.Hand.Count < 14)
             {
                 LastActionDescription = $"riichi-tsumogiri aborted: hand={snap?.Hand.Count ?? -1}";
                 return;
@@ -972,6 +974,11 @@ public sealed class AutoPlayLoop : IDisposable
                 tile = snap.Hand[13];
             }
 
+            if (!snap.Legal.AllowsDiscard(tile))
+            {
+                LastActionDescription = "riichi declaration discard is no longer legal";
+                return;
+            }
             var result = plugin.Dispatcher.DispatchDiscard(slot);
             LastActionDescription = $"auto-riichi-tsumogiri {tile} slot={slot} → {result}";
             log.Info($"[AutoPlayLoop] riichi-tsumogiri dispatch: {LastActionDescription}");
@@ -1038,7 +1045,13 @@ public sealed class AutoPlayLoop : IDisposable
         // Hand[^1] mirrors the slot-13-preferred decode order in HandArrayDecoder.ReadHand
         // (scans 0..len-1, so the highest occupied slot ends up last). FindAddonSlotOfTile
         // resolves it back to slot 13 when the tile sits there, otherwise to its actual slot.
+        snap = plugin.Aggregator.Enrich(snap);
         Tile drawn = snap.Hand[^1];
+        if (snap.OurRiichi || !snap.Legal.AllowsDiscard(drawn))
+        {
+            LastActionDescription = "oos-tsumogiri cancelled: game auto-discard or forbidden tile";
+            return;
+        }
         int slot = plugin.AddonReader.FindAddonSlotOfTile(drawn);
         if (slot < 0)
         {
@@ -1079,7 +1092,13 @@ public sealed class AutoPlayLoop : IDisposable
 
     private void DispatchDiscardOrRiichi(StateSnapshot snap, ActionChoice choice)
     {
+        snap = plugin.Aggregator.Enrich(snap);
         var tile = choice.DiscardTile!.Value;
+        if (snap.OurRiichi || !snap.Legal.AllowsDiscard(tile))
+        {
+            LastActionDescription = "discard cancelled: game auto-discard or forbidden tile";
+            return;
+        }
         bool? targetIsRed = plugin.MortalBridge.Enabled
             && plugin.MortalBridge.TryGetRecommendedDiscardRedIdentity(snap, choice, out bool mortalIsRed)
                 ? mortalIsRed
@@ -1099,7 +1118,11 @@ public sealed class AutoPlayLoop : IDisposable
             LastActionDescription = $"auto-riichi[opt={riichiIdx}] (tile={tile}) → {rResult}";
             plugin.GameLogger.RecordAction(ActionKind.Riichi, tile, riichiIdx, rResult.ToString(), choice.Reasoning);
             EmitDispatchFinding("riichi", rResult, option: riichiIdx, tile: tile, snap: snap);
-            fsm.LatchRiichiConfirm(tile, targetIsRed, OwnDiscardCount(snap));
+            if (rResult == InputDispatcher.DispatchResult.Ok)
+            {
+                fsm.LatchRiichiConfirm(tile, targetIsRed, OwnDiscardCount(snap));
+                plugin.Aggregator.RiichiDeclarationDispatched(snap);
+            }
             ClearRetryDebounceIfHookFailed(rResult);
             return;
         }
@@ -1113,6 +1136,7 @@ public sealed class AutoPlayLoop : IDisposable
 
     private void DispatchCallChoice(StateSnapshot snap, ActionChoice choice)
     {
+        snap = plugin.Aggregator.Enrich(snap);
         var legal = snap.Legal;
 
         // State-6 popup is dual-use: it offers Riichi/Tsumo/AnKan and lists discardable tiles — route Discard/Riichi through the list-widget path, not Pass.
@@ -1133,8 +1157,10 @@ public sealed class AutoPlayLoop : IDisposable
 
         if (shouldAccept)
             DispatchAccept(snap, choice, legal, acceptRiichiPopup, riichiProbeTile, riichiReason!);
-        else
+        else if (!snap.OurRiichi || legal.Can(ActionFlags.Pass))
             DispatchPass(snap, choice, legal, riichiReason);
+        else
+            LastActionDescription = "riichi: waiting for game auto-discard";
 
         log.Info($"[AutoPlayLoop] call-prompt dispatch: {LastActionDescription}");
     }
@@ -1265,6 +1291,7 @@ public sealed class AutoPlayLoop : IDisposable
             hash.Add(snapshot.Hand[i].Id);
             hash.Add(i < snapshot.HandIsRed.Count && snapshot.HandIsRed[i]);
         }
+        hash.Add(snapshot.Legal.DiscardRestrictionKnown);
         foreach (var tile in snapshot.Legal.DiscardableTiles)
             hash.Add(tile.Id);
         AddDecisionCandidates(ref hash, snapshot.Legal.PonCandidates);
@@ -1325,8 +1352,11 @@ public sealed class AutoPlayLoop : IDisposable
         }
 
         // Yaku-preview confirm popup shares the Riichi-flag signature — latch to prevent retry-dispatch and carry the probe's chosen discard.
-        if (acceptRiichiPopup)
+        if (acceptRiichiPopup && result2 == InputDispatcher.DispatchResult.Ok)
+        {
             fsm.LatchRiichiConfirm(riichiProbeTile, ownDiscardCount: OwnDiscardCount(snap));
+            plugin.Aggregator.RiichiDeclarationDispatched(snap);
+        }
 
         // ShouMinKan: addon shrinks the closed hand by 1 and the existing pon ought to grow to a kan,
         // but ObserveSnapshot can't infer that from a delta=1. Upgrade the meld in-place so meld-tile

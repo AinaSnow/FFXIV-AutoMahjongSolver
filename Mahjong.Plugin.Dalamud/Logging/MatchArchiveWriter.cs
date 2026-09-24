@@ -169,9 +169,8 @@ public sealed class MatchArchiveWriter : IDisposable
                 }
                 settledHands = Math.Min(handCount, settledHands);
                 int? ourScore = metrics.FinalScores is { Length: 4 } ? metrics.FinalScores[0] : null;
-                int? ourRank = ourScore is not null && metrics.FinalScores!.Count(score => score == ourScore.Value) == 1
-                    ? 1 + metrics.FinalScores!.Count(score => score > ourScore.Value)
-                    : null;
+                int? ourRank = metrics.FinalScores is { } finalScores
+                    ? SeatRanking.Rank(finalScores, 0, metrics.InitialDealerSeat) : null;
                 var summary = new MatchArchiveSummary(
                     SchemaVersion: SchemaVersion,
                     StartedAtUtc: startedAtUtc!.Value.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
@@ -324,6 +323,8 @@ public sealed class MatchArchiveWriter : IDisposable
         int handStarts = 0;
         int settledHands = 0;
         int[]? finalScores = null;
+        int? initialDealerSeat = null;
+        bool conflictingInitialOrder = false;
         int decisions = 0;
         int actions = 0;
         int failedActions = 0;
@@ -369,6 +370,13 @@ public sealed class MatchArchiveWriter : IDisposable
                             break;
 
                         case "state":
+                            if (!conflictingInitialOrder && root.TryGetProperty("initial_dealer", out var initial)
+                                && initial.ValueKind == JsonValueKind.Number && initial.TryGetInt32(out int east) && east is >= 0 and < 4)
+                            {
+                                if (initialDealerSeat is { } previous && previous != east)
+                                { initialDealerSeat = null; conflictingInitialOrder = true; }
+                                else initialDealerSeat = east;
+                            }
                             if (root.TryGetProperty("scores", out var stateScores)
                                 && TryReadScores(stateScores) is { } latestScores)
                                 finalScores = latestScores;
@@ -420,7 +428,7 @@ public sealed class MatchArchiveWriter : IDisposable
             actions,
             failedActions,
             timeoutFallbacks, sources, times.Count == 0 ? null : times.Average(),
-            times.Count == 0 ? null : times[(int)Math.Ceiling(times.Count * .95) - 1], malformedLines, outcomes, firstObservedAt);
+            times.Count == 0 ? null : times[(int)Math.Ceiling(times.Count * .95) - 1], malformedLines, outcomes, firstObservedAt, initialDealerSeat);
     }
 
     private static int[]? TryReadScores(JsonElement element)
@@ -468,7 +476,7 @@ public sealed class MatchArchiveWriter : IDisposable
         int DecisionCount,
         int ActionCount,
         int FailedActions,
-        int TimeoutFallbacks, Dictionary<string,int> Sources, double? MeanMs, double? P95Ms, int MalformedLines, Dictionary<string, int> Outcomes, DateTimeOffset? FirstObservedAt);
+        int TimeoutFallbacks, Dictionary<string,int> Sources, double? MeanMs, double? P95Ms, int MalformedLines, Dictionary<string, int> Outcomes, DateTimeOffset? FirstObservedAt, int? InitialDealerSeat);
 }
 
 public sealed record MatchArchiveMortalStats(

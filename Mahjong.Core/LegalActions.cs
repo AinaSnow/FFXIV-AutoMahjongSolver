@@ -28,7 +28,8 @@ public sealed record LegalActions(
     IReadOnlyList<Tile> DiscardableTiles,
     IReadOnlyList<MeldCandidate> PonCandidates,
     IReadOnlyList<MeldCandidate> ChiCandidates,
-    IReadOnlyList<MeldCandidate> KanCandidates)
+    IReadOnlyList<MeldCandidate> KanCandidates,
+    bool DiscardRestrictionKnown = false)
 {
     public IReadOnlyList<Tile> DiscardableTiles { get; init; } = [.. DiscardableTiles];
     public IReadOnlyList<MeldCandidate> PonCandidates { get; init; } = [.. PonCandidates];
@@ -36,6 +37,10 @@ public sealed record LegalActions(
     public IReadOnlyList<MeldCandidate> KanCandidates { get; init; } = [.. KanCandidates];
 
     public static LegalActions None { get; } = new(ActionFlags.None, [], [], [], []);
+
+    // Legacy empty lists meant unknown. A known empty list means no tile is legal.
+    public bool AllowsDiscard(Tile tile) => DiscardableTiles.Count > 0
+        ? DiscardableTiles.Contains(tile) : !DiscardRestrictionKnown;
 
     public bool Can(ActionFlags flag) => (Flags & flag) != 0;
 }
