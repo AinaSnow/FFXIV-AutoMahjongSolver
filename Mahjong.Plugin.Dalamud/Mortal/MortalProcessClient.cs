@@ -40,7 +40,11 @@ internal sealed class MortalProcessClient : IMortalProcessClient
     private readonly IPluginLog log;
     private readonly string runnerDirectory;
     private readonly string session = Guid.NewGuid().ToString("N");
-    private long sequence, hand;
+    private long sequence, hand, actionableSequence;
+    // Send is serialized by the framework thread; Read/Poll compare this watermark.
+    private string? previousType;
+    private int? previousActor;
+    private bool previousWasReachDiscard;
     private volatile bool running, disposed;
     private Task? worker;
     private string? modelIdentityJson;
@@ -86,8 +90,23 @@ internal sealed class MortalProcessClient : IMortalProcessClient
     {
         if (!IsRunning) throw new InvalidOperationException("Mortal process is not running");
         var evt = JsonNode.Parse(json)!;
-        if (evt["type"]?.GetValue<string>() == "start_kyoku") Interlocked.Increment(ref hand);
-        var line = JsonSerializer.Serialize(new { session, hand = Interlocked.Read(ref hand), sequence = Interlocked.Increment(ref sequence), @event = evt });
+        string? type = evt["type"]?.GetValue<string>();
+        int? actor = evt["actor"]?.GetValue<int>();
+        bool replay = evt["can_act"]?.GetValue<bool>() == false;
+        if (type == "start_kyoku") Interlocked.Increment(ref hand);
+        long seq = Interlocked.Increment(ref sequence);
+        // The decoder emits reach -> dahai -> reach_accepted for one discard.
+        // Acceptance has no new action window in libriichi: preserve the dahai
+        // response only for this exact opponent/announcement pair. Everything
+        // else (including replay, a new draw, dora or hand end) invalidates it.
+        bool acceptance = !replay && type == "reach_accepted" && previousType == "dahai"
+            && previousWasReachDiscard && actor == previousActor;
+        if (!acceptance) Interlocked.Exchange(ref actionableSequence, replay ? 0 : seq);
+        previousWasReachDiscard = !replay && type == "dahai" && previousType == "reach"
+            && actor is > 0 and < 4 && actor == previousActor;
+        previousType = replay ? null : type;
+        previousActor = replay ? null : actor;
+        var line = JsonSerializer.Serialize(new { session, hand = Interlocked.Read(ref hand), sequence = seq, @event = evt });
         if (!input.Writer.TryWrite(line))
         {
             Dispose();
@@ -157,7 +176,7 @@ internal sealed class MortalProcessClient : IMortalProcessClient
             var result = doc.RootElement;
             if (result.GetProperty("session").GetString() != session) throw new IOException("Mortal session mismatch");
             long seq = result.GetProperty("sequence").GetInt64();
-            if (seq != ++acknowledged) throw new IOException("Mortal acknowledgement sequence mismatch");
+            if (seq != ++acknowledged || seq > Interlocked.Read(ref sequence)) throw new IOException("Mortal acknowledgement sequence mismatch");
             long resultHand = result.GetProperty("hand").GetInt64();
             if (result.TryGetProperty("error", out var error)) throw new IOException(error.GetString());
             if (result.TryGetProperty("model", out var model) && model.ValueKind == JsonValueKind.Object)
@@ -170,7 +189,7 @@ internal sealed class MortalProcessClient : IMortalProcessClient
                 string json = reaction.GetRawText();
                 if (notifications.Count >= 512) throw new IOException("Mortal output queue full");
                 notifications.Enqueue(() => {
-                    if (IsRunning && resultHand == Interlocked.Read(ref hand) && seq == Interlocked.Read(ref sequence))
+                    if (IsRunning && resultHand == Interlocked.Read(ref hand) && seq == Interlocked.Read(ref actionableSequence))
                         ReactionReceived?.Invoke(json);
                 });
             }

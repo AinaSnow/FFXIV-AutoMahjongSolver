@@ -51,6 +51,7 @@ public sealed class GameLogger : IDisposable
 
     // FireCallback may synchronously rebuild Latest before Dispatch returns. Freeze the input precondition.
     public IDisposable BeginDispatch(StateSnapshot? snapshot) => new DispatchLogScope(this, snapshot);
+    internal StateSnapshot? DispatchSnapshot => dispatchContext?.Snapshot;
 
     private sealed class DispatchLogScope : IDisposable
     {

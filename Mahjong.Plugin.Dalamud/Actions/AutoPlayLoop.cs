@@ -193,6 +193,15 @@ public sealed class AutoPlayLoop : IDisposable
             return;
         }
 
+        // Do not replace an unresolved Pass with another attempt before its
+        // existing five-second outcome window expires. This previously hid
+        // repeated no-op list clicks as "superseded" instead of timeouts.
+        if (pendingOutcome is { Label: "pass" })
+        {
+            EmitSkipReason("waiting for pass outcome", snap.AddonStateCode, snap.Hand.Count, (int)snap.Legal.Flags);
+            return;
+        }
+
         int state = ReadStateCode();
         var context = new DispatchContext(state, snap.Hand.Count);
         LastObservedState = state;
@@ -392,16 +401,21 @@ public sealed class AutoPlayLoop : IDisposable
         });
 
         CompletePendingOutcome("superseded", snap);
-        if (snap is not null && result == InputDispatcher.DispatchResult.Ok)
+        // Raw addon snapshots have no aggregator revision. Use the same
+        // frozen pre-input state as the action log, even if the callback
+        // synchronously advanced Latest before returning.
+        if ((plugin.GameLogger.DispatchSnapshot ?? snap) is { } before && result == InputDispatcher.DispatchResult.Ok)
         {
             pendingOutcome = new PendingDispatchOutcome(
                 ActionId: plugin.GameLogger.LastActionId,
                 CallbackObserved: AutomationInputScope.CallbackObserved,
                 Label: label,
                 DispatchedAt: clock.UtcNow,
-                StateAtDispatch: snap.AddonStateCode,
-                HandAtDispatch: snap.Hand.Count,
-                MeldsAtDispatch: snap.OurMelds.Count,
+                HandId: before.HandId,
+                Revision: before.Revision,
+                StateAtDispatch: before.AddonStateCode,
+                HandAtDispatch: before.Hand.Count,
+                MeldsAtDispatch: before.OurMelds.Count,
                 LastDispatchPath: plugin.Dispatcher.LastDispatchPath);
         }
     }
@@ -411,11 +425,13 @@ public sealed class AutoPlayLoop : IDisposable
     private static readonly TimeSpan FastDispatchOutcomeWindow = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan DelayedDispatchOutcomeWindow = TimeSpan.FromSeconds(5);
 
-    private readonly record struct PendingDispatchOutcome(
+    internal readonly record struct PendingDispatchOutcome(
         long ActionId,
         bool CallbackObserved,
         string Label,
         DateTime DispatchedAt,
+        long HandId,
+        long Revision,
         int StateAtDispatch,
         int HandAtDispatch,
         int MeldsAtDispatch,
@@ -521,17 +537,21 @@ public sealed class AutoPlayLoop : IDisposable
         if (pendingOutcome is not { } pending)
             return;
 
-        bool stateChanged = snap is not null &&
-            (snap.AddonStateCode != pending.StateAtDispatch
-             || snap.Hand.Count != pending.HandAtDispatch
-             || snap.OurMelds.Count != pending.MeldsAtDispatch);
-        bool windowExpired = clock.UtcNow - pending.DispatchedAt >
-            DispatchOutcomeWindowFor(pending.Label);
+        if (ResolveDispatchOutcome(pending, snap, clock.UtcNow) is { } status)
+            CompletePendingOutcome(status, snap);
+    }
 
-        if (stateChanged)
-            CompletePendingOutcome(pending.CallbackObserved ? "state-changed" : "unconfirmed-state-change", snap);
-        else if (windowExpired)
-            CompletePendingOutcome("timeout", snap);
+    internal static string? ResolveDispatchOutcome(PendingDispatchOutcome pending, StateSnapshot? snap, DateTime now)
+    {
+        if (snap is not null)
+        {
+            if (snap.HandId != pending.HandId) return "cancelled";
+            if (snap.AddonStateCode != pending.StateAtDispatch || snap.Hand.Count != pending.HandAtDispatch
+                || snap.OurMelds.Count != pending.MeldsAtDispatch)
+                return pending.CallbackObserved ? "state-changed" : "unconfirmed-state-change";
+            if (snap.Revision != pending.Revision) return "superseded";
+        }
+        return now - pending.DispatchedAt >= DispatchOutcomeWindowFor(pending.Label) ? "timeout" : null;
     }
 
     private void CompletePendingOutcome(string status, StateSnapshot? snap)
@@ -1393,7 +1413,7 @@ public sealed class AutoPlayLoop : IDisposable
     {
         // Pass index = count of accept buttons (multi-chi adds one slot per chi candidate).
         int passIndex = ComputePassIndex(legal);
-        var result = plugin.Dispatcher.DispatchCallOption(passIndex);
+        var result = plugin.Dispatcher.DispatchCallOption(passIndex, ActionKind.Pass, snap);
         LastActionDescription = $"auto-pass[opt={passIndex}] → {result}";
         string reasoning = string.IsNullOrEmpty(reasonOverride) ? choice.Reasoning : reasonOverride;
         plugin.GameLogger.RecordAction(ActionKind.Pass, null, passIndex, result.ToString(), reasoning);

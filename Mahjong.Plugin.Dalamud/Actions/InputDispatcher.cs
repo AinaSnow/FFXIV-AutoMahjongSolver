@@ -96,6 +96,17 @@ public sealed class InputDispatcher
         ActionKind? action, bool hasLabels) => state == callPrompt || hasLabels
         || state == selfDeclare && action == ActionKind.Tsumo;
 
+    internal static bool UseRiichiKanCancel(int state, int selfDeclare, ActionKind? action, StateSnapshot? snap)
+    {
+        const ActionFlags kans = ActionFlags.AnKan | ActionFlags.MinKan;
+        return action == ActionKind.Pass && state == selfDeclare && snap is not null
+            && snap.AddonStateCode == state && snap.OurRiichi && snap.OurMelds.Count == 0
+            && snap.Hand.Count == 14 && snap.Legal.Can(ActionFlags.Pass)
+            && (snap.Legal.Flags & kans) != 0
+            && (snap.Legal.Flags & ~(kans | ActionFlags.Pass | ActionFlags.Discard)) == 0
+            && snap.Hand.GroupBy(t => t.Id).Any(g => g.Count() == 4);
+    }
+
     /// <summary>
     /// Discard the tile at the given closed-hand slot (0..13). Slot 13 = last-drawn tile.
     ///
@@ -292,13 +303,25 @@ public sealed class InputDispatcher
     /// expected to have verified the modal-visibility gate before dispatching —
     /// that's the real "should we click" predicate.</para>
     /// </summary>
-    public unsafe DispatchResult DispatchCallOption(int option, ActionKind? action = null)
+    public unsafe DispatchResult DispatchCallOption(int option, ActionKind? action = null, StateSnapshot? context = null)
     {
         LastDispatchPath = "call-unavailable";
         if (!addon.TryGet(out var unit, out _))
             return DispatchResult.AddonNotFound;
         if (!unit->IsVisible)
             return DispatchResult.AddonNotVisible;
+
+        // Captured on 2026-09-24: riichi self-kan Cancel emits [8]. Selecting
+        // the retained list row silently does nothing. Restrict this callback
+        // to that observed context and recheck the live addon state here.
+        if (UseRiichiKanCancel(ReadStateCode(unit), SelfDeclareListCode, action, context))
+        {
+            LastDispatchPath = "call:opcode-8(riichi-kan-pass)";
+            var cancel = stackalloc AtkValue[1];
+            cancel[0].SetInt(8);
+            unit->FireCallback(1, cancel, true);
+            return DispatchResult.Ok;
+        }
 
         // Both classic popups (pon/chi/kan/ron + pass button row) and
         // state-6/28 list-widget popups (standalone Riichi/Pass) share the same
