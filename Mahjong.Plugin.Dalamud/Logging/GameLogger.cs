@@ -15,7 +15,7 @@ namespace Mahjong.Plugin.Dalamud.Logging;
 
 public sealed class GameLogger : IDisposable
 {
-    public const int SchemaVersion = 7;
+    public const int SchemaVersion = 8;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -47,6 +47,22 @@ public sealed class GameLogger : IDisposable
     private readonly Func<bool>? externalEnabled;
     private int? lastDecisionKey;
     private readonly Func<TrainingProvenance>? provenance;
+    private DispatchLogScope? dispatchContext;
+
+    // FireCallback may synchronously rebuild Latest before Dispatch returns. Freeze the input precondition.
+    public IDisposable BeginDispatch(StateSnapshot? snapshot) => new DispatchLogScope(this, snapshot);
+
+    private sealed class DispatchLogScope : IDisposable
+    {
+        private readonly GameLogger owner;
+        private readonly DispatchLogScope? previous;
+        public StateSnapshot? Snapshot { get; }
+        public DispatchLogScope(GameLogger owner, StateSnapshot? snapshot)
+        {
+            this.owner = owner; Snapshot = snapshot; previous = owner.dispatchContext; owner.dispatchContext = this;
+        }
+        public void Dispose() => owner.dispatchContext = previous;
+    }
     public Task FlushAsync() => io.FlushAsync();
 
     public string? CurrentPath => currentPath;
@@ -238,12 +254,14 @@ public sealed class GameLogger : IDisposable
             return;
         try
         {
+            var snapshot = dispatchContext is { } context ? context.Snapshot : aggregator?.Latest;
             var evt = new ActionEvent(
                 T: Now(),
                 E: "action",
                 ActionId: ++LastActionId,
-                HandId: aggregator?.Latest?.HandId,
-                Revision: aggregator?.Latest?.Revision,
+                HandId: snapshot?.HandId,
+                Revision: snapshot?.Revision,
+                DispatchContext: dispatchContext is null ? "unbound" : "before-input",
                 Kind: kind.ToString(),
                 Tile: tile?.Id,
                 Slot: slot,
@@ -588,6 +606,7 @@ public sealed class GameLogger : IDisposable
 
     private sealed record ActionEvent(
         [property: JsonPropertyName("action_id")] long ActionId,
+        [property: JsonPropertyName("dispatch_context")] string DispatchContext,
         [property: JsonPropertyName("t")] string T,
         [property: JsonPropertyName("e")] string E,
         [property: JsonPropertyName("hand_id")] long? HandId,

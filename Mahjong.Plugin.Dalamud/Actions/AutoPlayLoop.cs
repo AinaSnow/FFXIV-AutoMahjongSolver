@@ -643,6 +643,7 @@ public sealed class AutoPlayLoop : IDisposable
                     || (plugin.Aggregator.Latest?.Revision ?? 0) != scheduledRevision)
                     return;
                 using var inputScope = AutomationInputScope.Enter();
+                using var logContext = plugin.GameLogger.BeginDispatch(plugin.Aggregator.Latest);
                 body();
             }
             catch (Exception ex)

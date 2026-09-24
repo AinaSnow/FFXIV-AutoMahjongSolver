@@ -82,7 +82,7 @@ public sealed class DebugPacketLogger : IDisposable
         }
     }
 
-    public DebugPacketSession? CloseForArchive()
+    public IReadOnlyList<DebugPacketSession> CloseForArchive()
     {
         closingUntilAbsent = true;
         tablePresent = false;

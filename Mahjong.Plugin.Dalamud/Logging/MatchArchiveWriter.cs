@@ -201,7 +201,7 @@ public sealed class MatchArchiveWriter : IDisposable
                 if (trainingCorpus?.Enabled == true)
                 {
                     string pending = Path.Combine(completedDir, "training-pending.json");
-                    File.WriteAllText(pending, JsonSerializer.Serialize(new { raw_path = training?.RawPath, reason = "pending-preservation" }));
+                    File.WriteAllText(pending, JsonSerializer.Serialize(new { raw_path = training?.RawPath, raw_paths = training?.Captures.Select(c => c.Path).ToArray(), reason = "pending-preservation" }));
                     if (trainingCorpus.Preserve(completedDir, training)) File.Delete(pending);
                 }
                 ApplyRetention(completedDir);

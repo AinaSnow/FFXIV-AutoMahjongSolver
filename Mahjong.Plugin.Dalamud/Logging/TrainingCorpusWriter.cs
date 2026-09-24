@@ -62,17 +62,25 @@ public sealed class TrainingCorpusWriter
                 File.Copy(file, target);
             }
             var flags = new List<string>();
-            if (context?.RawPath is { } raw)
+            var captures = context?.Captures ?? [];
+            if (captures.Count == 0) flags.Add("raw_capture_missing");
+            if (captures.Count > 1) flags.Add("raw_capture_segmented");
+            for (int i = 0; i < captures.Count; i++)
             {
-                // The recorder owns a separate worker. Never copy a file while its footer is still being written.
-                if (!context.RawCompletion.Wait(TimeSpan.FromSeconds(5))) throw new IOException("Raw capture seal timed out; source archive retained");
-                File.Copy(raw, Path.Combine(staging, "raw-capture.ndjson"));
-                var last = File.ReadLines(raw).LastOrDefault(line => !string.IsNullOrWhiteSpace(line));
+                var capture = captures[i];
+                // Each segment owns an independent worker; capture restarts must not hide earlier data.
+                if (!capture.Completion.Wait(TimeSpan.FromSeconds(5))) throw new IOException("Raw capture seal timed out; source archive retained");
+                string relative = i == 0 ? "raw-capture.ndjson" : $"raw-captures/segment-{i + 1:D3}.ndjson";
+                string target = Path.Combine(staging, relative);
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                File.Copy(capture.Path, target);
+                var last = File.ReadLines(target).LastOrDefault(line => !string.IsNullOrWhiteSpace(line));
                 using var footer = JsonDocument.Parse(last ?? "{}");
                 if (!footer.RootElement.TryGetProperty("stream_complete", out var complete) || complete.ValueKind != JsonValueKind.True)
                     flags.Add("raw_capture_incomplete");
+                if (footer.RootElement.TryGetProperty("reason", out var reason) && reason.GetString() == "disabled")
+                    flags.Add("raw_capture_interrupted");
             }
-            else flags.Add("raw_capture_missing");
             if (context is not null)
             {
                 File.WriteAllText(Path.Combine(staging, "provenance.json"), JsonSerializer.Serialize(context.Provenance, Json));
@@ -128,6 +136,7 @@ public sealed class TrainingCorpusWriter
             var manifest = new { schema_version = 1, match_id = matchId, split, split_version = "match-sha256-v1",
                 data_origin = "ffxiv-live", created_utc = DateTimeOffset.UtcNow, source_archive = Path.GetFileName(archiveDirectory),
                 raw_capture = context?.RawPath is { } path ? Path.GetFileName(path) : null,
+                raw_captures = captures.Select(c => Path.GetFileName(c.Path)).ToArray(),
                 match_start_observed = openingObserved, final_result_observed = finalObserved, training_ready = false, contains_private_raw_data = true,
                 quality_flags = flags.Distinct().Order().ToArray(), files };
             File.WriteAllText(Path.Combine(staging, "manifest.json"), JsonSerializer.Serialize(manifest, Json));

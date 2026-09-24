@@ -12,11 +12,11 @@
 每场长期副本包含：
 
 - 已结束比赛的 `archive/`：公开局面、己方手牌、推荐、操作、操作结果、网络事件和汇总。
-- `raw-capture.ndjson`：精确对应本次采集会话的原始抓包，等写入队列及末尾完整性记录落盘后复制。
+- `raw-capture.ndjson`：本桌第一段原始抓包。若中途停开录制，后续段全部放入 `raw-captures/segment-NNN.ndjson`；逐段等写入队列及末尾完整性记录落盘后复制，并标记中断，不能因尾段完整就认定整场完整。
 - `provenance.json`、`policy-weights.json`：内置策略权重及 SHA-256、策略和规则构建标识、模式设置；已收到模型身份时记录 Mortal 权重 SHA-256、模型架构版本和 runner SHA-256。
 - `manifest.json`：内容身份、逐文件 SHA-256 / 字节数、固定分组及质量标记。
 
-日志 schema 从 6 升为 7，新增局面自身的 `hand_id` / `revision`、观测完整性、座位与局况上下文。
+日志 schema 7 新增局面自身的 `hand_id` / `revision`、观测完整性、座位与局况上下文。当前 schema 8 在游戏操作前冻结这些编号，动作携带 `dispatch_context=before-input`，防止同步回调把操作关联到操作后的局面。旧记录增加 `action_context_unverified` 质量标记，不推测补造操作前编号。
 动作记录红牌身份；决策记录当时的版本信息，不用比赛结束时的配置反推整场所有决策。
 手动或其他代码触发的麻将回调保留 `automated=false`，不会伪装成本插件执行。
 未知自风、局数、模型身份、外部校准文件身份保持未知；外部校准文件目前不声称已经记录实际加载版本。
@@ -47,6 +47,7 @@ python tools/training_dataset.py --corpus $corpus --output artifacts/training-ex
 每条记录分别提供 `observation`、`recommendation`、`dispatched_action`、`execution_status`、`provenance`、`labels` 和 `quality_flags`。
 只按同一手局和局面版本关联操作与先前状态，推荐还须匹配动作、牌种及红牌身份。
 模型推荐、客户端操作返回成功、UI 状态变化、服务端确认是不同证据层级。
+导出会核对封存原始包是否覆盖已有麻将网络事件；缺失时标记 `raw_archive_packets_missing`。UTC 时间统一到 100 ns，只规范序列化末尾零，不用模糊时间配对。
 本轮导出还没有对每条操作做服务端逐条确认，因此 `server_confirmed_action` 保持 null，`training_eligible` 明确为 false。
 最终分数来自空手牌的状态 27；不会把中途比分或推测出来的 hand-end 充当整场最终结果。
 和牌、放铳及最优动作标签目前保持 null，不根据分差或 Mortal 选择编造。
@@ -74,4 +75,4 @@ python tools/training_dataset.py --corpus $corpus --import-archives $archives
 ## 验证
 
 本次改动通过全套 1,039 项 C# 测试及 25 项 Python 测试。覆盖原始包封口顺序、磁盘失败保护、独立留存、配置兼容、模型指纹、精确局面关联、整场分组、重复与损坏拒绝及未知标签保留。
-真实数据导出已验证；更新后的游戏内采集还需在热重载后的一场结束时确认。
+第一场新版本实测已完成，发现并修复抓包重启遗漏及同步回调的动作关联问题，详见 [首场验收记录](reviews/20260924-training-first-match.md)。后续修复通过 489 项插件测试及 28 项 Python 测试，并重新导出这场原始记录。修复后的 schema 8 尚未做新的实机对局验证。

@@ -117,12 +117,12 @@ public class TrainingCorpusTests
     {
         using var tmp = new TempDir(); using var recorder = new AutoPacketRecorder(tmp.Path);
         recorder.Update(true, true, EnvironmentInfo);
-        var capture = Assert.IsType<DebugPacketSession>(recorder.CloseForArchive());
-        Assert.Null(recorder.CloseForArchive()); Assert.False(recorder.IsRecording);
+        var capture = Assert.Single(recorder.CloseForArchive());
+        Assert.Empty(recorder.CloseForArchive()); Assert.False(recorder.IsRecording);
         await capture.Completion.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Contains("capture-end",File.ReadAllText(capture.Path));
         recorder.Update(true,true,EnvironmentInfo);
-        var next = Assert.IsType<DebugPacketSession>(recorder.CloseForArchive());
+        var next = Assert.Single(recorder.CloseForArchive());
         Assert.NotEqual(capture.Path,next.Path); await next.Completion;
     }
 
@@ -172,6 +172,57 @@ public class TrainingCorpusTests
         Assert.True(cfg.RetainTrainingData); Assert.True(cfg.MortalEnabled);
         var off = Newtonsoft.Json.JsonConvert.DeserializeObject<Configuration>(Newtonsoft.Json.JsonConvert.SerializeObject(cfg with { RetainTrainingData = false }))!;
         Assert.False(off.RetainTrainingData);
+    }
+
+    [Fact]
+    public async Task Capture_restart_keeps_every_segment_for_the_same_table()
+    {
+        using var tmp = new TempDir(); using var recorder = new AutoPacketRecorder(tmp.Path);
+        recorder.Update(true, true, EnvironmentInfo);
+        var first = recorder.Latest!;
+        recorder.Update(false, true, EnvironmentInfo);
+        recorder.Update(true, true, EnvironmentInfo);
+        var captures = recorder.CloseForArchive();
+        Assert.Equal(2, captures.Count); Assert.Same(first, captures[0]);
+        Assert.Empty(recorder.CloseForArchive());
+        await Task.WhenAll(captures.Select(c => c.Completion));
+        var context = new TrainingArchiveContext(captures[0].Path, captures[0].Completion, Provenance, "{}",
+            captures.Skip(1).Select(c => new TrainingRawCapture(c.Path, c.Completion)).ToArray());
+        var corpus = new TrainingCorpusWriter(tmp.Path, () => true, new StubPluginLog());
+        Assert.True(corpus.Preserve(Archive(tmp.Path), context));
+        var manifest = Manifest(corpus.RootDir);
+        var destination = Directory.GetDirectories(corpus.RootDir, "match-*").Single();
+        Assert.Equal(File.ReadAllText(first.Path), File.ReadAllText(Path.Combine(destination, "raw-capture.ndjson")));
+        Assert.Equal(File.ReadAllText(captures[1].Path), File.ReadAllText(Path.Combine(destination, "raw-captures", "segment-002.ndjson")));
+        Assert.Contains("raw_capture_interrupted", manifest.GetProperty("quality_flags").EnumerateArray().Select(v => v.GetString()));
+        Assert.Contains("raw_capture_segmented", manifest.GetProperty("quality_flags").EnumerateArray().Select(v => v.GetString()));
+        recorder.Update(true, true, EnvironmentInfo);
+        var next = Assert.Single(recorder.CloseForArchive());
+        Assert.DoesNotContain(next.Path, captures.Select(c => c.Path));
+        await next.Completion;
+    }
+
+    [Fact]
+    public async Task Dispatch_log_keeps_pre_input_revision_when_callback_changes_state_synchronously()
+    {
+        using var tmp = new TempDir(); var cfg = new DalamudConfigService(_ => {}, new Configuration());
+        using var logger = new GameLogger(cfg, new StubPluginLog(), tmp.Path);
+        var before = StateSnapshot.Empty with { Hand = Enumerable.Range(0,14).Select(i => Tile.FromId(i)).ToArray(), HandId = 1, Revision = 23 };
+        logger.OnStateChanged(before);
+        using (logger.BeginDispatch(before))
+        {
+            logger.OnStateChanged(before with { Revision = 24 });
+            logger.RecordAction(ActionKind.Discard, Tile.FromId(29), 0, "Ok", "Mortal", false);
+        }
+        logger.RecordAction(ActionKind.Pass, null, null, "Ok", "outside dispatch");
+        await logger.FlushAsync();
+        var actions = Directory.GetFiles(logger.GamesDir).SelectMany(File.ReadLines)
+            .Select(line => JsonDocument.Parse(line).RootElement.Clone()).Where(r => r.GetProperty("e").GetString() == "action").ToArray();
+        Assert.Equal(23, actions[0].GetProperty("revision").GetInt64());
+        Assert.Equal(1, actions[0].GetProperty("hand_id").GetInt64());
+        Assert.Equal("before-input", actions[0].GetProperty("dispatch_context").GetString());
+        Assert.Equal("unbound", actions[1].GetProperty("dispatch_context").GetString());
+        Assert.False(actions[1].TryGetProperty("revision", out _));
     }
 
 }

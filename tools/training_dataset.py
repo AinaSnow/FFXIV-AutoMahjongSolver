@@ -96,10 +96,20 @@ def read_rows(path):
                 yield number, None, str(error)
 
 
+def packet_identity(row):
+    # .NET serializers may trim trailing fractional zeros; retain all seven digits.
+    t = re.fullmatch(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,7}))?(?:Z|\+00:00)", str(row.get("t", "")))
+    opcode, payload = row.get("opcode"), row.get("payload_hex")
+    if not t or not isinstance(opcode, str) or not isinstance(payload, str):
+        return None
+    return (t[1], (t[2] or "").ljust(7, "0"), opcode.upper(), payload.upper())
+
+
 def match_quality(directory, files):
     flags = set()
     events = []
     opening = False
+    archived_packets, raw_packets = set(), set()
     for item in files:
         name = item["path"]
         if name.startswith("archive/games/") and name.endswith(".ndjson"):
@@ -112,8 +122,11 @@ def match_quality(directory, files):
             for _, row, error in read_rows(safe_file(directory, name)):
                 if error:
                     flags.add("malformed_packet_log")
-                elif row.get("message_id") == 636:
-                    opening = True
+                else:
+                    if row.get("message_id") == 636:
+                        opening = True
+                    if (identity := packet_identity(row)) is not None:
+                        archived_packets.add(identity)
     if any(r.get("e") == "input-callback" and r.get("automated") is False for _, _, r in events):
         flags.add("external_input_observed")
     finals = [r for _, _, r in events if r.get("e") == "state" and r.get("state_code") == 27 and r.get("hand") == []
@@ -124,18 +137,26 @@ def match_quality(directory, files):
         flags.add("match_start_unobserved")
     if final is None:
         flags.add("final_result_unobserved")
-    raw = directory / "raw-capture.ndjson"
-    if not raw.exists():
+    raw_files = [f["path"] for f in files if f["path"] == "raw-capture.ndjson" or f["path"].startswith("raw-captures/")]
+    if not raw_files:
         flags.add("raw_capture_missing")
-    else:
+    if len(raw_files) > 1:
+        flags.add("raw_capture_segmented")
+    for raw_name in raw_files:
         last = None
-        for _, row, error in read_rows(raw):
+        for _, row, error in read_rows(safe_file(directory, raw_name)):
             if error:
                 flags.add("malformed_raw_capture")
             else:
                 last = row
+                if row.get("e") == "raw-packet" and (identity := packet_identity(row)) is not None:
+                    raw_packets.add(identity)
         if not last or last.get("e") != "capture-end" or last.get("stream_complete") is not True:
             flags.add("raw_capture_incomplete")
+        if last and last.get("reason") == "disabled":
+            flags.add("raw_capture_interrupted")
+    if raw_files and archived_packets - raw_packets:
+        flags.add("raw_archive_packets_missing")
     summary = json.loads((directory / "archive/summary.json").read_text(encoding="utf-8-sig"))
     if summary.get("packet_write_failed") is not False:
         flags.add("archive_incomplete")
@@ -250,12 +271,16 @@ def export_match(directory, m):
     rank = None
     if final is not None:
         east = final.get("initial_dealer")
-        if type(east) is int and 0 <= east < 4:
+        if final["scores"].count(final["scores"][0]) == 1:
+            rank = 1 + sum(score > final["scores"][0] for score in final["scores"][1:])
+        elif type(east) is int and 0 <= east < 4:
             order = sorted(range(4), key=lambda i: (-final["scores"][i], (i - east) % 4))
             rank = order.index(0) + 1
     rows = []
     for order, name, line, action in actions:
         quality = set(flags)
+        if action.get("dispatch_context") != "before-input":
+            quality.add("action_context_unverified")
         k = key(action)
         state_entry = states.get(k)
         state = state_entry[1] if state_entry and state_entry[0] < order else None

@@ -32,4 +32,11 @@ public sealed class TrainingProvenanceProvider(IWeightProvider weights, Func<Con
     }
 }
 
-public sealed record TrainingArchiveContext(string? RawPath, Task RawCompletion, TrainingProvenance Provenance, string WeightsJson);
+public sealed record TrainingRawCapture(string Path, Task Completion);
+
+public sealed record TrainingArchiveContext(string? RawPath, Task RawCompletion, TrainingProvenance Provenance, string WeightsJson,
+    IReadOnlyList<TrainingRawCapture>? AdditionalRawCaptures = null)
+{
+    public IReadOnlyList<TrainingRawCapture> Captures =>
+        [.. RawPath is { } path ? new[] { new TrainingRawCapture(path, RawCompletion) } : [], .. AdditionalRawCaptures ?? []];
+}

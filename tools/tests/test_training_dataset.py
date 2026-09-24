@@ -7,7 +7,7 @@ import sys
 import tempfile
 import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from training_dataset import export_corpus, export_match, import_archive, read_manifest, safe_file, split_for
+from training_dataset import export_corpus, export_match, import_archive, read_manifest, safe_file, split_for, inventory
 from mortal_runner import load_checkpoint, serve
 
 
@@ -113,6 +113,42 @@ class DatasetTests(unittest.TestCase):
         self.action["tile"]=12;self.write([self.state,self.action,self.final])
         with self.assertRaisesRegex(ValueError,"Conflicting duplicate"):self.imported()
         self.assertEqual((d/"archive/games/hand.ndjson").read_bytes(),before)
+
+    def test_rank_needs_starting_dealer_only_for_our_score_tie(self):
+        self.final.pop("initial_dealer")
+        self.write([self.state, self.action, self.final])
+        d=self.imported(); rows,_=export_match(d,read_manifest(d))
+        self.assertEqual(rows[0]["labels"]["final_rank"],1)
+        self.final["scores"]=[26000,26000,28000,20000]
+        self.write([self.state,self.action,self.final])
+        (self.archive/"packets.ndjson").write_text('{"message_id":636,"match":2}',encoding="utf-8")
+        d=self.imported(); rows,_=export_match(d,read_manifest(d))
+        self.assertIsNone(rows[0]["labels"]["final_rank"])
+
+    def test_all_capture_segments_are_checked_and_old_dispatch_context_is_flagged(self):
+        d=self.imported(); m=read_manifest(d)
+        (d/"raw-capture.ndjson").write_text('{"e":"capture-end","stream_complete":true,"reason":"disabled"}',encoding="utf-8")
+        (d/"raw-captures").mkdir()
+        (d/"raw-captures/segment-002.ndjson").write_text('{"e":"capture-end","stream_complete":false}',encoding="utf-8")
+        m["files"]=inventory(d)
+        (d/"manifest.json").write_text(json.dumps(m),encoding="utf-8")
+        rows,_=export_match(d,read_manifest(d))
+        for flag in ("raw_capture_segmented","raw_capture_interrupted","raw_capture_incomplete","action_context_unverified"):
+            self.assertIn(flag,rows[0]["quality_flags"])
+
+    def test_complete_footer_does_not_hide_a_missing_main_capture(self):
+        packet=dict(t="2026-09-24T11:50:43.5056310+00:00",opcode="0x0214",payload_hex="AABB",message_id=636)
+        (self.archive/"packets.ndjson").write_text(json.dumps(packet),encoding="utf-8")
+        raw=self.root/"raw.ndjson"
+        raw.write_text('{"e":"capture-end","stream_complete":true}',encoding="utf-8")
+        d=import_archive(self.archive,self.corpus,raw)
+        rows,_=export_match(d,read_manifest(d))
+        self.assertIn("raw_archive_packets_missing",rows[0]["quality_flags"])
+        packet.update(e="raw-packet",t="2026-09-24T11:50:43.505631+00:00")
+        raw.write_text(json.dumps(packet)+'\n'+ '{"e":"capture-end","stream_complete":true}',encoding="utf-8")
+        d=import_archive(self.archive,self.root/"complete-corpus",raw)
+        rows,_=export_match(d,read_manifest(d))
+        self.assertNotIn("raw_archive_packets_missing",rows[0]["quality_flags"])
 
 
 class ModelIdentityTests(unittest.TestCase):

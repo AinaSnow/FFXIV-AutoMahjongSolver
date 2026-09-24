@@ -263,9 +263,11 @@ public sealed class Plugin : IDalamudPlugin
     {
         AutoPlay?.CancelForTableExit();
         GameLogger.CompleteSession();
-        var raw = DebugPackets.CloseForArchive();
+        var captures = DebugPackets.CloseForArchive();
+        var raw = captures.FirstOrDefault();
         var training = new TrainingArchiveContext(raw?.Path, raw?.Completion ?? Task.CompletedTask,
-            TrainingProvenance.Snapshot(), TrainingProvenance.WeightsJson);
+            TrainingProvenance.Snapshot(), TrainingProvenance.WeightsJson,
+            captures.Skip(1).Select(c => new TrainingRawCapture(c.Path, c.Completion)).ToArray());
         _ = MatchArchive.FinalizeSessionAsync(
             GameLogger.SnapshotSessionPaths(),
             new MatchArchiveMortalStats(

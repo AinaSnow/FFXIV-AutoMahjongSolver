@@ -11,7 +11,8 @@ public sealed class AutoPacketRecorder : IDisposable
     private readonly Func<long> timestamp;
     private readonly List<Task> closing = [];
     private DebugPacketSession? current;
-    private DebugPacketSession? latest, archived;
+    private DebugPacketSession? latest;
+    private readonly List<DebugPacketSession> archiveSegments = [];
     private bool armed, disposed;
     private int preRollBytes;
     private long preRollDropped, preRollRejected, lastPreRollFailure;
@@ -45,6 +46,7 @@ public sealed class AutoPacketRecorder : IDisposable
             string file = $"capture-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss-fff}-{Guid.NewGuid():N}.ndjson";
             current = factory(System.IO.Path.Combine(DirectoryPath,file),environment);
             Volatile.Write(ref latest,current);
+            archiveSegments.Add(current);
             TrimPreRoll();
             // A capped or rejected pre-roll means the opening boundary cannot be certified complete.
             if (preRollDropped > 0 || preRollRejected > 0) current.Reject("pre-roll-incomplete");
@@ -53,15 +55,14 @@ public sealed class AutoPacketRecorder : IDisposable
         }
     }
 
-    public DebugPacketSession? CloseForArchive()
+    public IReadOnlyList<DebugPacketSession> CloseForArchive()
     {
         lock (gate)
         {
-            var session = current ?? latest;
-            if (session is null || ReferenceEquals(session, archived)) return null;
             Stop("left-table");
-            archived = session;
-            return session;
+            var sessions = archiveSegments.ToArray();
+            archiveSegments.Clear();
+            return sessions;
         }
     }
 
