@@ -45,6 +45,7 @@ public sealed class Scorer
 
         bool isYakuman = AnyYakuman(hits);
         int han = TotalHan(hits);
+        if (isYakuman) han = Math.Min(han, Math.Max(1, rules.MaxYakuman) * HanValues.Yakuman);
         if (!isYakuman)
         {
             han += CountDora(d, ctx);
@@ -68,6 +69,8 @@ public sealed class Scorer
         foreach (var rule in rules.YakuRules)
             hits.AddRange(rule.Detect(d, ctx));
 
+        if (!rules.AllowsKuitan && !d.IsMenzen)
+            hits.RemoveAll(hit => hit.Yaku == Mahjong.Core.Yaku.Tanyao);
         if (AnyYakuman(hits))
             return KeepOnlyYakuman(hits);
 

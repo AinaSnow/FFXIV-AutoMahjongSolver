@@ -56,9 +56,9 @@ public class RuleSetTests
     }
 
     [Fact]
-    public void Both_rulesets_cap_yakuman_multiplier_at_two()
+    public void Rulesets_expose_their_distinct_yakuman_limits()
     {
         Assert.Equal(2, new RiichiRuleSet().MaxYakuman);
-        Assert.Equal(2, new DomanRuleSet().MaxYakuman);
+        Assert.Equal(4, new DomanRuleSet().MaxYakuman);
     }
 }
