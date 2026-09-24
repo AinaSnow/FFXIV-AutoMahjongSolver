@@ -1,3 +1,4 @@
+using Mahjong.Plugin.Dalamud.GameState;
 using Mahjong.Policy.Abstractions;
 using Mahjong.Core;
 using System.Buffers.Binary;
@@ -175,6 +176,71 @@ public sealed class MortalLimitedTrialTests
         Assert.True(h.Bridge.CurrentHandQuarantined); // Last actual result closes the hand.
     }
 
+    [Fact]
+    public void Real_layout_switch_trace_preserves_session_except_for_observed_unsupported_kan()
+    {
+        var observation = AddonEmjObservation.Empty;
+        using var h = new Harness(() => observation.ProtocolVariant);
+        using var data = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory,
+            "RegressionFixtures", "20260924-addon-layout-switch.json")));
+        int layoutChanges = 0;
+        bool isolatedObservedKan = false;
+        foreach (var row in data.RootElement.GetProperty("events").EnumerateArray())
+        {
+            if (row.GetProperty("kind").GetString() == "layout")
+            {
+                observation = new(true, true, 1, 100, 100, DateTime.UtcNow.Ticks, "poll",
+                    row.GetProperty("addon_name").GetString());
+                var layout = row.GetProperty("layout").GetString();
+                Assert.Equal("Emj", observation.ProtocolVariant);
+                Assert.Contains(layout, new[] { "Emj", "EmjL" });
+                layoutChanges++;
+                var previousClient = h.Client;
+                h.Capture.RefreshProfile(); h.Bridge.Update();
+                if (previousClient is not null) Assert.Same(previousClient, h.Client);
+                Assert.True(h.Client.IsRunning);
+            }
+            else
+            {
+                ushort opcode = Convert.ToUInt16(row.GetProperty("opcode").GetString()![2..], 16);
+                h.Send(opcode, Convert.FromHexString(row.GetProperty("payload_hex").GetString()!));
+                if (row.GetProperty("sequence").GetInt32() == 200)
+                {
+                    Assert.True(h.Bridge.CurrentHandQuarantined);
+                    Assert.Contains("0x130", h.Bridge.Status); // Captured opponent kan stays unsupported.
+                    isolatedObservedKan = true;
+                }
+            }
+        }
+        Assert.Equal(6, layoutChanges);
+        Assert.True(isolatedObservedKan);
+        Assert.Equal(2, h.Clients.Count); // Exactly one legitimate restart after the observed kan.
+        Assert.Equal(3, h.Clients.SelectMany(c => c.Sent).OfType<MjaiStartKyoku>().Count());
+        Assert.Equal(2, h.Clients.SelectMany(c => c.Sent).OfType<MjaiEndKyoku>().Count());
+        Assert.Equal(259, h.Bridge.PacketsProcessed);
+        Assert.Equal(242, h.Bridge.EventsSent);
+        // An actual addon change still stops the session; a layout alias never did.
+        observation = observation with { AddonName = "EmjL" };
+        h.Capture.RefreshProfile(); h.Bridge.Update();
+        Assert.False(h.Bridge.Enabled); Assert.False(h.Client.IsRunning);
+    }
+
+    [Fact]
+    public void Unloaded_or_unknown_addon_cannot_keep_a_protocol_identity()
+    {
+        Assert.Null(AddonEmjObservation.Empty.ProtocolVariant);
+        var observed = new AddonEmjObservation(true, true, 1, 0, 0, 0, "PostSetup", "Emj");
+        Assert.Equal("Emj", observed.ProtocolVariant);
+        Assert.Null((observed with { Present = false }).ProtocolVariant);
+        Assert.Null((observed with { Address = 0 }).ProtocolVariant);
+        Assert.Null((observed with { AddonName = null }).ProtocolVariant);
+        var metadata = new MatchArchiveEnvironment(Profile.GameVersion, observed.ProtocolVariant,
+            false, "trial", "build", "EmjL");
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(metadata));
+        Assert.Equal("Emj", json.RootElement.GetProperty("client_variant").GetString());
+        Assert.Equal("EmjL", json.RootElement.GetProperty("ui_layout").GetString());
+    }
+
     private static List<CapturedMahjongPacket> Drain(MahjongNetworkCapture capture)
     {
         List<CapturedMahjongPacket> result = [];
@@ -215,12 +281,13 @@ public sealed class MortalLimitedTrialTests
         private readonly MahjongPacketMjaiDecoder decoder = new();
         private readonly PublicStateReducer state = new();
         public FakeClient Client = null!;
+        public List<FakeClient> Clients = [];
         public StateSnapshot Snapshot => state.Snapshot(new LegalActions(ActionFlags.Discard | ActionFlags.Riichi, [], [], [], []));
-        public Harness()
+        public Harness(Func<string?>? variant = null)
         {
-            Capture = new(Profile.GameVersion, () => "Emj", [Profile], () => Config.Current.MortalLimitedTrial) { TransportReady = true };
+            Capture = new(Profile.GameVersion, variant ?? (() => "Emj"), [Profile], () => Config.Current.MortalLimitedTrial) { TransportReady = true };
             Bridge = new(Capture, DispatchProxy.Create<IFramework, FrameworkStub>(), Config, () => null, new StubPluginLog())
-                { ClientFactory = () => Client = new FakeClient() };
+                { ClientFactory = () => { Client = new FakeClient(); Clients.Add(Client); return Client; } };
             Bridge.Update();
         }
         public void Open(int scoreTotal = 1000) => Send(0x0133, Opening(scoreTotal));

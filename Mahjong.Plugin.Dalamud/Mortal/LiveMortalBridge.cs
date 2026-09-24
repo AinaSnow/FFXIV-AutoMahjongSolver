@@ -680,6 +680,7 @@ public sealed class LiveMortalBridge : IDisposable
 
     private void Stop(string status, bool preserveMjaiState = false)
     {
+        if (client is not null) log.Information($"[Mortal] Stopped session: {status}; preserve_history={preserveMjaiState}.");
         capture.CaptureEnabled = preserveMjaiState;
         var old = client;
         client = null;

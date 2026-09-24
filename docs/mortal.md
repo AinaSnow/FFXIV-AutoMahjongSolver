@@ -18,7 +18,7 @@
 
 ## 协议证据门禁
 
-`data/protocols/` 按精确游戏版本与客户端变体登记 opcode/载荷长度。运行时从游戏目录 `ffxivgame.ver` 匹配版本；当前 `unverified-template.json`是未验证模板，不能自动启用正式协议网络 Hook。独立的 [自动调试录包](auto-packet-logger.md) 可显式开启，只保存原始证据，不参与推理。UI 的 Emj/EmjL 布局与网络协议验证是两套独立能力。
+`data/protocols/` 按精确游戏版本与实际 addon 名登记 opcode/载荷长度。协议身份来自生命周期/轮询观测的窗口名，不能使用会随手牌加载切换的内存布局别名（例如实际 Emj 窗口也可能使用 EmjL 布局）。归档分别记录 client_variant 与 ui_layout。运行时从游戏目录 `ffxivgame.ver` 匹配版本；当前 `unverified-template.json`是未验证模板，不能自动启用正式协议网络 Hook。独立的 [自动调试录包](auto-packet-logger.md) 可显式开启，只保存原始证据，不参与推理。UI 的 Emj/EmjL 布局与网络协议验证是两套独立能力。
 
 未验证且未显式开启匹配范围的有限试用时，Mortal 显示明确降级原因，内置策略继续使用已有 UI 读取。归约器能接受完整 MJAI 杠、宝牌、本场和供托事件，不意味着现有游戏报文解码器已经能够产出这些事件。当前没有可证明完整性的协议档案。
 

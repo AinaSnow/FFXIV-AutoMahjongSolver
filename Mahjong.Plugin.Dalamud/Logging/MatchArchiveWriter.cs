@@ -503,4 +503,5 @@ public sealed record MatchArchiveEnvironment(
     [property: JsonPropertyName("client_variant")] string? ClientVariant,
     [property: JsonPropertyName("protocol_verified")] bool ProtocolVerified,
     [property: JsonPropertyName("protocol_status")] string ProtocolStatus,
-    [property: JsonPropertyName("plugin_build_id")] string PluginBuildId);
+    [property: JsonPropertyName("plugin_build_id")] string PluginBuildId,
+    [property: JsonPropertyName("ui_layout")] string? UiLayout = null);

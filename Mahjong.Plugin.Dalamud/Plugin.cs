@@ -156,12 +156,12 @@ public sealed class Plugin : IDalamudPlugin
         Dispatcher = new InputDispatcher(mahjongAddon, () => AddonReader.ActiveLayout);
         MatchArchive = new MatchArchiveWriter(configDir, Log, archiveIo, () => (ConfigService.Current.ArchiveRetentionDays, ConfigService.Current.ArchiveMaxBytes));
         NetworkCapture = new MahjongNetworkCapture(Log,
-            () => AddonReader.ActiveLayout?.Name, Path.Combine(pluginAssemblyDir, "protocols"),
+            () => AddonReader.ProtocolVariant, Path.Combine(pluginAssemblyDir, "protocols"),
             trialEnabled: () => Configuration.MortalLimitedTrial);
         DebugPackets = new DebugPacketLogger(pluginAssemblyDir, NetworkCapture, Framework, configDir,
             () => Configuration.DebugAutoPacketLogging, () => AddonReader.LastObservation.Present,
-            () => new MatchArchiveEnvironment(NetworkCapture.GameVersion, AddonReader.ActiveLayout?.Name,
-                NetworkCapture.ProtocolVerified, NetworkCapture.ProtocolStatus, typeof(Plugin).Module.ModuleVersionId.ToString()), Log);
+            () => new MatchArchiveEnvironment(NetworkCapture.GameVersion, AddonReader.ProtocolVariant,
+                NetworkCapture.ProtocolVerified, NetworkCapture.ProtocolStatus, typeof(Plugin).Module.ModuleVersionId.ToString(), AddonReader.ActiveLayout?.Name), Log);
         PublicState = new PublicStateTracker(NetworkCapture, Framework, AddonReader, Log, MatchArchive.RecordPacket);
         Aggregator = new StateAggregator(AddonReader, Framework, Policy, PublicState.Merge, () => Configuration);
         EventLogger = new InputEventLogger(
@@ -267,8 +267,8 @@ public sealed class Plugin : IDalamudPlugin
                 CandidateCorrections: MortalBridge.CandidateCorrections,
                 RecoveredDiscards: MortalBridge.RecoveredDiscardEvents,
                 LastModelEvalMilliseconds: MortalBridge.LastModelEvalMilliseconds),
-            new MatchArchiveEnvironment(NetworkCapture.GameVersion, AddonReader.ActiveLayout?.Name,
-                NetworkCapture.ProtocolVerified, NetworkCapture.ProtocolStatus, typeof(Plugin).Module.ModuleVersionId.ToString()));
+            new MatchArchiveEnvironment(NetworkCapture.GameVersion, AddonReader.ProtocolVariant,
+                NetworkCapture.ProtocolVerified, NetworkCapture.ProtocolStatus, typeof(Plugin).Module.ModuleVersionId.ToString(), AddonReader.ActiveLayout?.Name));
     }
 
     public void Dispose()

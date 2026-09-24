@@ -37,6 +37,8 @@ public sealed class AddonEmjReader : IDisposable
 
     public LayoutProfile? ActiveLayout { get; private set; }
 
+    public string? ProtocolVariant => LastObservation.ProtocolVariant;
+
     public event Action<AddonEmjObservation>? ObservationChanged;
 
     public AddonEmjReader(
@@ -156,7 +158,8 @@ public sealed class AddonEmjReader : IDisposable
                 Width: unit->RootNode != null ? unit->RootNode->Width : (ushort)0,
                 Height: unit->RootNode != null ? unit->RootNode->Height : (ushort)0,
                 LastSeenUtcTicks: DateTime.UtcNow.Ticks,
-                LastLifecycleEvent: eventName);
+                LastLifecycleEvent: eventName,
+                AddonName: args.AddonName);
 
             EmitFirstAttachFindings(eventName, args.AddonName, unit, addr, obs);
         }
@@ -234,7 +237,8 @@ public sealed class AddonEmjReader : IDisposable
             Width: unit->RootNode != null ? unit->RootNode->Width : (ushort)0,
             Height: unit->RootNode != null ? unit->RootNode->Height : (ushort)0,
             LastSeenUtcTicks: DateTime.UtcNow.Ticks,
-            LastLifecycleEvent: LastObservation.LastLifecycleEvent ?? "(poll)");
+            LastLifecycleEvent: LastObservation.LastLifecycleEvent ?? "(poll)",
+            AddonName: resolvedName);
 
         EmitFirstAttachFindings("poll", resolvedName, unit, addr, obs);
 
