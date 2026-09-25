@@ -153,3 +153,5 @@ python "$REPO/tools/evaluation/compare_models.py" \
 这仍是实验规则档案，不等于完整 FF14 一致性认证。四家立直继续和东风不进入南场分别依据官方完整流局列表及短局长度推导，尚缺受控游戏验证；双荣和本场与供托分配、包牌边界、立直后杠的听牌限制仍需补实战对照。80／120 分钟游戏计时、输入延迟和 Rating 未模拟。半庄权重没有新增“东风长度”训练特征，不把东场伪装成南场来欺骗模型。结果不会自动触发线上换权重，也不能直接当作 FF14 胜率保证。
 
 官方依据：[高级规则](https://na.finalfantasyxiv.com/lodestone/playguide/contentsguide/goldsaucer/doman-mahjong/special_rule/)、[5.4 版本加入 Quick Match](https://na.finalfantasyxiv.com/lodestone/topics/detail/230f6e0af3536f9a40654d783c8c2f1094131070)。
+
+首批东风验证已完成：20 组、160 场模型比较，另有 160 场同模型对照。见 [结果与验收记录](reviews/20260925-doman-quick-dev20.md)。

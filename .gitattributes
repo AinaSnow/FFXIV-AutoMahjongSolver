@@ -22,6 +22,7 @@
 *.md       text eol=lf
 *.sh       text eol=lf
 *.py       text eol=lf
+*.patch    text eol=lf
 *.toml     text eol=lf
 *.editorconfig text eol=lf
 *.gitattributes text eol=lf
