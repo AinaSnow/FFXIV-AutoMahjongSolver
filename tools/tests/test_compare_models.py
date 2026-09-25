@@ -10,7 +10,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 sys.path[:0] = [str(Path(__file__).resolve().parents[1]), str(Path(__file__).resolve().parents[1]/"evaluation")]
-from compare_models import main, match_outcome, paired_report, read_results
+from compare_models import main, match_outcome, paired_report, read_results, read_batch_results
 import mortal_runner
 
 
@@ -53,6 +53,29 @@ class ModelComparisonTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "exactly four"):
                 read_results(directory, 1000200, "candidate", grp)
 
+    def test_batch_keeps_seed_groups_separate_and_rejects_missing_or_extra_games(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            for seed in (1000200, 1000201):
+                for seat, letter in enumerate("abcd"):
+                    names = ["opponent"]*4
+                    names[seat] = "candidate"
+                    rows = [dict(type="start_game", seed=[seed, 42], names=names),
+                            dict(type="start_kyoku"), dict(type="end_kyoku"), dict(type="end_game")]
+                    with gzip.open(directory/f"{seed}_42_{letter}.json.gz", "wt", encoding="utf-8") as sink:
+                        sink.write("\n".join(map(json.dumps, rows)))
+            grp = SimpleNamespace(load_log=lambda raw: Outcome())
+            groups = read_batch_results(directory, 1000200, 2, "candidate", grp, [2]*4)
+            self.assertEqual([1000200, 1000201], list(groups))
+            self.assertTrue(all([m["seat"] for m in matches] == [0, 1, 2, 3] for matches in groups.values()))
+            with self.assertRaisesRegex(ValueError, "rankings disagree"):
+                read_batch_results(directory, 1000200, 2, "candidate", grp, [8, 0, 0, 0])
+            with self.assertRaisesRegex(ValueError, "per expected seed"):
+                read_batch_results(directory, 1000200, 1, "candidate", grp, [1]*4)
+            (directory/"1000201_42_d.json.gz").unlink()
+            with self.assertRaisesRegex(ValueError, "per expected seed"):
+                read_batch_results(directory, 1000200, 2, "candidate", grp, [2]*4)
+
     def group(self):
         matches = [dict(seat=seat, rank=seat+1, score=40000-seat*10000,
                         hands=8, wins=2, deal_ins=1, gameplay_sha256=f"game-{seat}") for seat in range(4)]
@@ -87,25 +110,26 @@ class ModelComparisonTests(unittest.TestCase):
         self.assertEqual(1, result["candidate"]["top_two_rate"])
         self.assertIsNone(result["ffxiv_rating_gain"])
 
-    def test_failed_second_pair_preserves_only_completed_group_and_marks_run_failed(self):
+    def test_failed_second_batch_preserves_completed_pairs_and_bounds_last_batch(self):
         calls = []
         class Arena:
             def __init__(self, **kwargs):
                 self.directory = Path(kwargs["log_dir"])
 
             def py_vs_py(self, challenger, opponent, seed, count):
-                calls.append((challenger.name, opponent, seed))
+                calls.append((challenger.name, opponent, seed, count))
                 if len(calls) == 3:
                     raise RuntimeError("injected engine failure")
                 self.directory.mkdir(parents=True)
-                for seat, letter in enumerate("abcd"):
-                    names = [opponent.name]*4
-                    names[seat] = challenger.name
-                    rows = [dict(type="start_game", seed=list(seed), names=names),
-                            dict(type="start_kyoku"), dict(type="end_kyoku"), dict(type="end_game")]
-                    with gzip.open(self.directory/f"{seed[0]}_{seed[1]}_{letter}.json.gz", "wt", encoding="utf-8") as sink:
-                        sink.write("\n".join(map(json.dumps, rows)))
-                return [1, 1, 1, 1]
+                for seed_value in range(seed[0], seed[0]+count):
+                    for seat, letter in enumerate("abcd"):
+                        names = [opponent.name]*4
+                        names[seat] = challenger.name
+                        rows = [dict(type="start_game", seed=[seed_value, seed[1]], names=names),
+                                dict(type="start_kyoku"), dict(type="end_kyoku"), dict(type="end_game")]
+                        with gzip.open(self.directory/f"{seed_value}_{seed[1]}_{letter}.json.gz", "wt", encoding="utf-8") as sink:
+                            sink.write("\n".join(map(json.dumps, rows)))
+                return [count]*4
         torch = SimpleNamespace(set_num_threads=Mock(), manual_seed=Mock(), __version__="test",
                                 backends=SimpleNamespace(cudnn=SimpleNamespace()))
         modules = {"torch": torch, "numpy": SimpleNamespace(random=SimpleNamespace(seed=Mock())),
@@ -123,7 +147,7 @@ class ModelComparisonTests(unittest.TestCase):
                     (root/name).write_text("test", encoding="utf-8")
                 output = root/"run"
                 argv = ["compare_models.py", "--mortal-dir", str(root), "--candidate", "candidate.pth",
-                        "--output", str(output), "--groups", "2"]
+                        "--output", str(output), "--groups", "3", "--batch-groups", "2"]
                 with patch.dict(sys.modules, modules), patch.object(sys, "argv", argv), \
                      patch.object(mortal_runner, "create_engine", side_effect=engine), \
                      patch("compare_models.subprocess.check_output", return_value="commit"), patch("builtins.print"):
@@ -131,11 +155,13 @@ class ModelComparisonTests(unittest.TestCase):
                         main()
                 manifest = json.loads((output/"manifest.json").read_text(encoding="utf-8"))
                 self.assertEqual("failed", manifest["status"])
-                self.assertEqual(1, manifest["completed_groups"])
-                self.assertEqual(1, len((output/"results.jsonl").read_text(encoding="utf-8").splitlines()))
+                self.assertEqual(2, manifest["completed_groups"])
+                self.assertEqual(2, len((output/"results.jsonl").read_text(encoding="utf-8").splitlines()))
                 self.assertFalse((output/"report.json").exists())
                 self.assertIs(calls[0][1], calls[1][1])
                 self.assertEqual(calls[0][2], calls[1][2])
+                self.assertEqual([2, 2, 1], [call[3] for call in calls])
+                self.assertEqual(calls[0][2][0]+2, calls[2][2][0])
                 self.assertEqual(["candidate", "baseline", "baseline"], [call[0] for call in calls])
                 os.chdir(original_directory)
         finally:

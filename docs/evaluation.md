@@ -80,7 +80,7 @@ python "$REPO/tools/evaluation/self_play.py" \
 
 ## 两份 Mortal 权重的半庄对照
 
-`tools/evaluation/compare_models.py` 用于比较两份兼容 Mortal checkpoint。它独立加载候选、基线及固定对手；每个种子先后执行候选对三名固定对手、基线对相同三名对手，各轮换四座，共八场。各组交替运行先后次序。模型读取只使用当前玩家可见信息，关闭探索与混合精度，不修改在线配置或模型文件。
+`tools/evaluation/compare_models.py` 用于比较两份兼容 Mortal checkpoint。它独立加载候选、基线及固定对手；每个种子先后执行候选对三名固定对手、基线对相同三名对手，各轮换四座，共八场。各批交替运行先后次序，同批的两方始终使用相同种子区间和批大小。模型读取只使用当前玩家可见信息，关闭探索与混合精度，不修改在线配置或模型文件。
 
 本机 WSL 示例（输出目录必须尚不存在）：
 
@@ -97,8 +97,22 @@ wsl -d Ubuntu --cd /mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/.loacl/Mortal/m
 - `manifest.json`：实际加载权重哈希、架构、引擎和运行参数、种子区间，以及 running/failed/complete 状态。只有 complete 可作为完整报告；失败时保留此前完整配对组供诊断。
 - `results.jsonl`：每个种子一行，候选/基线各四座；每场保存原始牌谱哈希、完整牌局事件哈希、名次和和牌/放铳次数。只有八场均完整且座位/种子对应时才写入该组。
 - `report.json` 与 `report.md`：平均名次、前二率、一位/四位率、牌桌得失分、每手和牌/放铳率，以及按种子组计算的配对区间。
-- `seed-*/candidate` 和 `seed-*/baseline`：原始压缩 MJAI 牌谱。原始牌谱包含全局信息，只供事后校验，不进入模型不可见输入。
+- `batch-*/candidate` 和 `batch-*/baseline`：原始压缩 MJAI 牌谱，结果中的 log 为相对输出目录路径；早期单组运行使用 seed-* 目录。原始牌谱包含全局信息，只供事后校验，不进入模型不可见输入。
 
 开发阶段使用 `--split development`。正式统计验收使用未被训练或开发选模使用的 `--split acceptance --groups 1000`，共 8,000 场；这可能需要较长时间，默认不会启动。每次使用新的 offset 和输出目录，跨批次需核对种子重复，不能把重复运行算成更多独立证据。统计门槛沿用平均名次至少改善 0.03 且 95% 区间上界小于 0、四位率差区间上界不超过 0.01。
 
 本阶段优先半庄，因为用户两种模式都接受，且现有引擎本来支持半庄。FF14 半庄与当前标准天凤半庄仍有结束条件和特殊结算差异，报告继续明确 `doman_promotion_eligible=false`，不把牌桌得失分换算为 Rating，也不自动替换线上模型。没有改动自动排队模式；本轮交付针对离线模型评测。
+
+
+### 批量开发筛选
+
+`--batch-groups` 控制一次送入 GPU 的独立种子组数量，默认 1、上限 256；最后一批自动缩小到剩余组数。批量执行不改变“一名候选对三名固定对手”的设置，也不把整批当成一个统计样本：每个种子依然独立保存候选/基线各四座。批内每个种子的四张座位牌谱及整批引擎名次都必须完整对应；两方均完成并验证之后才记录该批结果。
+
+本轮 100 组开发筛选使用以下参数（在上面的命令中替换）：
+
+```text
+--groups 100 --batch-groups 20 --offset 1000 --split development
+--output /mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/artifacts/evaluation/models-298k-dev100-20260925
+```
+
+这会使用开发种子 1001000–1001099，候选与基线各 400 场，总计 800 场；不混入此前 1000300–1000301 的小样本，也不使用最终验收种子。运行期间可查看 manifest 的 completed_groups 和 elapsed_seconds。不同批大小可能因浮点计算产生动作差异，因此正式复现须固定该参数；使用同一批大小比较两边，并先通过同模型对照。显存不足时任务失败，不能把已完成局数当作完整筛选报告。

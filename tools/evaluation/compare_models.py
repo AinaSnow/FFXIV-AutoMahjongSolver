@@ -41,7 +41,7 @@ def match_outcome(events, seat, outcome):
 
 def read_results(directory, seed, role, grp):
     expected = [directory / f"{seed}_{SEED_KEY}_{letter}.json.gz" for letter in "abcd"]
-    if set(directory.glob("*.json.gz")) != set(expected):
+    if set(directory.glob(f"{seed}_{SEED_KEY}_*.json.gz")) != set(expected):
         raise ValueError("Expected exactly four logs, one per rotated seat")
     results = []
     for seat, path in enumerate(expected):
@@ -54,6 +54,20 @@ def read_results(directory, seed, role, grp):
         result.update(log=path.name, log_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
         results.append(result)
     return results
+
+
+
+def read_batch_results(directory, seed_start, seed_count, role, grp, rankings):
+    expected = {directory/f"{seed}_{SEED_KEY}_{letter}.json.gz"
+                for seed in range(seed_start, seed_start+seed_count) for letter in "abcd"}
+    if set(directory.glob("*.json.gz")) != expected:
+        raise ValueError("Batch must contain exactly four logs per expected seed")
+    matches = {seed: read_results(directory, seed, role, grp)
+               for seed in range(seed_start, seed_start+seed_count)}
+    counts = Counter(match["rank"] for group in matches.values() for match in group)
+    if list(rankings) != [counts[rank] for rank in range(1, 5)]:
+        raise ValueError("Arena rankings disagree with logged outcomes")
+    return matches
 
 
 def paired_report(groups, split, identities, match_mode="libriichi-hanchan"):
@@ -115,12 +129,15 @@ def main():
     parser.add_argument("--groups", type=int, default=2)
     parser.add_argument("--offset", type=int, default=200)
     parser.add_argument("--threads", type=int, default=2)
+    parser.add_argument("--batch-groups", type=int, default=1, help="Seed groups per GPU batch; statistics remain paired by seed")
     parser.add_argument("--device", help="Default: configured device; no online configuration is modified")
     parser.add_argument("--match-mode", choices=REQUESTED_MODES, default="libriichi-hanchan")
     args = parser.parse_args()
     try:
         rules = rule_profile(args.match_mode)
         seeds = seeds_for(args.split, args.offset, args.groups)
+        if not 1 <= args.batch_groups <= 256:
+            raise ValueError("batch-groups must be between 1 and 256")
         if args.threads < 1:
             raise ValueError("threads must be positive")
         if args.output.exists():
@@ -154,7 +171,7 @@ def main():
                     threads=args.threads, inference=dict(oracle=False, epsilon=0, stochastic_latent=False,
                         amp=False, quick_eval=True, rule_based_agari_guard=True, cudnn_benchmark=False, cudnn_deterministic=True),
                     split=args.split, seed_start=seeds.start, seed_end_exclusive=seeds.stop, seed_key=SEED_KEY,
-                    requested_groups=args.groups, completed_groups=0, live_weights_modified=False,
+                    requested_groups=args.groups, batch_groups=args.batch_groups, completed_groups=0, live_weights_modified=False,
                     model_provenance_verified=False, ffxiv_rating_gain=None)
     output.mkdir(parents=True, exist_ok=False)
     write_json(output/"manifest.json", manifest)
@@ -162,28 +179,32 @@ def main():
     started = time.monotonic()
     try:
         with (output/"results.jsonl").open("w", encoding="utf-8") as sink:
-            for index, seed in enumerate(seeds):
-                group = dict(seed=seed, key=SEED_KEY)
-                # Alternate run order to avoid always giving one role the cold GPU.
+            for index, seed_start in enumerate(range(seeds.start, seeds.stop, args.batch_groups)):
+                seed_count = min(args.batch_groups, seeds.stop-seed_start)
+                batch = {}
+                # Alternate batches; both roles always use the same seed range and batch size.
                 order = ("candidate", "baseline") if index % 2 == 0 else ("baseline", "candidate")
                 for role in order:
-                    random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
-                    directory = output/f"seed-{seed}"/role
-                    rankings = list(OneVsThree(disable_progress_bar=True, log_dir=str(directory)).py_vs_py(
-                        engines[role], engines["opponent"], (seed, SEED_KEY), 1))
-                    group[role] = read_results(directory, seed, role, Grp)
-                    counts = Counter(match["rank"] for match in group[role])
-                    if rankings != [counts[rank] for rank in range(1, 5)]:
-                        raise ValueError("Arena rankings disagree with logged outcomes")
-                    print(f"seed {seed}: {role} four seats complete", flush=True)
-                # Run the identical-model control before publishing this group.
-                result = paired_report([group], args.split, identities, args.match_mode)
-                groups.append(group)
-                sink.write(json.dumps(group)+"\n")
+                    random.seed(seed_start); np.random.seed(seed_start); torch.manual_seed(seed_start)
+                    directory = output/f"batch-{seed_start}"/role
+                    rankings = OneVsThree(disable_progress_bar=True, log_dir=str(directory)).py_vs_py(
+                        engines[role], engines["opponent"], (seed_start, SEED_KEY), seed_count)
+                    batch[role] = read_batch_results(directory, seed_start, seed_count, role, Grp, rankings)
+                    for matches in batch[role].values():
+                        for match in matches:
+                            match["log"] = (directory/match["log"]).relative_to(output).as_posix()
+                    print(f"seeds {seed_start}..{seed_start+seed_count-1}: {role} {seed_count*4} seats complete", flush=True)
+                complete_groups = [dict(seed=seed, key=SEED_KEY, candidate=batch["candidate"][seed], baseline=batch["baseline"][seed])
+                                   for seed in range(seed_start, seed_start+seed_count)]
+                # Validate every pair before publishing the batch. Keep seeds as the statistical unit.
+                paired_report(complete_groups, args.split, identities, args.match_mode)
+                for group in complete_groups:
+                    sink.write(json.dumps(group)+"\n")
                 sink.flush()
+                groups.extend(complete_groups)
                 manifest.update(completed_groups=len(groups), elapsed_seconds=time.monotonic()-started)
                 write_json(output/"manifest.json", manifest)
-                print(f"completed paired seed group {len(groups)}/{args.groups}", flush=True)
+                print(f"completed paired seed groups {len(groups)}/{args.groups}", flush=True)
         result = paired_report(groups, args.split, identities, args.match_mode)
         write_json(output/"report.json", result)
         (output/"report.md").write_text(markdown_report(result), encoding="utf-8")
