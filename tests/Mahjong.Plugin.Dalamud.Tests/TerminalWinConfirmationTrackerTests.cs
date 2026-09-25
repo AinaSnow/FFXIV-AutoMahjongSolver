@@ -54,6 +54,33 @@ public sealed class TerminalWinConfirmationTrackerTests
             nextTurn, T0.AddSeconds(1), out _));
     }
 
+    [Theory]
+    [InlineData(ActionKind.Ron, ActionFlags.Ron)]
+    [InlineData(ActionKind.Tsumo, ActionFlags.Tsumo)]
+    public void Identical_tiles_in_a_new_hand_cannot_confirm_old_win(ActionKind kind, ActionFlags flag)
+    {
+        var tracker = new TerminalWinConfirmationTracker(TimeSpan.FromSeconds(5));
+        var win = Snapshot(flag | ActionFlags.Pass) with { HandId = 1 };
+        tracker.Begin(kind, win, T0);
+        tracker.Observe(win with { Legal = LegalActions.None }, T0.AddMilliseconds(10));
+        Assert.False(tracker.TryGetConfirmation(win with { HandId = 2 }, T0.AddSeconds(1), out _));
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void Opponent_progress_without_wall_change_cancels_win_confirmation(bool meldChanged)
+    {
+        var tracker = new TerminalWinConfirmationTracker(TimeSpan.FromSeconds(5));
+        var win = Snapshot(ActionFlags.Ron | ActionFlags.Pass);
+        tracker.Begin(ActionKind.Ron, win, T0);
+        tracker.Observe(win with { Legal = LegalActions.None }, T0.AddMilliseconds(10));
+        var seats = win.Seats.ToArray();
+        seats[2] = meldChanged
+            ? seats[2] with { Melds = [Meld.Pon(Tile.FromId(0), Tile.FromId(0), 3)] }
+            : seats[2] with { DiscardCount = 1, Discards = [Tile.FromId(0)], DiscardIsRed = [false] };
+        Assert.False(tracker.TryGetConfirmation(win with { Seats = seats }, T0.AddSeconds(1), out _));
+    }
+
     [Fact]
     public void Confirmation_expires()
     {

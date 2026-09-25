@@ -1,4 +1,5 @@
 using Mahjong.Plugin.Dalamud.GameState;
+using Mahjong.Plugin.Dalamud.Actions;
 using Mahjong.Policy.Abstractions;
 using Mahjong.Core;
 using System.Buffers.Binary;
@@ -276,6 +277,106 @@ public sealed class MortalLimitedTrialTests
         Assert.Equal(0, h.Bridge.DecisionTimeouts);
         Assert.Single(h.Clients);
         Assert.False(h.Bridge.HasExpiredOpponentPrompt(snapshot));
+    }
+
+    [Theory]
+    [InlineData(0, false)] [InlineData(0, true)]
+    [InlineData(1, false)] [InlineData(1, true)]
+    [InlineData(2, false)] [InlineData(2, true)]
+    public void Transient_ron_then_real_call_consumes_queued_response_without_restarting(int sample, bool accept)
+    {
+        // Anonymous hand shapes from the three short Ron -> Pon/Chi transitions.
+        int[][] hands =
+        [
+            [0, 0, 1, 5, 6, 12, 12, 20, 21, 22, 23, 32, 33],
+            [1, 7, 7, 9, 10, 12, 13, 13, 21, 24, 30, 30, 32],
+            [0, 0, 2, 4, 5, 9, 11, 14, 18, 19, 20, 23, 25],
+        ];
+        int[] claimed = [0, 30, 19];
+        using var h = new Harness();
+        var opening = Opening();
+        for (int i = 0; i < 13; i++)
+            BinaryPrimitives.WriteInt32LittleEndian(opening.AsSpan(48 + i * 4), hands[sample][i]);
+        h.Send(0x0133, opening);
+        var discard = Discard(0x110);
+        BinaryPrimitives.WriteInt32LittleEndian(discard, sample == 2 ? 3 : 2);
+        BinaryPrimitives.WriteUInt16LittleEndian(discard.AsSpan(12), (ushort)(claimed[sample] * 4));
+        h.Send(0x0214, discard);
+        var pending = h.Snapshot with { AddonStateCode = 15,
+            Legal = new LegalActions(ActionFlags.Ron | ActionFlags.Pass, [], [], [], []) };
+        var observed = pending with { Legal = pending.Legal with {
+            Flags = (sample == 2 ? ActionFlags.Chi : ActionFlags.Pon) | ActionFlags.Pass } };
+        var current = AutoPlayLoop.CarryForwardTerminalWin(pending, observed);
+        Assert.Same(observed, current);
+        Assert.Equal(TimeSpan.FromSeconds(5), AutoPlayLoop.MortalDecisionTimeout(current.Legal.Flags));
+        string[] calls =
+        [
+            """{"type":"pon","actor":0,"target":2,"pai":"1m","consumed":["1m","1m"]}""",
+            """{"type":"pon","actor":0,"target":2,"pai":"N","consumed":["N","N"]}""",
+            """{"type":"chi","actor":0,"target":3,"pai":"2s","consumed":["1s","3s"]}""",
+        ];
+        h.Client.Emit(accept ? calls[sample] : """{"type":"none"}""");
+        // Hint refresh can see the 12-16 ms Ron frame before Auto-play runs.
+        h.Bridge.RefreshRecommendation(pending);
+        Assert.False(h.Bridge.TryGetRecommendation(pending, out _, out _));
+        Assert.False(h.Bridge.TryChoose(pending, out _));
+        Assert.True(h.Bridge.TryChoose(current, out var choice));
+        Assert.Equal(accept ? (sample == 2 ? ActionKind.Chi : ActionKind.Pon) : ActionKind.Pass, choice.Kind);
+        Assert.True(AutoPlayLoop.TryResolveCallOption(current, observed, choice.Kind, out int option));
+        Assert.Equal(accept ? 0 : 1, option);
+        Assert.Equal(1, h.Bridge.DecisionsMapped);
+        Assert.Equal(0, h.Bridge.DecisionTimeouts);
+        Assert.Single(h.Clients);
+        Assert.Empty(h.Client.Replayed);
+    }
+
+    [Fact]
+    public void Stale_pass_does_not_hide_a_queued_real_win_response()
+    {
+        using var h = new Harness(); h.Open();
+        var discard = Discard(0x110);
+        BinaryPrimitives.WriteInt32LittleEndian(discard, 3);
+        h.Send(0x0214, discard);
+        var win = h.Snapshot with { AddonStateCode = 15,
+            Legal = new LegalActions(ActionFlags.Ron | ActionFlags.Pass, [], [], [], []) };
+        h.Client.Emit("""{"type":"none"}""");
+        h.Client.Emit("""{"type":"hora","actor":0,"target":3}""");
+        Assert.True(h.Bridge.TryChoose(win, out var choice));
+        Assert.Equal(ActionKind.Ron, choice.Kind);
+        var ordinary = win with { Legal = new LegalActions(ActionFlags.Chi | ActionFlags.Pass, [], [], [], []) };
+        Assert.False(h.Bridge.TryChoose(ordinary, out _));
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void Deferred_win_conflict_cannot_leak_into_next_event_or_restarted_session(bool restart)
+    {
+        using var h = new Harness(); h.Open();
+        var discard = Discard(0x110);
+        BinaryPrimitives.WriteInt32LittleEndian(discard, 3);
+        h.Send(0x0214, discard);
+        var win = h.Snapshot with { AddonStateCode = 15,
+            Legal = new LegalActions(ActionFlags.Ron | ActionFlags.Pass, [], [], [], []) };
+        h.Client.Emit("""{"type":"none"}""");
+        Assert.False(h.Bridge.TryChoose(win, out _));
+        if (restart)
+        {
+            h.Bridge.RecoverUnresponsiveDecision("regression restart");
+            h.Bridge.Update();
+        }
+        else
+        {
+            var draw = Draw(); BinaryPrimitives.WriteInt32LittleEndian(draw, 2);
+            h.Send(0x02BB, draw);
+        }
+        h.Send(0x0214, discard);
+        var prompt = h.Snapshot with { AddonStateCode = 15,
+            Legal = new LegalActions(ActionFlags.Chi | ActionFlags.Pass, [], [], [], []) };
+        Assert.False(h.Bridge.TryChoose(prompt, out _));
+        h.Client.Emit("""{"type":"none"}""");
+        Assert.True(h.Bridge.TryChoose(prompt, out var choice));
+        Assert.Equal(ActionKind.Pass, choice.Kind);
+        Assert.Equal(1, h.Bridge.DecisionsMapped);
     }
 
     [Fact]

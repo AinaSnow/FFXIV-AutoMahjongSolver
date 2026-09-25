@@ -132,8 +132,15 @@ public sealed class AutoPlayLoop : IDisposable
         }
 
         terminalWinConfirmation.Observe(snapshot, clock.UtcNow);
-        if ((snapshot.Legal.Flags & (ActionFlags.Ron | ActionFlags.Tsumo)) == 0)
+        // The UI briefly exposes stale Ron labels before ordinary chi/pon rows.
+        // Ron must remain an observed option; only the known self-draw transition
+        // may retain a win while state 6 returns to its discard list.
+        if (!snapshot.Legal.Can(ActionFlags.Tsumo))
+        {
+            if (!snapshot.Legal.Can(ActionFlags.Discard))
+                pendingTerminalWin = null;
             return;
+        }
 
         pendingTerminalWin = snapshot;
         pendingTerminalWinObservedAt = clock.UtcNow;
@@ -290,6 +297,9 @@ public sealed class AutoPlayLoop : IDisposable
             pendingTerminalWin = null;
             return null;
         }
+        // Addon reads have no hand ID; compare the same enriched context used by
+        // SnapshotChanged and the delayed dispatch guards.
+        current = plugin.Aggregator.Enrich(current);
         if (pendingTerminalWin is not { } pending)
             return current;
         if (now - pendingTerminalWinObservedAt > TerminalWinLatchWindow
@@ -315,12 +325,6 @@ public sealed class AutoPlayLoop : IDisposable
             && current.Legal.Can(ActionFlags.Discard))
         {
             carry |= ActionFlags.Tsumo;
-        }
-        if (pending.Legal.Can(ActionFlags.Ron)
-            && current.Legal.Can(ActionFlags.Pass)
-            && !current.Legal.Can(ActionFlags.Discard))
-        {
-            carry |= ActionFlags.Ron;
         }
         if (carry == ActionFlags.None)
             return current;
@@ -1196,9 +1200,9 @@ public sealed class AutoPlayLoop : IDisposable
             ActionKind.AnKan or ActionKind.MinKan or ActionKind.ShouMinKan;
 
         if (shouldAccept)
-            DispatchAccept(snap, choice, legal, acceptRiichiPopup, riichiProbeTile, riichiReason!);
+            DispatchAccept(snap, choice, acceptRiichiPopup, riichiProbeTile, riichiReason!);
         else if (!snap.OurRiichi || legal.Can(ActionFlags.Pass))
-            DispatchPass(snap, choice, legal, riichiReason);
+            DispatchPass(snap, choice, riichiReason);
         else
             LastActionDescription = "riichi: waiting for game auto-discard";
 
@@ -1376,14 +1380,13 @@ public sealed class AutoPlayLoop : IDisposable
         }
     }
 
-    private void DispatchAccept(StateSnapshot snap, ActionChoice choice, LegalActions legal, bool acceptRiichiPopup, Tile? riichiProbeTile, string riichiReason)
+    private void DispatchAccept(StateSnapshot snap, ActionChoice choice, bool acceptRiichiPopup, Tile? riichiProbeTile, string riichiReason)
     {
         // Route using both action and popup state: current self-draw uses the observed opcode-11
         // path, while riichi and other list prompts retain SelectItem.
         var loggedKind = acceptRiichiPopup ? ActionKind.Riichi : choice.Kind;
-        int acceptIndex = acceptRiichiPopup
-            ? ComputeAcceptIndex(ActionKind.Riichi, legal, choice.Call)
-            : ComputeAcceptIndex(choice.Kind, legal, choice.Call);
+        if (!TryRefreshCallDispatch(snap, loggedKind, out snap, out int acceptIndex))
+            return;
         var now = clock.UtcNow;
         bool isTerminalWin = loggedKind is ActionKind.Ron or ActionKind.Tsumo;
         bool isTerminalConfirmation = isTerminalWin
@@ -1392,7 +1395,7 @@ public sealed class AutoPlayLoop : IDisposable
         if (isTerminalWin && !isTerminalConfirmation)
             terminalWinConfirmation.Begin(loggedKind, snap, now);
 
-        var result2 = plugin.Dispatcher.DispatchCallOption(acceptIndex, loggedKind);
+        var result2 = plugin.Dispatcher.DispatchCallOption(acceptIndex, loggedKind, snap);
         string label = acceptRiichiPopup ? "riichi-confirm" : choice.Kind.ToString().ToLowerInvariant();
         LastActionDescription = $"auto-{label}[opt={acceptIndex}] → {result2}";
         plugin.GameLogger.RecordAction(
@@ -1443,16 +1446,75 @@ public sealed class AutoPlayLoop : IDisposable
         }
     }
 
-    private void DispatchPass(StateSnapshot snap, ActionChoice choice, LegalActions legal, string? reasonOverride = null)
+    private void DispatchPass(StateSnapshot snap, ActionChoice choice, string? reasonOverride = null)
     {
-        // Pass index = count of accept buttons (multi-chi adds one slot per chi candidate).
-        int passIndex = ComputePassIndex(legal);
+        if (!TryRefreshCallDispatch(snap, ActionKind.Pass, out snap, out int passIndex))
+            return;
         var result = plugin.Dispatcher.DispatchCallOption(passIndex, ActionKind.Pass, snap,
             cancelExpiredPrompt: plugin.MortalBridge.HasExpiredOpponentPrompt(snap));
         LastActionDescription = $"auto-pass[opt={passIndex}] → {result}";
         string reasoning = string.IsNullOrEmpty(reasonOverride) ? choice.Reasoning : reasonOverride;
         plugin.GameLogger.RecordAction(ActionKind.Pass, null, passIndex, result.ToString(), reasoning);
         EmitDispatchFinding("pass", result, option: passIndex, snap: snap);
+    }
+
+    private bool TryRefreshCallDispatch(
+        StateSnapshot decision, ActionKind kind, out StateSnapshot current, out int option)
+    {
+        var observed = plugin.AddonReader.TryBuildSnapshot();
+        current = observed is null ? decision : plugin.Aggregator.Enrich(observed);
+        option = -1;
+        if (observed is not null
+            && plugin.Dispatcher.IsCallPromptVisible()
+            && TryResolveCallOption(decision, current, kind, out option))
+            return true;
+
+        LastActionDescription = $"{kind} aborted: call prompt changed before input";
+        log.Info($"[AutoPlayLoop] {LastActionDescription}");
+        fsm.ClearContext();
+        return false;
+    }
+
+    internal static bool TryResolveCallOption(
+        StateSnapshot decision, StateSnapshot observed, ActionKind kind, out int option)
+    {
+        option = -1;
+        if (!TerminalWinConfirmationTracker.HasSameHandContext(decision, observed))
+            return false;
+
+        ActionFlags required = kind switch
+        {
+            ActionKind.Pass => ActionFlags.Pass,
+            ActionKind.Ron => ActionFlags.Ron,
+            ActionKind.Tsumo => ActionFlags.Tsumo,
+            ActionKind.Riichi => ActionFlags.Riichi,
+            ActionKind.Pon => ActionFlags.Pon,
+            ActionKind.Chi => ActionFlags.Chi,
+            ActionKind.AnKan => ActionFlags.AnKan,
+            ActionKind.MinKan => ActionFlags.MinKan,
+            ActionKind.ShouMinKan => ActionFlags.ShouMinKan,
+            _ => ActionFlags.None,
+        };
+        if (required == ActionFlags.None)
+            return false;
+
+        // Preserve the self-draw transition only for accepting that verified win.
+        // It must never add phantom buttons to an ordinary pass/chi/pon row.
+        if (kind == ActionKind.Tsumo && decision.Legal.Can(ActionFlags.Tsumo)
+            && observed.AddonStateCode == 6 && observed.Legal.Flags == ActionFlags.Discard)
+        {
+            option = 0;
+            return true;
+        }
+        if (!observed.Legal.Can(required)
+            || (kind == ActionKind.Pass
+                && (observed.Legal.Flags & (ActionFlags.Ron | ActionFlags.Tsumo)) != 0))
+            return false;
+
+        option = kind == ActionKind.Pass
+            ? ComputePassIndex(observed.Legal)
+            : ComputeAcceptIndex(kind, observed.Legal, null);
+        return true;
     }
 
     /// <summary>Call-row button order Pon, Chi, AnKan, MinKan, ShouMinKan, Ron, Riichi, Tsumo, Pass; Chi is one slot regardless of ChiCandidates.Count (variant picked in state-25 sub-popup).</summary>

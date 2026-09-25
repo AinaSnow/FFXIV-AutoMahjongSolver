@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Dalamud.Plugin.Services;
 using Mahjong.Engine;
+using Mahjong.Plugin.Dalamud.Actions;
 using Mahjong.Plugin.Game;
 using Mahjong.Plugin.Dalamud.GameState;
 using Mahjong.Plugin.Game.Mjai;
@@ -21,6 +22,7 @@ public sealed class LiveMortalBridge : IDisposable
     private readonly IPluginLog log;
     private readonly Action<CapturedMahjongPacket>? packetObserver;
     private readonly ConcurrentQueue<MortalReaction> reactions = new();
+    private (MortalReaction Reaction, StateSnapshot Snapshot)? deferredWinReaction;
     private readonly object reachLock = new();
     private readonly object recommendationLock = new();
     private readonly MjaiEventJournal journal = new();
@@ -183,10 +185,19 @@ public sealed class LiveMortalBridge : IDisposable
         if (corrected)
             RecordCandidateCorrection(snapshot, decisionSnapshot);
 
-        while (reactions.TryDequeue(out var reaction))
+        foreach (var reaction in TakeReactions(snapshot))
         {
+            // A single UI frame may show a stale win label. Keep the response for
+            // this exact hand/event until the row settles, without overriding a
+            // real win or losing the model's only answer to a chi/pon prompt.
+            if (ConflictsWithWinPrompt(reaction, snapshot.Legal))
+            {
+                deferredWinReaction = (reaction, snapshot);
+                continue;
+            }
             if (TryMapDecision(reaction, decisionSnapshot, out choice, out bool? isRed))
             {
+                deferredWinReaction = null;
                 DecisionsMapped++;
                 choice = choice with { DiscardIsRed = isRed };
                 PublishRecommendation(snapshot, choice, isRed);
@@ -200,9 +211,25 @@ public sealed class LiveMortalBridge : IDisposable
             log.Debug($"[Mortal] Ignored stale or illegal reaction type={reaction.Type} pai={reaction.Pai ?? "?"} legal={snapshot.Legal.Flags}.");
         }
 
-        choice = ActionChoice.Pass("waiting for Mortal");
+        choice = ActionChoice.Pass(deferredWinReaction is null
+            ? "waiting for Mortal" : "waiting for the current win prompt to settle");
         return false;
     }
+
+    private IEnumerable<MortalReaction> TakeReactions(StateSnapshot snapshot)
+    {
+        var deferred = deferredWinReaction;
+        deferredWinReaction = null;
+        if (deferred is { } value
+            && TerminalWinConfirmationTracker.HasSameHandContext(value.Snapshot, snapshot))
+            yield return value.Reaction;
+        while (reactions.TryDequeue(out var reaction))
+            yield return reaction;
+    }
+
+    private static bool ConflictsWithWinPrompt(MortalReaction reaction, LegalActions legal) =>
+        legal.Can(ActionFlags.Tsumo) && (reaction.Type != "hora" || reaction.Target != 0)
+        || legal.Can(ActionFlags.Ron) && reaction.Type != "hora";
 
     /// <summary>Consumes a pending Mortal reaction for hint mode without dispatching it.</summary>
     public void RefreshRecommendation(StateSnapshot snapshot)
@@ -682,6 +709,7 @@ public sealed class LiveMortalBridge : IDisposable
 
     private void Stop(string status, bool preserveMjaiState = false)
     {
+        deferredWinReaction = null;
         if (client is not null) log.Information($"[Mortal] Stopped session: {status}; preserve_history={preserveMjaiState}.");
         capture.CaptureEnabled = preserveMjaiState;
         var old = client;
@@ -740,6 +768,7 @@ public sealed class LiveMortalBridge : IDisposable
 
     private void QuarantineCurrentHand(string status)
     {
+        deferredWinReaction = null;
         var old = client;
         client = null;
         if (old is not null)
@@ -963,6 +992,8 @@ public sealed class LiveMortalBridge : IDisposable
 
     private void ObserveNetworkEvent(IMjaiEvent evt)
     {
+        // Deferred UI conflicts cannot survive any new authoritative event.
+        deferredWinReaction = null;
         switch (evt)
         {
             case MjaiDahai discard:
@@ -1217,15 +1248,9 @@ public sealed class LiveMortalBridge : IDisposable
         var legal = snapshot.Legal;
 
         // A delayed or stale discard/pass must never override a visible win prompt.
-        // AutoPlayLoop independently verifies the win with the local rules before
-        // dispatching it; rejecting the conflicting reaction here also keeps hints safe.
-        if (legal.Can(ActionFlags.Tsumo)
-            && (reaction.Type != "hora" || reaction.Target != 0))
-        {
-            choice = ActionChoice.Pass(reason);
-            return false;
-        }
-        if (legal.Can(ActionFlags.Ron) && reaction.Type != "hora")
+        // AutoPlayLoop uses the shared policy (rules-scored Tsumo, UI-authorized
+        // Ron); rejecting the conflicting reaction here also keeps hints safe.
+        if (ConflictsWithWinPrompt(reaction, legal))
         {
             choice = ActionChoice.Pass(reason);
             return false;

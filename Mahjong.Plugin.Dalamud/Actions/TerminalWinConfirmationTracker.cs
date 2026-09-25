@@ -86,7 +86,8 @@ internal sealed class TerminalWinConfirmationTracker
     internal static bool HasSameHandContext(
         StateSnapshot left, StateSnapshot right)
     {
-        if (left.WallRemaining != right.WallRemaining
+        if (left.HandId != right.HandId
+            || left.WallRemaining != right.WallRemaining
             || left.Hand.Count != right.Hand.Count
             || left.OurMelds.Count != right.OurMelds.Count)
         {
@@ -116,6 +117,29 @@ internal sealed class TerminalWinConfirmationTracker
             for (int j = 0; j < leftMeld.Tiles.Length; j++)
                 if (leftMeld.Tiles[j].Id != rightMeld.Tiles[j].Id)
                     return false;
+        }
+        // A call can advance the opponent's turn without consuming a wall tile.
+        // Equal closed hands and wall counts alone cannot identify a win window.
+        if (left.Seats.Count != right.Seats.Count)
+            return false;
+        for (int seat = 0; seat < left.Seats.Count; seat++)
+        {
+            var before = left.Seats[seat];
+            var after = right.Seats[seat];
+            if (before.DiscardCount != after.DiscardCount
+                || !before.Discards.SequenceEqual(after.Discards)
+                || !before.DiscardIsRed.SequenceEqual(after.DiscardIsRed)
+                || before.Melds.Count != after.Melds.Count)
+                return false;
+            for (int i = 0; i < before.Melds.Count; i++)
+            {
+                var oldMeld = before.Melds[i];
+                var newMeld = after.Melds[i];
+                if (oldMeld.Kind != newMeld.Kind
+                    || oldMeld.ClaimedFromSeat != newMeld.ClaimedFromSeat
+                    || !oldMeld.Tiles.SequenceEqual(newMeld.Tiles))
+                    return false;
+            }
         }
         return true;
     }
