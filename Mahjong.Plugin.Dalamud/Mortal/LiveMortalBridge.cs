@@ -1180,10 +1180,14 @@ public sealed class LiveMortalBridge : IDisposable
 
     /// <summary>A confirmed following draw closes an old call window. Unknown history is not evidence of expiry.</summary>
     internal bool HasExpiredOpponentPrompt(StateSnapshot snapshot) =>
+        HasExpiredReactionWindow(snapshot) && IsCancellableOpponentPrompt(snapshot);
+
+    internal bool HasExpiredReactionWindow(StateSnapshot snapshot) =>
         Enabled && !CurrentHandQuarantined && snapshot.PublicStateConsistent
         && (!capture.LimitedTrialActive || trialState.Merge(snapshot).PublicStateConsistent)
         && lastNetworkDrawActor is > 0
-        && IsCancellableOpponentPrompt(snapshot);
+        && snapshot.Hand.Count > 0 && snapshot.Hand.Count % 3 == 1
+        && IsOpponentResponseWindow(snapshot.Legal.Flags);
 
     internal static bool IsCancellableOpponentPrompt(StateSnapshot snapshot)
     {

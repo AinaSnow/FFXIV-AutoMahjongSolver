@@ -97,7 +97,9 @@ internal sealed class BaseEmjVariant : IEmjVariant
         var memory = new ReadOnlySpan<byte>((void*)unit, AddonMemorySize);
         var atkValues = SnapshotAtkValues(unit->AtkValues, unit->AtkValuesCount);
         bool modalVisible = IsCallModalVisible(unit);
-        var listLabels = modalVisible ? ReadVisibleListItemLabels(unit) : null;
+        var listLabels = modalVisible
+            ? CallPromptReader.Read(unit, profile.NodeIds.CallModalHost, profile.NodeIds.CallModalShell)
+                .Where(o => o.Enabled).Select(o => o.Label).ToArray() : null;
         return BuildSnapshotFromMemory(
             memory, atkValues, ctx,
             callModalVisible: modalVisible,
@@ -363,7 +365,7 @@ internal sealed class BaseEmjVariant : IEmjVariant
             LegalActions scanned;
             // Live child rows take precedence in every call state. Parent
             // AtkValues can retain a previous chi/pon label after its window closes.
-            if (listWidgetLabels is { Count: > 0 })
+            if (listWidgetLabels is not null)
             {
                 scanned = BuildCallPromptLegalFromListItems(hand, atkValues, listWidgetLabels);
             }
@@ -703,68 +705,6 @@ internal sealed class BaseEmjVariant : IEmjVariant
             AppendKanCandidate(handList, counts, kans);
 
         return new LegalActions(flags, [], pons, chis, kans);
-    }
-
-    private unsafe List<string> ReadVisibleListItemLabels(AtkUnitBase* unit)
-    {
-        var labels = new List<string>();
-        if (unit == null)
-            return labels;
-
-        var host = unit->GetNodeById(profile.NodeIds.CallModalHost);
-        if (host == null || (int)host->Type < 1000)
-            return labels;
-        var hostComp = ((AtkComponentNode*)host)->Component;
-        if (hostComp == null)
-            return labels;
-        var shell = hostComp->GetNodeById(profile.NodeIds.CallModalShell);
-        if (shell == null || (int)shell->Type < 1000)
-            return labels;
-        var shellComp = ((AtkComponentNode*)shell)->Component;
-        if (shellComp == null)
-            return labels;
-
-        var ulm = shellComp->UldManager;
-        if (ulm.NodeList == null || ulm.NodeListCount == 0)
-            return labels;
-
-        var items = new List<(float y, string text)>();
-        for (int i = 0; i < ulm.NodeListCount; i++)
-        {
-            var node = ulm.NodeList[i];
-            if (node == null || (int)node->Type < 1000 || !node->NodeFlags.HasFlag(NodeFlags.Visible))
-                continue;
-            var itemComp = ((AtkComponentNode*)node)->Component;
-            if (itemComp == null)
-                continue;
-            string text = FindFirstTextInComponent(itemComp) ?? string.Empty;
-            items.Add((node->Y, text));
-        }
-        // Top-to-bottom order matches FireCallback option index (opt 0 = top button).
-        items.Sort((a, b) => a.y.CompareTo(b.y));
-        foreach (var (_, t) in items)
-            labels.Add(t);
-        return labels;
-    }
-
-    private static unsafe string? FindFirstTextInComponent(AtkComponentBase* comp)
-    {
-        if (comp == null)
-            return null;
-        var ulm = comp->UldManager;
-        if (ulm.NodeList == null || ulm.NodeListCount == 0)
-            return null;
-        for (int i = 0; i < ulm.NodeListCount; i++)
-        {
-            var node = ulm.NodeList[i];
-            if (node == null || node->Type != NodeType.Text)
-                continue;
-            var textNode = (AtkTextNode*)node;
-            var s = textNode->NodeText.ToString();
-            if (!string.IsNullOrWhiteSpace(s))
-                return s;
-        }
-        return null;
     }
 
     private void MaybeLogCallPromptTransition(

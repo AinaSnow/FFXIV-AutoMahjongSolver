@@ -289,14 +289,21 @@ public sealed class InputDispatcher
         return IsListWidgetPopupActive(unit);
     }
 
+    internal IReadOnlyList<CallPromptOption> LastCallOptions { get; private set; } = [];
+
+    /// <summary>Resolve the requested label against current logical list indexes.</summary>
+    internal unsafe bool TryResolveLiveCallOption(ActionKind action, out int option)
+    {
+        LastCallOptions = addon.TryGet(out var unit, out _)
+            ? CallPromptReader.Read(unit, CallModalHostNodeId, CallModalShellNodeId) : [];
+        return CallPromptReader.TryResolve(LastCallOptions, ActionLabels, action, out option);
+    }
+
     /// <summary>
     /// Select option <paramref name="option"/> on the currently-active call prompt.
-    /// Option numbers are button-order (leftmost = 0):
-    ///   pon/pass prompt:    0 = Pon, 1 = Pass
-    ///   chi/pass prompt:    0 = Chi, 1 = Pass
-    ///   chi multi-sequence: 0..N = chi variants, N+1 = Pass
-    ///   riichi (state 6):   0 = Riichi, 1 = Pass — same payload, different state code
-    /// "Pass" is always the RIGHTMOST option.
+    /// Automation resolves logical indexes from current visible list rows and
+    /// verifies the requested label again immediately before dispatch. There is
+    /// no fixed action order; debug callers may explicitly provide an index.
     ///
     /// <para>Return value note: FireCallback returns <c>false</c> for the call-prompt
     /// opcode (11) even on manual in-game clicks that the game visibly accepts —
@@ -342,6 +349,13 @@ public sealed class InputDispatcher
             cancel[0].SetInt(8);
             unit->FireCallback(1, cancel, true);
             return DispatchResult.Ok;
+        }
+
+        // Re-read immediately before input. A changed row must not turn Ron into Chi.
+        if (action is { } requested && (!TryResolveLiveCallOption(requested, out int liveOption) || option != liveOption))
+        {
+            LastDispatchPath = "call:option-changed-or-unobserved";
+            return DispatchResult.HookFailed;
         }
 
         // Both classic popups (pon/chi/kan/ron + pass button row) and

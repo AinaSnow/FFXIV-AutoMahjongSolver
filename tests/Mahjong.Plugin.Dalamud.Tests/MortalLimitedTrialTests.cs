@@ -656,6 +656,25 @@ public sealed class MortalLimitedTrialTests
         return bytes;
     }
 
+    [Fact]
+    public void Following_opponent_draw_invalidates_retained_ron_without_fabricating_a_pass_offer()
+    {
+        using var h = new Harness(); h.Open();
+        var discard = Discard(0x110); BinaryPrimitives.WriteInt32LittleEndian(discard, 3);
+        h.Send(0x0214, discard);
+        StateSnapshot Prompt() => h.Snapshot with { AddonStateCode = 15,
+            Legal = new LegalActions(ActionFlags.Ron | ActionFlags.Chi | ActionFlags.Pass, [], [], [], []) };
+        Assert.False(h.Bridge.HasExpiredReactionWindow(Prompt()));
+        var draw = Draw(); BinaryPrimitives.WriteInt32LittleEndian(draw, 1); h.Send(0x02BB, draw);
+        Assert.True(h.Bridge.HasExpiredReactionWindow(Prompt()));
+        Assert.False(h.Bridge.HasExpiredOpponentPrompt(Prompt())); // Ron isn't cancellable.
+        Assert.False(h.Bridge.HasExpiredReactionWindow(Prompt() with { PublicStateConsistent = false }));
+        h.Send(0x0214, discard);
+        Assert.False(h.Bridge.HasExpiredReactionWindow(Prompt()));
+        h.Send(0x018D, new byte[264]);
+        Assert.False(h.Bridge.HasExpiredReactionWindow(Prompt()));
+    }
+
     private static List<CapturedMahjongPacket> Drain(MahjongNetworkCapture capture)
     {
         List<CapturedMahjongPacket> result = [];

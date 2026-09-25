@@ -56,6 +56,7 @@ public sealed class AutoPlayLoop : IDisposable
     private bool hasMortalWait;
     private DateTime? terminalWinDispatchedAt;
     private StateSnapshot? pendingTerminalWin;
+    private int? dismissedExpiredPromptKey;
     private DateTime pendingTerminalWinObservedAt;
     private MeldCandidate? preferredChiCall;
 
@@ -121,6 +122,7 @@ public sealed class AutoPlayLoop : IDisposable
         fsm.CompleteDispatch(); fsm.ClearContext(); fsm.ClearRiichiConfirm();
         plugin.Aggregator.CancelUnconfirmedRiichiDeclaration();
         pendingTerminalWin = null; terminalWinConfirmation.Reset(); hasMortalWait = false;
+        dismissedExpiredPromptKey = null;
     }
 
     private void OnSnapshotChanged(StateSnapshot snapshot)
@@ -191,6 +193,18 @@ public sealed class AutoPlayLoop : IDisposable
         // Runs before the snapshot-null guard so the windowExpired path still emits commit=false on transient nulls.
         CheckPendingDispatchOutcome(snap);
 
+        if (snap is not null && plugin.MortalBridge.HasExpiredReactionWindow(snap)
+            && (snap.Legal.Can(ActionFlags.Ron)
+                || dismissedExpiredPromptKey == HashCode.Combine(snap.HandId, ComputeMortalDecisionKey(snap))))
+        {
+            // Server play has moved on. Never repeat a win or a cancellation on retained labels.
+            pendingTerminalWin = null;
+            terminalWinConfirmation.Reset();
+            hasMortalWait = false;
+            CheckStuckStateAndEmit(null);
+            EmitSkipReason("waiting for a new opponent offer or our draw", snap.AddonStateCode, snap.Hand.Count, (int)snap.Legal.Flags);
+            return;
+        }
         CheckStuckStateAndEmit(snap);
 
         if (snap is null)
@@ -394,6 +408,7 @@ public sealed class AutoPlayLoop : IDisposable
             ["label"] = label,
             ["result"] = result.ToString(),
             ["option"] = option,
+            ["call_options"] = option.HasValue ? plugin.Dispatcher.LastCallOptions : null,
             ["tile"] = tile?.ToString(),
             ["slot"] = slot,
             ["state"] = state,
@@ -1093,7 +1108,7 @@ public sealed class AutoPlayLoop : IDisposable
     private void DispatchAnkan(StateSnapshot snap, ActionChoice choice, Tile kanTile)
     {
         // Route AnKan through opcode 11 (call-prompt button-row) — the speculative opcode-12 path was a no-op in the addon.
-        int acceptIndex = ComputeAcceptIndex(ActionKind.AnKan, snap.Legal, null);
+        if (!TryRefreshCallDispatch(snap, ActionKind.AnKan, out snap, out int acceptIndex)) return;
         var result = plugin.Dispatcher.DispatchCallOption(acceptIndex, ActionKind.AnKan, snap);
         LastActionDescription = $"auto-ankan {kanTile} opt={acceptIndex} → {result}";
         plugin.GameLogger.RecordAction(ActionKind.AnKan, kanTile, acceptIndex, result.ToString(), choice.Reasoning);
@@ -1131,8 +1146,8 @@ public sealed class AutoPlayLoop : IDisposable
         // Riichi at state-6: click via opcode-11 and latch the policy's chosen tile so the next-tick tsumogiri commits the ukeire-max tile, not slot 13.
         if (choice.Kind == ActionKind.Riichi && snap.Legal.Can(ActionFlags.Riichi))
         {
-            int riichiIdx = ComputeAcceptIndex(ActionKind.Riichi, snap.Legal, null);
-            var rResult = plugin.Dispatcher.DispatchCallOption(riichiIdx);
+            if (!TryRefreshCallDispatch(snap, ActionKind.Riichi, out snap, out int riichiIdx)) return;
+            var rResult = plugin.Dispatcher.DispatchCallOption(riichiIdx, ActionKind.Riichi, snap);
             LastActionDescription = $"auto-riichi[opt={riichiIdx}] (tile={tile}) → {rResult}";
             plugin.GameLogger.RecordAction(ActionKind.Riichi, tile, riichiIdx, rResult.ToString(), choice.Reasoning, targetIsRed);
             EmitDispatchFinding("riichi", rResult, option: riichiIdx, tile: tile, snap: snap);
@@ -1219,6 +1234,11 @@ public sealed class AutoPlayLoop : IDisposable
     private bool TryChoose(StateSnapshot snapshot, out ActionChoice choice)
     {
         snapshot = plugin.Aggregator.Enrich(snapshot);
+        if (snapshot.Legal.Can(ActionFlags.Ron) && plugin.MortalBridge.HasExpiredReactionWindow(snapshot))
+        {
+            choice = ActionChoice.Pass("waiting for a fresh opponent offer");
+            return false;
+        }
         if ((snapshot.Legal.Flags & (ActionFlags.Tsumo | ActionFlags.Ron)) != 0)
         {
             var localChoice = plugin.Aggregator.Choose(snapshot);
@@ -1262,6 +1282,7 @@ public sealed class AutoPlayLoop : IDisposable
             }
             if (plugin.MortalBridge.TryChoose(snapshot, out choice))
             {
+                dismissedExpiredPromptKey = null;
                 hasMortalWait = false;
                 return true;
             }
@@ -1433,6 +1454,8 @@ public sealed class AutoPlayLoop : IDisposable
             return;
         var result = plugin.Dispatcher.DispatchCallOption(passIndex, ActionKind.Pass, snap,
             cancelExpiredPrompt: plugin.MortalBridge.HasExpiredOpponentPrompt(snap));
+        if (result == InputDispatcher.DispatchResult.Ok && plugin.MortalBridge.HasExpiredOpponentPrompt(snap))
+            dismissedExpiredPromptKey = HashCode.Combine(snap.HandId, ComputeMortalDecisionKey(snap));
         LastActionDescription = $"auto-pass[opt={passIndex}] → {result}";
         string reasoning = string.IsNullOrEmpty(reasonOverride) ? choice.Reasoning : reasonOverride;
         plugin.GameLogger.RecordAction(ActionKind.Pass, null, passIndex, result.ToString(), reasoning);
@@ -1447,7 +1470,9 @@ public sealed class AutoPlayLoop : IDisposable
         option = -1;
         if (observed is not null
             && plugin.Dispatcher.IsCallPromptVisible()
-            && TryResolveCallOption(decision, current, kind, out option))
+            && !(kind == ActionKind.Ron && plugin.MortalBridge.HasExpiredReactionWindow(current))
+            && TryResolveCallOption(decision, current, kind, out option)
+            && plugin.Dispatcher.TryResolveLiveCallOption(kind, out option))
             return true;
 
         LastActionDescription = $"{kind} aborted: call prompt changed before input";
