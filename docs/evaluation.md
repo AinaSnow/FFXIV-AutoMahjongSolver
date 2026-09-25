@@ -55,3 +55,24 @@ CI 普通测试不更新 golden：缺文件或空样本目录即失败。显式 
 ### 官方规则核对补充（2026-09-24）
 
 官方已明确快速/完整比赛、同分排序及特殊结算的规则文本，见 [规则差距审查](reviews/20260924-official-rules-audit.md)。待验证的是本机当前模式识别和引擎实现差异，不需要重新用实战证明规则存在。已检查本机引擎源码，当前 `--match-mode libriichi-hanchan` 对应标准半庄且可能延长局，末局庄家结束要求达到 30000 分。能力声明统一提供 `scheduled_rounds=2`；请求 `doman-quick` 或 `doman-full` 会在创建输出和启动进程前明确报错。报告逐项列出规则差异，并固定 `doman_promotion_eligible=false`。在引擎结束条件和特殊结算适配前，不能宣称它代表 FF14 快排上分效果。
+
+
+## Mortal 自对局训练数据（2026-09-25）
+
+`tools/evaluation/self_play.py` 使用现有 Mortal 权重驱动完整 libriichi 对局，生成训练候选数据。它不更新权重，不修改在线配置，也不把模拟成绩混入真实游戏统计。运行环境与上文相同；使用已安装依赖的 Python：
+
+```sh
+python "$REPO/tools/evaluation/self_play.py" \
+  --mortal-dir "$MORTAL_DIR" --split train --groups 2 --offset 100 \
+  --output "$REPO/artifacts/selfplay/train-001"
+```
+
+输出目录必须不存在。训练、开发、验收使用隔离种子区间；跨次运行需自行分配未使用的 offset。训练默认 epsilon=0.02、temperature=0.05；开发与验收不启用探索。记录模型实际加载文件的 SHA256、引擎 commit、源文件校验值、种子、设备和规则，便于追溯。
+
+每个种子在四个座位各运行一次。相同模型可能产生完全重复的对局，脚本按牌局事件去重；`generated_matches` 不能当作独立样本量。`raw/` 保留完整模拟日志，`matches.jsonl` 标注重复项，训练只使用 `unique/*.json.gz`。该去重范围是单次运行，合并多批数据仍需按 match_id 去重，并避免训练/验收交叉。
+
+完整原始日志包含模拟器已知的全牌信息。脚本使用 `GameplayLoader(oracle=False, trust_seed=False)` 检查四名玩家视角、不产生不可见特征且动作符合合法掩码；训练时仍须保持非 oracle 配置。不能把完整日志直接拼成玩家输入。最终 manifest 仅在全部对局验证完成后标为 complete；running 状态表示未完成，不应进入训练。
+
+这条入口仅验证牌谱能通过 GameplayLoader。完整 Mortal 训练还需要 GRP 排名预测模型、独立训练配置和奖励设计；它不是一键训练脚本。当前引擎仍是标准半庄，与 FF14 快速东风模式的结束条件不等价，不能用模拟结果宣布 FF14 上分提升。
+
+本机冒烟验证：2 个训练种子，8 个物理输出，去重后 2 场、25 手局、1,615 条玩家决策；包含 3 次加杠、1 次暗杠和 4 次宝牌更新。耗时约 176 秒，只说明该小批次运行成功，不代表大规模吞吐。真实网络同步仍由捕获回放验证。详见 [预训练权重与训练建议](reviews/20260925-pretrained-and-training.md)。
