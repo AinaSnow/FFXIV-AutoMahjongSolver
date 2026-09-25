@@ -26,6 +26,9 @@ public sealed class MahjongPacketMjaiDecoder
     private LastDiscard? lastDiscard;
     private LastDraw? lastDraw;
     private readonly bool[] declaredRiichi = new bool[4];
+    private readonly List<ConfirmedPon> pons = [];
+    private readonly HashSet<byte> kanKinds = [];
+    private int? pendingKanActor;
 
     /// <summary>Raw tile-kind values from the most recently decoded hand-start packet.</summary>
     public IReadOnlyList<int> LastHandStartTileKinds { get; private set; } = [];
@@ -206,6 +209,9 @@ public sealed class MahjongPacketMjaiDecoder
 
         selfSeat = absoluteSelfSeat;
         Array.Clear(declaredRiichi);
+        pons.Clear();
+        kanKinds.Clear();
+        pendingKanActor = null;
         handOpen = true;
         lastDiscard = null;
         lastDraw = null;
@@ -222,6 +228,31 @@ public sealed class MahjongPacketMjaiDecoder
 
         int actor = RelativeSeat(seat, selfSeat.Value);
         uint action = ReadUInt32(payload, 4);
+        if (action == 0x200)
+        {
+            if (pendingKanActor != actor)
+                throw new InvalidDataException("0x200 replacement draw has no matching confirmed kan.");
+            // Independent check: marker @10 + revealed result hands reproduce the
+            // server's normal/ura/red bonus counts. Opponent @8 is NOT a 1m draw.
+            string marker = KnownPhysical(payload, 10);
+            output.Add(new MjaiDora(marker));
+            output.Add(new MjaiTsumo(actor, MjaiTile.Unknown));
+            pendingKanActor = null;
+            lastDraw = new LastDraw(actor, MjaiTile.Unknown, Replacement: true);
+            return;
+        }
+        RequireNoPendingKan(action);
+        if (action == 0x130)
+        {
+            RequireDraw(actor, replacement: false, action);
+            string[] consumed = [KnownPhysical(payload, 12), KnownPhysical(payload, 14),
+                KnownPhysical(payload, 16), KnownPhysical(payload, 18)];
+            BeginOpponentKan(actor, consumed, action);
+            output.Add(new MjaiAnkan(actor, consumed));
+            return;
+        }
+        if (lastDraw is { Replacement: true })
+            throw new InvalidDataException($"0x{action:X} skipped the replacement draw's discard/kan.");
         if (action == 0x100)
         {
             string tile = seat == selfSeat.Value
@@ -233,16 +264,31 @@ public sealed class MahjongPacketMjaiDecoder
             return;
         }
 
-        if (action is not (0x500 or 0x600))
+        if (action is not (0x400 or 0x500 or 0x600))
             throw new InvalidDataException($"Unsupported draw/call action 0x{action:X}; hand history is incomplete.");
-        if (lastDiscard is not { } previous)
-            throw new InvalidDataException("Call has no preceding discard; hand history is incomplete.");
-        output.Add(new MjaiOpenCall(
-            action == 0x500 ? "pon" : "chi",
-            actor,
-            previous.Actor,
-            previous.Tile,
-            [DecodePhysicalTile(ReadUInt16(payload, 12)), DecodePhysicalTile(ReadUInt16(payload, 14))]));
+        if (lastDiscard is not { } previous || previous.Actor == actor)
+            throw new InvalidDataException($"0x{action:X} call has no preceding opponent discard.");
+        string[] used = action == 0x400
+            ? [KnownPhysical(payload, 12), KnownPhysical(payload, 14), KnownPhysical(payload, 16)]
+            : [KnownPhysical(payload, 12), KnownPhysical(payload, 14)];
+        if (action == 0x400)
+        {
+            BeginOpponentKan(actor, [previous.Tile, .. used], action);
+            output.Add(new MjaiDaiminkan(actor, previous.Actor, previous.Tile, used));
+        }
+        else
+        {
+            if (action == 0x500)
+            {
+                string[] full = [previous.Tile, .. used];
+                byte kind = RequireSameKind(full);
+                if (pons.Any(p => p.Actor == actor && p.Kind == kind))
+                    throw new InvalidDataException("Duplicate pon in hand history.");
+                pons.Add(new ConfirmedPon(actor, kind, full));
+            }
+            output.Add(new MjaiOpenCall(action == 0x500 ? "pon" : "chi",
+                actor, previous.Actor, previous.Tile, used));
+        }
         lastDiscard = null;
         lastDraw = null;
     }
@@ -258,10 +304,29 @@ public sealed class MahjongPacketMjaiDecoder
 
         int actor = RelativeSeat(seat, selfSeat.Value);
         uint action = ReadUInt32(payload, 8);
-        // 0xA10 is the captured discard after chi/pon. Kan-related 0x212 has not
-        // yet been verified for tsumogiri; do not silently label it tedashi.
-        if (action is not (0x110 or 0x111 or 0x112 or 0x113 or 0xA10))
+        RequireNoPendingKan(action);
+        if (action is 0x140 or 0x240)
+        {
+            RequireDraw(actor, replacement: action == 0x240, action);
+            // @18 may still contain the preceding kan's tile in a consecutive
+            // kan. Only @16 carries the newly added tile.
+            string added = KnownPhysical(payload, 16);
+            MjaiTile.TryParse(added, out var addedKind, out _);
+            var pon = pons.SingleOrDefault(p => p.Actor == actor && p.Kind == addedKind.Id)
+                ?? throw new InvalidDataException($"0x{action:X} added kan has no matching confirmed pon.");
+            BeginOpponentKan(actor, [.. pon.Tiles, added], action);
+            pons.Remove(pon);
+            output.Add(new MjaiKakan(actor, added, pon.Tiles));
+            return;
+        }
+        // The 0x200 phase uses the same 0x10 discard / 0x02 drawn-tile bits
+        // as the independently observed 0x100 family; require a matching rinshan.
+        if (action is not (0x110 or 0x111 or 0x112 or 0x113 or 0x210 or 0x212 or 0xA10))
             throw new InvalidDataException($"Unsupported discard action 0x{action:X}; hand history is incomplete.");
+        if (action is 0x210 or 0x212)
+            RequireDraw(actor, replacement: true, action);
+        else if (lastDraw is { Replacement: true })
+            throw new InvalidDataException($"0x{action:X} conflicts with the replacement-draw phase.");
         ushort physical = ReadUInt16(payload, 12);
         LastDiscardPhysical = physical;
         LastDiscardAction = action;
@@ -278,7 +343,7 @@ public sealed class MahjongPacketMjaiDecoder
         bool riichi = action is 0x111 or 0x113;
         if (riichi)
             output.Add(new MjaiReach(actor));
-        output.Add(new MjaiDahai(actor, tile, action is 0x112 or 0x113));
+        output.Add(new MjaiDahai(actor, tile, action is 0x112 or 0x113 or 0x212));
         if (riichi)
         {
             output.Add(new MjaiReachAccepted(actor));
@@ -286,6 +351,52 @@ public sealed class MahjongPacketMjaiDecoder
         }
         lastDiscard = new LastDiscard(actor, tile);
         lastDraw = null;
+    }
+
+    private void RequireNoPendingKan(uint action)
+    {
+        if (pendingKanActor is not null)
+            throw new InvalidDataException($"0x{action:X} arrived before the confirmed kan's replacement draw/dora.");
+    }
+
+    private void RequireDraw(int actor, bool replacement, uint action)
+    {
+        if (lastDraw is not { } draw || draw.Actor != actor || draw.Replacement != replacement)
+            throw new InvalidDataException($"0x{action:X} requires the same actor's preceding {(replacement ? "replacement" : "ordinary")} draw.");
+    }
+
+    private void BeginOpponentKan(int actor, string[] tiles, uint action)
+    {
+        if (actor == 0)
+            throw new InvalidDataException($"0x{action:X} self kan/replacement layout is not yet independently observed.");
+        byte kind = RequireSameKind(tiles);
+        if (tiles.Length != 4 || kanKinds.Count >= 4 || !kanKinds.Add(kind))
+            throw new InvalidDataException($"0x{action:X} duplicate or excessive kan.");
+        pendingKanActor = actor;
+        lastDiscard = null;
+        lastDraw = null;
+    }
+
+    private static byte RequireSameKind(string[] tiles)
+    {
+        byte? kind = null;
+        int reds = 0;
+        foreach (string value in tiles)
+        {
+            if (!MjaiTile.TryParse(value, out var tile, out bool red) || kind is { } previous && previous != tile.Id)
+                throw new InvalidDataException("Unknown or mismatched tiles in pon/kan.");
+            kind = tile.Id;
+            if (red) reds++;
+        }
+        if (kind is null || reds > 1)
+            throw new InvalidDataException("Invalid red identity in pon/kan.");
+        return kind.Value;
+    }
+
+    private static string KnownPhysical(ReadOnlySpan<byte> payload, int offset)
+    {
+        string tile = DecodePhysicalTile(ReadUInt16(payload, offset));
+        return tile != MjaiTile.Unknown ? tile : throw new InvalidDataException("Unknown physical tile in call/dora.");
     }
 
     private void StartGame(List<IMjaiEvent> output)
@@ -313,5 +424,6 @@ public sealed class MahjongPacketMjaiDecoder
         BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(offset, sizeof(uint)));
 
     private sealed record LastDiscard(int Actor, string Tile);
-    private sealed record LastDraw(int Actor, string Tile);
+    private sealed record LastDraw(int Actor, string Tile, bool Replacement = false);
+    private sealed record ConfirmedPon(int Actor, byte Kind, string[] Tiles);
 }

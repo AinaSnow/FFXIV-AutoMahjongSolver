@@ -7,9 +7,9 @@ namespace Mahjong.Plugin.Game.Tests;
 public sealed class LiveLaterHandsCaptureTests
 {
     [Theory]
-    [InlineData("20260924-later-hands.json", "EmjL", 72, 118, 57, 57, 9, 4, 483, 18, 2)]
+    [InlineData("20260924-later-hands.json", "EmjL", 72, 118, 57, 57, 0, 4, 495, 18, 2)]
     [InlineData("20260924-full-match.json", "Emj", 0, 129, 62, 62, 0, 5, 524, 7, 8)]
-    [InlineData("20260924-added-kan-match.json", "Emj", 0, 97, 47, 45, 3, 5, 388, 2, 7)]
+    [InlineData("20260924-added-kan-match.json", "Emj", 0, 97, 47, 45, 0, 5, 392, 2, 7)]
     [InlineData("20260924-draw-result-match.json", "Emj", 0, 216, 103, 104, 0, 8, 872, 2, 9)]
     public void Live_capture_matches_self_hands_and_reports_public_history_gaps(
         string fixtureName, string variant, int expectedPrefix, int expectedCompared,
@@ -37,16 +37,8 @@ public sealed class LiveLaterHandsCaptureTests
             byte[] payload = Convert.FromHexString(packet.GetProperty("payload_hex").GetString()!);
             Assert.Equal(spec!.PayloadLength, payload.Length);
             Assert.Equal(spec.MessageId, packet.GetProperty("message_id").GetInt32());
-            if (packet.TryGetProperty("unsupported_action", out var unsupported))
-            {
-                var error = Assert.Throws<InvalidDataException>(() => decoder.Process(spec.MessageId, payload));
-                Assert.Contains(unsupported.GetString()!, error.Message);
-                publicState.Invalidate(error.Message);
-                historyGap = true;
-                Assert.False(publicState.Complete);
-                gaps++;
-                continue;
-            }
+            // Historical unsupported_action annotations describe the original audit.
+            // The raw corpus is unchanged; opponent kan sequences are now decoded.
             var decoded = decoder.Process(spec.MessageId, payload);
             if (selfSeat < 0 && spec.MessageId is not (MahjongPacketMjaiDecoder.HandStartMessageId or MahjongPacketMjaiDecoder.MatchStartMessageId))
             {

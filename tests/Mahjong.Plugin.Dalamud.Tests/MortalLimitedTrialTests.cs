@@ -234,14 +234,14 @@ public sealed class MortalLimitedTrialTests
     }
 
     [Fact]
-    public void Real_layout_switch_trace_preserves_session_except_for_observed_unsupported_kan()
+    public void Real_layout_switch_trace_preserves_session_including_observed_opponent_kan()
     {
         var observation = AddonEmjObservation.Empty;
         using var h = new Harness(() => observation.ProtocolVariant);
         using var data = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory,
             "RegressionFixtures", "20260924-addon-layout-switch.json")));
         int layoutChanges = 0;
-        bool isolatedObservedKan = false;
+        bool decodedObservedKan = false;
         foreach (var row in data.RootElement.GetProperty("events").EnumerateArray())
         {
             if (row.GetProperty("kind").GetString() == "layout")
@@ -263,19 +263,19 @@ public sealed class MortalLimitedTrialTests
                 h.Send(opcode, Convert.FromHexString(row.GetProperty("payload_hex").GetString()!));
                 if (row.GetProperty("sequence").GetInt32() == 200)
                 {
-                    Assert.True(h.Bridge.CurrentHandQuarantined);
-                    Assert.Contains("0x130", h.Bridge.Status); // Captured opponent kan stays unsupported.
-                    isolatedObservedKan = true;
+                    Assert.False(h.Bridge.CurrentHandQuarantined);
+                    Assert.Single(h.Client.Sent.OfType<MjaiAnkan>());
+                    decodedObservedKan = true;
                 }
             }
         }
         Assert.Equal(6, layoutChanges);
-        Assert.True(isolatedObservedKan);
-        Assert.Equal(2, h.Clients.Count); // Exactly one legitimate restart after the observed kan.
+        Assert.True(decodedObservedKan);
+        Assert.Single(h.Clients); // Opponent kan no longer interrupts the model session.
         Assert.Equal(3, h.Clients.SelectMany(c => c.Sent).OfType<MjaiStartKyoku>().Count());
-        Assert.Equal(2, h.Clients.SelectMany(c => c.Sent).OfType<MjaiEndKyoku>().Count());
+        Assert.Equal(3, h.Clients.SelectMany(c => c.Sent).OfType<MjaiEndKyoku>().Count());
         Assert.Equal(259, h.Bridge.PacketsProcessed);
-        Assert.Equal(242, h.Bridge.EventsSent);
+        Assert.Contains(h.Client.Sent, e => e is MjaiDora);
         // An actual addon change still stops the session; a layout alias never did.
         observation = observation with { AddonName = "EmjL" };
         h.Capture.RefreshProfile(); h.Bridge.Update();
@@ -464,6 +464,76 @@ public sealed class MortalLimitedTrialTests
         Assert.Single(h.Client.Sent.OfType<MjaiEndKyoku>());
         Assert.Single(h.Clients);
         Assert.Equal(0, h.Bridge.DecisionTimeouts);
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void Confirmed_added_kan_allows_robbed_kan_win_but_rinshan_closes_that_window(bool rinshan)
+    {
+        using var h = new Harness();
+        var opening = Opening();
+        // Closed sanshoku, pair E, 4s/6s waiting on 5s; owns none of the kan tile.
+        int[] hand = [0, 1, 2, 9, 10, 11, 18, 19, 20, 27, 27, 21, 23];
+        BinaryPrimitives.WriteInt32LittleEndian(opening.AsSpan(28), 31);
+        for (int i = 0; i < hand.Length; i++) BinaryPrimitives.WriteInt32LittleEndian(opening.AsSpan(48 + 4 * i), hand[i]);
+        h.Send(0x0133, opening);
+        var discard = Discard(0x110);
+        BinaryPrimitives.WriteInt32LittleEndian(discard, 2);
+        BinaryPrimitives.WriteUInt16LittleEndian(discard.AsSpan(12), 89);
+        h.Send(0x0214, discard);
+        var pon = new byte[24]; BinaryPrimitives.WriteInt32LittleEndian(pon, 1);
+        BinaryPrimitives.WriteInt32LittleEndian(pon.AsSpan(4), 0x500);
+        BinaryPrimitives.WriteUInt16LittleEndian(pon.AsSpan(12), 88);
+        BinaryPrimitives.WriteUInt16LittleEndian(pon.AsSpan(14), 88);
+        h.Send(0x02BB, pon);
+        var afterPon = Discard(0xA10); BinaryPrimitives.WriteInt32LittleEndian(afterPon, 1);
+        BinaryPrimitives.WriteUInt16LittleEndian(afterPon.AsSpan(12), 120);
+        h.Send(0x0214, afterPon);
+        var draw = Draw(); BinaryPrimitives.WriteInt32LittleEndian(draw, 1);
+        h.Send(0x02BB, draw);
+        var added = Discard(0x140); BinaryPrimitives.WriteInt32LittleEndian(added, 1);
+        BinaryPrimitives.WriteUInt16LittleEndian(added.AsSpan(16), 88);
+        h.Send(0x0214, added);
+        Assert.False(h.Bridge.CurrentHandQuarantined);
+        Assert.False(h.Bridge.HasAuthoritativeOpponentDiscard); // A kakan is not a river tile.
+        Assert.Single(h.Client.Sent.OfType<MjaiKakan>());
+        Assert.Equal(2, h.Client.Sent.OfType<MjaiDahai>().Count());
+        if (rinshan)
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(draw.AsSpan(4), 0x200);
+            BinaryPrimitives.WriteUInt16LittleEndian(draw.AsSpan(10), 8);
+            h.Send(0x02BB, draw);
+            Assert.Equal(new MjaiDora("3m"), h.Client.Sent[^2]);
+            Assert.Equal(new MjaiTsumo(1, "?"), h.Client.Sent[^1]);
+        }
+        var prompt = h.Snapshot with { Legal = new LegalActions(ActionFlags.Ron | ActionFlags.Pass, [], [], [], []) };
+        h.Client.Emit("""{"type":"hora","actor":0,"target":2}""");
+        Assert.False(h.Bridge.TryChoose(prompt, out _));
+        h.Client.Emit("""{"type":"hora","actor":0,"target":1}""");
+        Assert.Equal(!rinshan, h.Bridge.TryChoose(prompt, out var choice));
+        if (!rinshan) Assert.Equal(ActionKind.Ron, choice.Kind);
+        Assert.Single(h.Clients);
+        Assert.Empty(h.Client.Replayed);
+    }
+
+    [Fact]
+    public void Missing_kan_replacement_isolates_until_observed_next_hand()
+    {
+        using var h = new Harness(); h.Open();
+        var draw = Draw(); BinaryPrimitives.WriteInt32LittleEndian(draw, 1);
+        h.Send(0x02BB, draw);
+        var kan = (byte[])draw.Clone(); BinaryPrimitives.WriteInt32LittleEndian(kan.AsSpan(4), 0x130);
+        for (int offset = 12; offset < 20; offset += 2) BinaryPrimitives.WriteUInt16LittleEndian(kan.AsSpan(offset), 124);
+        h.Send(0x02BB, kan);
+        h.Send(0x02BB, Draw()); // Next ordinary draw cannot skip rinshan/dora.
+        Assert.True(h.Bridge.CurrentHandQuarantined);
+        Assert.False(h.Client.IsRunning);
+        h.Open(); h.Send(0x02BB, Draw());
+        Assert.False(h.Bridge.CurrentHandQuarantined);
+        Assert.Equal(2, h.Clients.Count);
+        h.Client.Emit("""{"type":"dahai","actor":0,"pai":"5sr"}""");
+        Assert.True(h.Bridge.TryChoose(h.Snapshot, out _));
+        Assert.DoesNotContain(h.Client.Sent, e => e is MjaiAnkan or MjaiDora);
     }
 
     private static List<CapturedMahjongPacket> Drain(MahjongNetworkCapture capture)

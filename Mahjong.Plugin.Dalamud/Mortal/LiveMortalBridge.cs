@@ -54,6 +54,7 @@ public sealed class LiveMortalBridge : IDisposable
     private long lastModelEvalNanoseconds;
     private CapturedMahjongPacket? lastCapturedPacket;
     private MjaiDahai? lastNetworkDiscard;
+    private MjaiKakan? lastNetworkKakan;
     private MjaiDahai? recoveredPendingServerDiscard;
     private int? lastNetworkDrawActor;
     private readonly int[] observedDiscardCounts = [-1, -1, -1, -1];
@@ -175,7 +176,8 @@ public sealed class LiveMortalBridge : IDisposable
 
         if (!capture.LimitedTrialActive) TryRecoverMissingDiscard(snapshot);
         if (IsOpponentResponseWindow(snapshot.Legal.Flags)
-            && lastNetworkDiscard is not { Actor: > 0 })
+            && lastNetworkDiscard is not { Actor: > 0 }
+            && !(snapshot.Legal.Can(ActionFlags.Ron) && lastNetworkKakan is { Actor: > 0 }))
         {
             choice = ActionChoice.Pass("waiting for authoritative opponent discard");
             return false;
@@ -187,6 +189,11 @@ public sealed class LiveMortalBridge : IDisposable
 
         foreach (var reaction in TakeReactions(snapshot))
         {
+            if (lastNetworkKakan is { } added && reaction.Type == "hora" && reaction.Target != added.Actor)
+            {
+                log.Debug("[Mortal] Ignored win reaction for a different kan actor.");
+                continue;
+            }
             // A single UI frame may show a stale win label. Keep the response for
             // this exact hand/event until the row settles, without overriding a
             // real win or losing the model's only answer to a chi/pon prompt.
@@ -288,7 +295,8 @@ public sealed class LiveMortalBridge : IDisposable
     }
 
     /// <summary>
-    /// Self/robbed kans are not decoded in the confirmed 638 layouts yet. Once
+    /// Self kans are not admitted by the observed opponent-kan profile. Outside
+    /// that limited trial, retain the legacy UI confirmation behavior. Once
     /// the UI accepts the click, echo the exact Mortal reaction so its state is
     /// ready for the replacement draw.
     /// </summary>
@@ -299,7 +307,7 @@ public sealed class LiveMortalBridge : IDisposable
 
         if (capture.LimitedTrialActive)
         {
-            QuarantineCurrentHand("Limited trial: kan selected; local policy handles the rest of this hand");
+            QuarantineCurrentHand("Limited trial: self kan layout unverified; local policy handles the rest of this hand");
             return;
         }
         MortalReaction? reaction;
@@ -574,6 +582,7 @@ public sealed class LiveMortalBridge : IDisposable
             trialState = new();
             journal.Clear();
             lastNetworkDiscard = null;
+            lastNetworkKakan = null;
             recoveredPendingServerDiscard = null;
             lastNetworkDrawActor = null;
             ResetObservedDiscardCounts();
@@ -733,6 +742,7 @@ public sealed class LiveMortalBridge : IDisposable
             quarantinedKyokuEnded = false;
             lastCapturedPacket = null;
             lastNetworkDiscard = null;
+            lastNetworkKakan = null;
             recoveredPendingServerDiscard = null;
             lastNetworkDrawActor = null;
             ResetObservedDiscardCounts();
@@ -786,6 +796,7 @@ public sealed class LiveMortalBridge : IDisposable
         waitingForNextHand = true;
         quarantinedKyokuEnded = false;
         lastNetworkDiscard = null;
+        lastNetworkKakan = null;
         recoveredPendingServerDiscard = null;
         lastNetworkDrawActor = null;
         ResetObservedDiscardCounts();
@@ -994,6 +1005,7 @@ public sealed class LiveMortalBridge : IDisposable
     {
         // Deferred UI conflicts cannot survive any new authoritative event.
         deferredWinReaction = null;
+        lastNetworkKakan = null;
         switch (evt)
         {
             case MjaiDahai discard:
@@ -1001,10 +1013,20 @@ public sealed class LiveMortalBridge : IDisposable
                 lastNetworkDrawActor = null;
                 ClearObservedDiscardEvidence();
                 break;
+            case MjaiKakan kan:
+                lastNetworkDiscard = null;
+                lastNetworkDrawActor = null;
+                recoveredPendingServerDiscard = null;
+                lastNetworkKakan = kan;
+                ClearObservedDiscardEvidence();
+                break;
             case MjaiStartKyoku:
             case MjaiEndKyoku:
+            case MjaiAnkan:
+            case MjaiDaiminkan:
             case MjaiOpenCall:
                 lastNetworkDiscard = null;
+                lastNetworkKakan = null;
                 recoveredPendingServerDiscard = null;
                 lastNetworkDrawActor = null;
                 if (evt is MjaiStartKyoku or MjaiEndKyoku)
@@ -1012,6 +1034,7 @@ public sealed class LiveMortalBridge : IDisposable
                 break;
             case MjaiTsumo draw:
                 lastNetworkDiscard = null;
+                lastNetworkKakan = null;
                 recoveredPendingServerDiscard = null;
                 lastNetworkDrawActor = draw.Actor;
                 ClearObservedDiscardEvidence();

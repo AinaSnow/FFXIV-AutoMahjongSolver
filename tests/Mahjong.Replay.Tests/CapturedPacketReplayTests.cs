@@ -12,7 +12,7 @@ public class CapturedPacketReplayTests
 
     [Theory]
     [InlineData("20260924-full-match.json", 5, 5)]
-    [InlineData("20260924-added-kan-match.json", 5, 4)]
+    [InlineData("20260924-added-kan-match.json", 5, 5)]
     [InlineData("20260924-draw-result-match.json", 8, 8)]
     public void Existing_real_corpus_replays_without_hidden_opponent_tiles_or_protocol_approval(string file, int hands, int eligible)
     {

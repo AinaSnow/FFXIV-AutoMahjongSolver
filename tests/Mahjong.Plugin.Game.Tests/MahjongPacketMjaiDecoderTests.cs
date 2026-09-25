@@ -136,7 +136,7 @@ public sealed class MahjongPacketMjaiDecoderTests
     [InlineData(0x200u)]
     [InlineData(0x400u)]
     [InlineData(0xDEADu)]
-    public void Unsupported_call_or_draw_does_not_silently_leave_an_incomplete_history(uint action)
+    public void Unsupported_or_unsequenced_call_draw_does_not_leave_incomplete_history(uint action)
     {
         var decoder = new MahjongPacketMjaiDecoder();
         decoder.Process(637, HandStart());
@@ -147,11 +147,11 @@ public sealed class MahjongPacketMjaiDecoderTests
     }
 
     [Theory]
-    [InlineData(0x140u)] // Captured added-kan candidate, not a river discard.
-    [InlineData(0x210u)] // Captured post-rinshan candidate, flags still unverified.
+    [InlineData(0x140u)] // No matching confirmed pon or preceding draw.
+    [InlineData(0x210u)] // No confirmed kan/replacement context.
     [InlineData(0x212u)]
     [InlineData(0xDEADu)]
-    public void Unsupported_discard_does_not_invent_a_tedashi_flag(uint action)
+    public void Unsupported_or_unsequenced_discard_does_not_invent_a_tedashi_flag(uint action)
     {
         var decoder = new MahjongPacketMjaiDecoder();
         decoder.Process(637, HandStart());

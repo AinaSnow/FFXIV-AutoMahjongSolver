@@ -2,7 +2,7 @@
   "gameVersion": "2026.09.15.0000.0000",
   "variant": "Emj",
   "verified": false,
-  "evidence": "Partial opening (Emj) and four complete later hands (EmjL); docs/reviews/20260924-international-match.md. Neither variant is verified. Second capture SHA-256 d933f96c46d11f3f536070cd990ee92cb04f7a41f7c14f629d24e6b1d06b26eb; Full five-hand Emj match: docs/reviews/20260924-complete-match.md, SHA-256 714166c003e588285f23f9d906f54d628abd4ffec58094e4e46827c1d4baa809. Kan/dora and raw kyotaku offsets remain unverified. Opening pools are score-derived; combined 0x113 is verified against a self draw/declaration/discard trace: docs/reviews/20260925-combined-riichi-protocol.md.; 264-byte draw result boundaries and signed scores cross-checked twice in docs/reviews/20260924-negative-score-match.md. Other draw result fields remain opaque.",
+  "evidence": "Exact international build with Emj identity. Opening, self tile/red identity, calls and result boundaries: docs/reviews/20260924-complete-match.md and docs/reviews/20260924-negative-score-match.md. Opening riichi pools are score-derived: docs/reviews/20260925-mortal-decision-coverage.md. Combined 0x113: docs/reviews/20260925-combined-riichi-protocol.md. Opponent kan/replacement/dora: docs/reviews/20260925-kan-dora-protocol.md, including independent result-bonus audit and separate actual-model replays. Self kan and raw counter/result-field semantics outside the documented audit remain unverified; the full profile is not verified.",
   "packets": {
     "0x023F": {
       "messageId": 636,
@@ -33,6 +33,6 @@
       "payloadLength": 264
     }
   },
-  "limitedTrialScope": "doman-east-combined-riichi-no-kan-v3",
-  "limitedTrialEvidence": "docs/reviews/20260924-mortal-limited-trial.md; independently checked Emj openings, draws, discards, calls, red identities and result boundaries. Full protocol remains unverified.; opening riichi pools independently cross-checked against four preceding reach/draw-result histories: docs/reviews/20260925-mortal-decision-coverage.md. Pool is derived from scores; raw counter offsets and kan/dora remain unverified.; combined riichi/tsumogiri independently cross-checked against a self draw, explicit declaration, slot-13 discard and the matching server physical tile: docs/reviews/20260925-combined-riichi-protocol.md. Decoder enforces preceding draw and exact self red identity."
+  "limitedTrialScope": "doman-east-opponent-kan-v4",
+  "limitedTrialEvidence": "docs/reviews/20260924-mortal-limited-trial.md; docs/reviews/20260925-mortal-decision-coverage.md; docs/reviews/20260925-combined-riichi-protocol.md; docs/reviews/20260925-kan-dora-protocol.md. Exact Emj/East scope with validated opening scores, self red identity, combined riichi and sequenced opponent closed/open/added/consecutive kan. Added markers are independently checked against revealed result bonus counts. Post-rinshan discard flags use the established bit-family interpretation; no self-rinshan sample is claimed. Self kan remains excluded."
 }
