@@ -92,6 +92,7 @@ public sealed class LiveMortalBridge : IDisposable
     }
 
     public event Action<StateSnapshot, PolicyEvaluation>? DecisionPublished;
+    internal event Action<IMjaiEvent>? ServerEventObserved;
 
     public bool Enabled => configService.Current.MortalEnabled && capture.ProtocolAdmitted && capture.TransportReady;
 
@@ -566,6 +567,7 @@ public sealed class LiveMortalBridge : IDisposable
             ObserveNetworkEvent(evt);
             if (!TrySendEvent(evt))
                 return false;
+            ServerEventObserved?.Invoke(evt);
         }
         return true;
     }

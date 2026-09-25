@@ -341,7 +341,8 @@ public sealed class MatchArchiveWriter : IDisposable
         int timeoutFallbacks = 0;
         int malformedLines = 0;
         var outcomes = new Dictionary<string, int>();
-        var outcomeIds = new HashSet<long>();
+        var outcomeIds = new Dictionary<long, string>();
+        var failedActionIds = new HashSet<long>();
         var sources = new Dictionary<string,int>();
         var times = new List<double>();
 
@@ -408,18 +409,27 @@ public sealed class MatchArchiveWriter : IDisposable
 
                         case "action-outcome":
                             if (!root.TryGetProperty("action_id", out var actionId) || !actionId.TryGetInt64(out long id)
-                                || !root.TryGetProperty("status", out var status) || status.ValueKind != JsonValueKind.String
-                                || !outcomeIds.Add(id)) break;
+                                || !root.TryGetProperty("status", out var status) || status.ValueKind != JsonValueKind.String) break;
                             string outcome = status.GetString()!;
+                            if (outcomeIds.TryGetValue(id, out var previousOutcome))
+                            {
+                                // Server semantics may correct an earlier UI-only transition.
+                                if (previousOutcome is "server-confirmed" or "server-action-mismatch"
+                                    || outcome is not ("server-confirmed" or "server-action-mismatch")) break;
+                                if (--outcomes[previousOutcome] == 0) outcomes.Remove(previousOutcome);
+                            }
+                            outcomeIds[id] = outcome;
                             outcomes[outcome] = outcomes.GetValueOrDefault(outcome) + 1;
-                            if (outcome == "timeout") failedActions++;
+                            if ((outcome is "timeout" or "server-action-mismatch") && failedActionIds.Add(id)) failedActions++;
                             break;
 
                         case "action":
                             actions++;
                             if (root.TryGetProperty("result", out var result)
                                 && result.ValueKind == JsonValueKind.String
-                                && !string.Equals(result.GetString(), "Ok", StringComparison.OrdinalIgnoreCase))
+                                && !string.Equals(result.GetString(), "Ok", StringComparison.OrdinalIgnoreCase)
+                                && (!root.TryGetProperty("action_id", out var failedId) || !failedId.TryGetInt64(out long failed)
+                                    || failedActionIds.Add(failed)))
                                 failedActions++;
                             break;
                     }

@@ -642,6 +642,7 @@ public sealed class MortalLimitedTrialTests
     public void Self_kakan_waits_for_server_once_then_model_continues_and_replays(bool dispatched, bool restart)
     {
         using var h = new Harness(); PrepareSelfKakan(h);
+        List<IMjaiEvent> confirmed = []; h.Bridge.ServerEventObserved += confirmed.Add;
         var before = h.Snapshot with { Legal = new LegalActions(ActionFlags.Discard | ActionFlags.ShouMinKan, [], [], [],
             [new MeldCandidate(MeldKind.ShouMinKan, Tile.FromId(4), [Tile.FromId(4)], -1)]) };
         if (dispatched)
@@ -662,7 +663,9 @@ public sealed class MortalLimitedTrialTests
             Assert.False(h.Bridge.TryChoose(before, out _));
         }
         var current = h.Client;
+        Assert.Empty(confirmed.OfType<MjaiKakan>());
         h.Send(0x0214, SelfKakan());
+        Assert.Single(confirmed.OfType<MjaiKakan>());
         Assert.Single(current.Sent.OfType<MjaiKakan>());
         Assert.Equal(10, h.Snapshot.Hand.Count);
         Assert.Equal(MeldKind.ShouMinKan, Assert.Single(h.Snapshot.OurMelds).Kind);
@@ -676,6 +679,7 @@ public sealed class MortalLimitedTrialTests
         Assert.Equal(ActionKind.Discard, next.Kind); Assert.True(next.DiscardIsRed);
         h.Send(0x0214, Discard(0x212));
         h.Bridge.RecoverUnresponsiveDecision("restart after kakan"); h.Bridge.Update();
+        Assert.Single(confirmed.OfType<MjaiKakan>()); // History replay is not a new server acknowledgment.
         var types = h.Client.Replayed.Select(line => JsonDocument.Parse(line).RootElement.GetProperty("type").GetString()!).ToArray();
         Assert.Equal(["start_game", "start_kyoku", "dahai", "pon", "dahai", "tsumo", "kakan", "dora", "tsumo", "dahai"], types);
     }

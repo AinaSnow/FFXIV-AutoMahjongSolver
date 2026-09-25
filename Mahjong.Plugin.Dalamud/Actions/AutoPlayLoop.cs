@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using Mahjong.Engine;
+using Mahjong.Plugin.Game.Mjai;
 using Mahjong.Plugin.Dalamud.GameState;
 using Mahjong.Plugin.Dalamud.GameState.Variants;
 using Mahjong.Plugin.Dalamud.Logging;
@@ -89,6 +90,7 @@ public sealed class AutoPlayLoop : IDisposable
         framework.Update += OnUpdate;
         plugin.ConfigService.Changed += OnConfigurationChanged;
         plugin.EventLogger.CallbackObserved += OnInputCallback;
+        plugin.MortalBridge.ServerEventObserved += OnServerEvent;
     }
 
     public void Dispose()
@@ -99,6 +101,7 @@ public sealed class AutoPlayLoop : IDisposable
         CancelPending();
         plugin.ConfigService.Changed -= OnConfigurationChanged;
         plugin.EventLogger.CallbackObserved -= OnInputCallback;
+        plugin.MortalBridge.ServerEventObserved -= OnServerEvent;
         framework.Update -= OnUpdate;
         plugin.Aggregator.Changed -= OnSnapshotChanged;
     }
@@ -115,8 +118,27 @@ public sealed class AutoPlayLoop : IDisposable
         CancelPending();
     }
 
+    private void OnServerEvent(IMjaiEvent evt)
+    {
+        if (serverCallOutcome.Observe(evt, clock.UtcNow) is not { } outcome) return;
+        if (pendingOutcome?.ActionId == outcome.ActionId) pendingOutcome = null;
+        plugin.FindingsLog?.Record("server_call_outcome", new Dictionary<string, object?>
+        {
+            ["action_id"] = outcome.ActionId, ["expected"] = outcome.Expected,
+            ["actual"] = outcome.Actual, ["status"] = outcome.Status, ["path"] = outcome.Path,
+        });
+        plugin.GameLogger.RecordActionOutcome(outcome.ActionId, outcome.Expected, outcome.Status,
+            $"{outcome.Path}; server={outcome.Actual}");
+        if (outcome.Status == "server-action-mismatch")
+        {
+            pendingTerminalWin = null; terminalWinConfirmation.Reset();
+            log.Warning($"[AutoPlayLoop] Server accepted {outcome.Actual} after requesting {outcome.Expected}; action={outcome.ActionId}.");
+        }
+    }
+
     private void CancelPending()
     {
+        serverCallOutcome.Reset();
         CompletePendingOutcome("cancelled", plugin.Aggregator.Latest);
         dispatchGeneration++;
         fsm.CompleteDispatch(); fsm.ClearContext(); fsm.ClearRiichiConfirm();
@@ -436,10 +458,12 @@ public sealed class AutoPlayLoop : IDisposable
                 HandAtDispatch: before.Hand.Count,
                 MeldsAtDispatch: before.OurMelds.Count,
                 LastDispatchPath: plugin.Dispatcher.LastDispatchPath);
+            serverCallOutcome.Track(plugin.GameLogger.LastActionId, label, plugin.Dispatcher.LastDispatchPath, clock.UtcNow);
         }
     }
 
     private PendingDispatchOutcome? pendingOutcome;
+    private readonly ServerCallOutcomeTracker serverCallOutcome = new();
 
     private static readonly TimeSpan FastDispatchOutcomeWindow = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan DelayedDispatchOutcomeWindow = TimeSpan.FromSeconds(5);
