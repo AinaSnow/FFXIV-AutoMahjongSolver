@@ -204,21 +204,68 @@ public sealed class KanPacketTests
 
     [Theory]
     [InlineData(false)] [InlineData(true)]
-    public void Self_open_and_added_kan_remain_outside_captured_scope(bool added)
+    public void Self_open_and_consecutive_added_kan_remain_outside_captured_scope(bool added)
     {
         var d = new MahjongPacketMjaiDecoder(); d.Process(637, Start());
         if (added)
         {
             Pon(d, 0, 124); d.Process(638, Draw(0));
-            var ex = Assert.Throws<InvalidDataException>(() => d.Process(641, Added(0, 124)));
-            Assert.Contains("self open/added kan", ex.Message);
+            d.Process(638, Call(0, 0x130, 88, 88, 88, 89));
+            d.Process(638, Replacement(0, 128));
+            var ex = Assert.Throws<InvalidDataException>(() => d.Process(641, Added(0, 124, 0x240)));
+            Assert.Contains("self open/consecutive added kan", ex.Message);
         }
         else
         {
             d.Process(641, Discard(1, 124));
             var ex = Assert.Throws<InvalidDataException>(() => d.Process(638, Call(0, 0x400, 124, 124, 124)));
-            Assert.Contains("self open/added kan", ex.Message);
+            Assert.Contains("self open/consecutive added kan", ex.Message);
         }
+    }
+
+    [Theory]
+    [InlineData(0, false)] [InlineData(1, false)] [InlineData(2, false)] [InlineData(3, false)]
+    [InlineData(0, true)] [InlineData(1, true)] [InlineData(2, true)] [InlineData(3, true)]
+    public void Self_added_kan_upgrades_confirmed_pon_preserving_red_identity_and_replacement(int self, bool addedRed)
+    {
+        var decoder = new MahjongPacketMjaiDecoder();
+        var state = new PublicStateReducer();
+        List<IMjaiEvent> history = [];
+        void Send(int id, byte[] bytes)
+        {
+            foreach (var e in decoder.Process(id, bytes)) { history.Add(e); state.Apply(e); }
+            Assert.True(state.Complete, state.Failure);
+        }
+        var opening = Start(self);
+        int[] hand = [4, addedRed ? 4 : 34, 0, 1, 2, 9, 10, 11, 24, 25, 26, 27, 28];
+        for (int i = 0; i < hand.Length; i++) I32(opening, 48 + 4 * i, hand[i]);
+        Send(637, opening);
+        Send(641, Discard((self + 3) % 4, 16));
+        Send(638, Call(self, 0x500, 16, addedRed ? (ushort)16 : (ushort)17));
+        Send(641, Discard(self, 112, 0xA10));
+        ushort added = addedRed ? (ushort)17 : (ushort)16;
+        var draw = Draw(self); U16(draw, 8, added); Send(638, draw);
+        Assert.Equal(11, state.Snapshot(LegalActions.None).Hand.Count);
+        var kan = Added(self, added); U16(kan, 18, 124); // Stale slot is never the new tile.
+        Send(641, kan);
+        var evt = Assert.Single(history.OfType<MjaiKakan>());
+        Assert.Equal(0, evt.Actor); Assert.Equal(addedRed ? "5mr" : "5m", evt.Pai);
+        Assert.Equal(addedRed ? 0 : 1, evt.Consumed.Count(t => t == "5mr"));
+        var before = state.Snapshot(LegalActions.None);
+        Assert.Equal(10, before.Hand.Count);
+        var meld = Assert.Single(before.OurMelds);
+        Assert.Equal(MeldKind.ShouMinKan, meld.Kind); Assert.Equal(3, meld.ClaimedFromSeat);
+        Assert.Equal(1, before.AkaDora);
+        var replacement = Replacement(self, 128); U16(replacement, 8, 89); Send(638, replacement);
+        Assert.Equal(new MjaiDora("F"), history[^2]);
+        Assert.Equal(new MjaiTsumo(0, "5sr"), history[^1]);
+        var after = state.Snapshot(LegalActions.None);
+        Assert.Equal(11, after.Hand.Count); Assert.Equal(2, after.AkaDora);
+        Assert.Equal(before.WallRemaining - 1, after.WallRemaining);
+        Send(641, Discard(self, 89, 0x212));
+        Assert.Equal(10, state.Snapshot(LegalActions.None).Hand.Count);
+        Assert.Equal(new MjaiDahai(0, "5sr", true), history[^1]);
+        Assert.Single(history.OfType<MjaiKakan>());
     }
 
     private static MeldKind MeldKindFor(int action) => action == 0x130 ? MeldKind.AnKan : action == 0x400 ? MeldKind.MinKan : MeldKind.ShouMinKan;

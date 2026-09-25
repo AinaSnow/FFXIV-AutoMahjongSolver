@@ -373,8 +373,8 @@ public sealed class MahjongPacketMjaiDecoder
 
     private void BeginKan(int actor, string[] tiles, uint action)
     {
-        if (actor == 0 && action != 0x130)
-            throw new InvalidDataException($"0x{action:X} self open/added kan layout is not yet independently observed.");
+        if (actor == 0 && action is not (0x130 or 0x140))
+            throw new InvalidDataException($"0x{action:X} self open/consecutive added kan layout is not yet independently observed.");
         byte kind = RequireSameKind(tiles);
         if (tiles.Length != 4 || kanKinds.Count >= 4 || !kanKinds.Add(kind))
             throw new InvalidDataException($"0x{action:X} duplicate or excessive kan.");

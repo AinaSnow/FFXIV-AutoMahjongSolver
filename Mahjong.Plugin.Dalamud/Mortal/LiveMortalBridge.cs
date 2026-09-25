@@ -296,8 +296,8 @@ public sealed class LiveMortalBridge : IDisposable
     }
 
     /// <summary>
-    /// Observed self closed kans wait for the authoritative server event, which
-    /// is journaled exactly once. Unsupported self open/added kans isolate the
+    /// Observed self closed/ordinary added kans wait for the server event, which
+    /// is journaled exactly once. Unsupported self open/consecutive added kans isolate the
     /// hand. Outside the limited trial retain legacy UI confirmation behavior.
     /// </summary>
     public void ConfirmKanDecisionDispatched(ActionChoice choice)
@@ -307,9 +307,9 @@ public sealed class LiveMortalBridge : IDisposable
 
         if (capture.LimitedTrialActive)
         {
-            if (choice.Kind != ActionKind.AnKan)
+            if (choice.Kind is not (ActionKind.AnKan or ActionKind.ShouMinKan))
             {
-                QuarantineCurrentHand("Limited trial: self open/added kan layout unverified; local policy handles the rest of this hand");
+                QuarantineCurrentHand("Limited trial: self open kan layout unverified; local policy handles the rest of this hand");
                 return;
             }
             // A successful UI callback is not a server acknowledgment. Do not
@@ -1017,8 +1017,8 @@ public sealed class LiveMortalBridge : IDisposable
 
     private void ObserveNetworkEvent(IMjaiEvent evt)
     {
-        // Only the server's confirmed kan releases a dispatched closed kan.
-        if (evt is MjaiAnkan { Actor: 0 })
+        // Only the server's confirmed closed/added kan releases a dispatched kan.
+        if (evt is MjaiAnkan { Actor: 0 } or MjaiKakan { Actor: 0 })
         {
             awaitingSelfKanConfirmation = false;
             ClearRecommendation();
