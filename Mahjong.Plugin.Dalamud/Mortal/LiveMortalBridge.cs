@@ -40,6 +40,7 @@ public sealed class LiveMortalBridge : IDisposable
     private bool optimisticReachSent;
     private string? optimisticRiichiTile;
     private MortalReaction? pendingKanReaction;
+    private bool awaitingSelfKanConfirmation;
     private ActionChoice? recommendation;
     private bool? recommendationIsRed;
     private int recommendationKey;
@@ -164,7 +165,7 @@ public sealed class LiveMortalBridge : IDisposable
     public bool TryChoose(StateSnapshot snapshot, out ActionChoice choice)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        if (!Enabled || CurrentHandQuarantined || !snapshot.PublicStateConsistent
+        if (!Enabled || CurrentHandQuarantined || awaitingSelfKanConfirmation || !snapshot.PublicStateConsistent
             || capture.LimitedTrialActive && !trialState.Merge(snapshot).PublicStateConsistent)
         {
             ClearRecommendation();
@@ -254,7 +255,7 @@ public sealed class LiveMortalBridge : IDisposable
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         int key = StateAggregator.ComputeContentHash(snapshot);
-        if (!Enabled || CurrentHandQuarantined || !snapshot.PublicStateConsistent
+        if (!Enabled || CurrentHandQuarantined || awaitingSelfKanConfirmation || !snapshot.PublicStateConsistent
             || capture.LimitedTrialActive && !trialState.Merge(snapshot).PublicStateConsistent)
         {
             choice = ActionChoice.Pass("waiting for a matching public/UI state");
@@ -295,10 +296,9 @@ public sealed class LiveMortalBridge : IDisposable
     }
 
     /// <summary>
-    /// Self kans are not admitted by the observed opponent-kan profile. Outside
-    /// that limited trial, retain the legacy UI confirmation behavior. Once
-    /// the UI accepts the click, echo the exact Mortal reaction so its state is
-    /// ready for the replacement draw.
+    /// Observed self closed kans wait for the authoritative server event, which
+    /// is journaled exactly once. Unsupported self open/added kans isolate the
+    /// hand. Outside the limited trial retain legacy UI confirmation behavior.
     /// </summary>
     public void ConfirmKanDecisionDispatched(ActionChoice choice)
     {
@@ -307,7 +307,18 @@ public sealed class LiveMortalBridge : IDisposable
 
         if (capture.LimitedTrialActive)
         {
-            QuarantineCurrentHand("Limited trial: self kan layout unverified; local policy handles the rest of this hand");
+            if (choice.Kind != ActionKind.AnKan)
+            {
+                QuarantineCurrentHand("Limited trial: self open/added kan layout unverified; local policy handles the rest of this hand");
+                return;
+            }
+            // A successful UI callback is not a server acknowledgment. Do not
+            // echo the model reaction or reuse it while waiting for the packet.
+            awaitingSelfKanConfirmation = true;
+            ClearRecommendation();
+            deferredWinReaction = null;
+            while (reactions.TryDequeue(out _)) { }
+            lock (reachLock) pendingKanReaction = null;
             return;
         }
         MortalReaction? reaction;
@@ -645,6 +656,7 @@ public sealed class LiveMortalBridge : IDisposable
         journal.Append(evt);
         if (evt is MjaiStartGame or MjaiStartKyoku or MjaiEndKyoku or MjaiEndGame)
         {
+            awaitingSelfKanConfirmation = false;
             while (reactions.TryDequeue(out _)) { }
             ClearRecommendation();
             lock (reachLock)
@@ -732,6 +744,7 @@ public sealed class LiveMortalBridge : IDisposable
 
         if (!preserveMjaiState)
         {
+            awaitingSelfKanConfirmation = false;
             while (capture.TryDequeue(out _)) { }
             decoder = new MahjongPacketMjaiDecoder();
             trialState = new();
@@ -778,6 +791,7 @@ public sealed class LiveMortalBridge : IDisposable
 
     private void QuarantineCurrentHand(string status)
     {
+        awaitingSelfKanConfirmation = false;
         deferredWinReaction = null;
         var old = client;
         client = null;
@@ -1003,6 +1017,14 @@ public sealed class LiveMortalBridge : IDisposable
 
     private void ObserveNetworkEvent(IMjaiEvent evt)
     {
+        // Only the server's confirmed kan releases a dispatched closed kan.
+        if (evt is MjaiAnkan { Actor: 0 })
+        {
+            awaitingSelfKanConfirmation = false;
+            ClearRecommendation();
+            while (reactions.TryDequeue(out _)) { }
+            lock (reachLock) pendingKanReaction = null;
+        }
         // Deferred UI conflicts cannot survive any new authoritative event.
         deferredWinReaction = null;
         lastNetworkKakan = null;

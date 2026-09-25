@@ -139,12 +139,86 @@ public sealed class KanPacketTests
         Assert.Throws<InvalidDataException>(() => d.Process(638, Call(1, 0x130, 0, 0, 0, 0)));
     }
 
-    [Fact]
-    public void Self_kan_is_explicitly_outside_captured_scope()
+    [Theory]
+    [InlineData(0, false)] [InlineData(1, false)] [InlineData(2, false)] [InlineData(3, false)]
+    [InlineData(0, true)] [InlineData(1, true)] [InlineData(2, true)] [InlineData(3, true)]
+    public void Self_closed_kan_removes_exact_quad_and_replacement_uses_own_tile(int self, bool redQuad)
+    {
+        var decoder = new MahjongPacketMjaiDecoder();
+        var state = new PublicStateReducer();
+        List<IMjaiEvent> history = [];
+        void Send(int id, byte[] bytes)
+        {
+            foreach (var e in decoder.Process(id, bytes)) { history.Add(e); state.Apply(e); }
+            Assert.True(state.Complete, state.Failure);
+        }
+        var opening = Start(self);
+        int kind = redQuad ? 4 : 20;
+        int[] hand = [kind, kind, redQuad ? 34 : kind, 0, 1, 2, 9, 10, 11, 24, 25, 26, 27];
+        for (int i = 0; i < hand.Length; i++) I32(opening, 48 + 4 * i, hand[i]);
+        Send(637, opening);
+        var draw = Draw(self); U16(draw, 8, (ushort)(kind * 4)); Send(638, draw);
+        ushort physical = (ushort)(kind * 4);
+        Send(638, Call(self, 0x130, physical, physical, physical, (ushort)(physical + (redQuad ? 1 : 0))));
+        var before = state.Snapshot(LegalActions.None);
+        Assert.Equal(10, before.Hand.Count);
+        Assert.Equal(MeldKind.AnKan, Assert.Single(before.OurMelds).Kind);
+        var replacement = Replacement(self, 128);
+        ushort drawn = redQuad ? (ushort)24 : (ushort)89;
+        U16(replacement, 8, drawn);
+        U16(replacement, 12, 120); // Opaque slot must not replace the actual draw.
+        Send(638, replacement);
+        Assert.Equal(new MjaiDora("F"), history[^2]);
+        Assert.Equal(new MjaiTsumo(0, redQuad ? "7m" : "5sr"), history[^1]);
+        var after = state.Snapshot(LegalActions.None);
+        Assert.Equal(11, after.Hand.Count);
+        Assert.Equal(before.WallRemaining - 1, after.WallRemaining);
+        Assert.Equal(new byte[] { 31, 32 }, after.DoraIndicators.Select(t => t.Id));
+        Assert.Equal(!redQuad, after.HandIsRed[^1]);
+        Assert.Equal(1, after.AkaDora);
+        Send(641, Discard(self, drawn, 0x212));
+        Assert.Equal(new MjaiDahai(0, redQuad ? "7m" : "5sr", true), history[^1]);
+        Assert.Equal(10, state.Snapshot(LegalActions.None).Hand.Count);
+        Assert.Single(history.OfType<MjaiAnkan>());
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void Self_replacement_tsumogiri_rejects_wrong_kind_or_red_identity(bool wrongRed)
     {
         var d = new MahjongPacketMjaiDecoder(); d.Process(637, Start()); d.Process(638, Draw(0));
-        var ex = Assert.Throws<InvalidDataException>(() => d.Process(638, Call(0, 0x130, 124, 124, 124, 124)));
-        Assert.Contains("self kan", ex.Message);
+        d.Process(638, Call(0, 0x130, 124, 124, 124, 124));
+        var replacement = Replacement(0, 128); U16(replacement, 8, 89);
+        d.Process(638, replacement);
+        Assert.Throws<InvalidDataException>(() => d.Process(641, Discard(0, wrongRed ? (ushort)88 : (ushort)24, 0x212)));
+    }
+
+    [Fact]
+    public void Unknown_self_replacement_is_rejected_before_publishing_dora()
+    {
+        var d = new MahjongPacketMjaiDecoder(); d.Process(637, Start()); d.Process(638, Draw(0));
+        d.Process(638, Call(0, 0x130, 124, 124, 124, 124));
+        var replacement = Replacement(0, 128); U16(replacement, 8, ushort.MaxValue);
+        Assert.Throws<InvalidDataException>(() => d.Process(638, replacement));
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void Self_open_and_added_kan_remain_outside_captured_scope(bool added)
+    {
+        var d = new MahjongPacketMjaiDecoder(); d.Process(637, Start());
+        if (added)
+        {
+            Pon(d, 0, 124); d.Process(638, Draw(0));
+            var ex = Assert.Throws<InvalidDataException>(() => d.Process(641, Added(0, 124)));
+            Assert.Contains("self open/added kan", ex.Message);
+        }
+        else
+        {
+            d.Process(641, Discard(1, 124));
+            var ex = Assert.Throws<InvalidDataException>(() => d.Process(638, Call(0, 0x400, 124, 124, 124)));
+            Assert.Contains("self open/added kan", ex.Message);
+        }
     }
 
     private static MeldKind MeldKindFor(int action) => action == 0x130 ? MeldKind.AnKan : action == 0x400 ? MeldKind.MinKan : MeldKind.ShouMinKan;

@@ -2,10 +2,10 @@ using System.Buffers.Binary;
 
 namespace Mahjong.Plugin.Game.Mjai;
 
-/// <summary>Deliberately narrow trial admission; observed opponent kans and result-checked dora; opening sticks use score conservation.</summary>
+/// <summary>Deliberately narrow trial admission; observed opponent kans, self closed kans and result-checked dora; opening sticks use score conservation.</summary>
 public static class DomanMortalTrialGuard
 {
-    public const string Scope = "doman-east-opponent-kan-v4";
+    public const string Scope = "doman-east-self-ankan-v5";
 
     public static string? RejectStart(MjaiStartKyoku start)
     {
@@ -46,7 +46,7 @@ public static class DomanMortalTrialGuard
         // The captured self declaration + drawn-tile click independently verifies
         // 0x113. The decoder additionally requires the actor's preceding draw and
         // checks exact self tile/red identity. Opponent kan/dora sequences are
-        // validated by the decoder; self kan remains outside the observed scope.
+        // validated by the decoder; self open/added kan remains outside scope.
         // Evidence: docs/reviews/20260925-combined-riichi-protocol.md.
         return null;
     }

@@ -536,6 +536,126 @@ public sealed class MortalLimitedTrialTests
         Assert.DoesNotContain(h.Client.Sent, e => e is MjaiAnkan or MjaiDora);
     }
 
+    [Theory]
+    [InlineData(false, false)] [InlineData(true, false)] [InlineData(true, true)]
+    public void Self_ankan_waits_for_server_once_and_continues_after_rinshan(bool dispatched, bool restart)
+    {
+        using var h = new Harness();
+        h.Send(0x0133, SelfKanOpening()); h.Send(0x02BB, SelfKanDraw());
+        var before = h.Snapshot with { Legal = new LegalActions(ActionFlags.Discard | ActionFlags.AnKan, [], [], [],
+            [new MeldCandidate(MeldKind.AnKan, Tile.FromId(4), Enumerable.Repeat(Tile.FromId(4), 4).ToArray(), -1)]) };
+        if (dispatched)
+        {
+            h.Client.Emit("""{"type":"ankan","actor":0,"consumed":["5m","5m","5m","5mr"]}""");
+            Assert.True(h.Bridge.TryChoose(before, out var choice));
+            Assert.Equal(ActionKind.AnKan, choice.Kind);
+            h.Bridge.ConfirmKanDecisionDispatched(choice);
+            h.Bridge.ConfirmKanDecisionDispatched(choice); // Repeated UI notice never echoes a kan.
+            Assert.Empty(h.Client.Sent.OfType<MjaiAnkan>());
+            Assert.False(h.Bridge.CurrentHandQuarantined);
+            Assert.False(h.Bridge.TryGetRecommendation(before, out _, out _));
+            h.Client.Emit("""{"type":"ankan","actor":0,"consumed":["5m","5m","5m","5mr"]}""");
+            Assert.False(h.Bridge.TryChoose(before, out _));
+        }
+        if (restart)
+        {
+            h.Bridge.RecoverUnresponsiveDecision("restart before kan acknowledgment"); h.Bridge.Update();
+            Assert.DoesNotContain(h.Client.Replayed, line => line.Contains("ankan"));
+            Assert.False(h.Bridge.TryChoose(before, out _));
+        }
+        var current = h.Client;
+        h.Send(0x02BB, SelfKan());
+        Assert.Single(current.Sent.OfType<MjaiAnkan>());
+        Assert.Single(h.Snapshot.OurMelds); Assert.Equal(10, h.Snapshot.Hand.Count);
+        var replacement = Draw();
+        BinaryPrimitives.WriteUInt32LittleEndian(replacement.AsSpan(4), 0x200);
+        BinaryPrimitives.WriteUInt16LittleEndian(replacement.AsSpan(10), 128);
+        h.Send(0x02BB, replacement); // @8 holds red 5s.
+        Assert.Same(current, h.Client); Assert.False(h.Bridge.CurrentHandQuarantined);
+        Assert.Equal(new MjaiDora("F"), current.Sent[^2]);
+        Assert.Equal(new MjaiTsumo(0, "5sr"), current.Sent[^1]);
+        Assert.Equal(11, h.Snapshot.Hand.Count);
+        Assert.True(h.Snapshot.HandIsRed[^1]);
+        h.Client.Emit("""{"type":"dahai","actor":0,"pai":"5sr","tsumogiri":true}""");
+        Assert.True(h.Bridge.TryChoose(h.Snapshot, out var next));
+        Assert.Equal(ActionKind.Discard, next.Kind); Assert.True(next.DiscardIsRed);
+        h.Send(0x0214, Discard(0x212));
+        Assert.Equal(new MjaiDahai(0, "5sr", true), current.Sent[^1]);
+        h.Bridge.RecoverUnresponsiveDecision("restart after confirmed kan"); h.Bridge.Update();
+        var types = h.Client.Replayed.Select(line => JsonDocument.Parse(line).RootElement.GetProperty("type").GetString()!).ToArray();
+        Assert.Equal(["start_game", "start_kyoku", "tsumo", "ankan", "dora", "tsumo", "dahai"], types);
+        h.Send(0x018D, new byte[264]); h.Open(); h.Send(0x02BB, Draw());
+        h.Client.Emit("""{"type":"dahai","actor":0,"pai":"5sr"}""");
+        Assert.True(h.Bridge.TryChoose(h.Snapshot, out _));
+    }
+
+    [Theory]
+    [InlineData(0)] [InlineData(1)] [InlineData(2)]
+    public void Invalid_self_quad_or_duplicate_packet_isolates_without_model_double_send(int scenario)
+    {
+        using var h = new Harness();
+        h.Send(0x0133, SelfKanOpening()); h.Send(0x02BB, SelfKanDraw());
+        var original = h.Client; var kan = SelfKan();
+        if (scenario == 0) BinaryPrimitives.WriteUInt16LittleEndian(kan.AsSpan(18), 16); // Red identity lost.
+        if (scenario == 1)
+            for (int offset = 12; offset < 20; offset += 2)
+                BinaryPrimitives.WriteUInt16LittleEndian(kan.AsSpan(offset), 124); // Quad not in hand.
+        h.Send(0x02BB, kan);
+        if (scenario == 2) h.Send(0x02BB, kan);
+        Assert.True(h.Bridge.CurrentHandQuarantined);
+        Assert.Equal(scenario == 2 ? 1 : 0, original.Sent.OfType<MjaiAnkan>().Count());
+        h.Open(); h.Send(0x02BB, Draw());
+        Assert.False(h.Bridge.CurrentHandQuarantined);
+        h.Client.Emit("""{"type":"dahai","actor":0,"pai":"5sr"}""");
+        Assert.True(h.Bridge.TryChoose(h.Snapshot, out _));
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void Unacknowledged_self_kan_gate_clears_at_result_or_full_stop(bool stop)
+    {
+        using var h = new Harness(); h.Send(0x0133, SelfKanOpening()); h.Send(0x02BB, SelfKanDraw());
+        h.Bridge.ConfirmKanDecisionDispatched(new ActionChoice(ActionKind.AnKan));
+        if (stop)
+        {
+            h.Config.Update(c => c with { MortalEnabled = false }); h.Bridge.Update();
+            h.Config.Update(c => c with { MortalEnabled = true, MortalWorkingDirectory = "/reconfigured" }); h.Bridge.Update();
+        }
+        else h.Send(0x018D, new byte[264]);
+        h.Open(); h.Send(0x02BB, Draw());
+        h.Client.Emit("""{"type":"dahai","actor":0,"pai":"5sr"}""");
+        Assert.True(h.Bridge.TryChoose(h.Snapshot, out _));
+    }
+
+    [Theory]
+    [InlineData(ActionKind.MinKan)] [InlineData(ActionKind.ShouMinKan)]
+    public void Dispatched_unverified_self_kan_uses_local_policy(ActionKind kind)
+    {
+        using var h = new Harness(); h.Open(); var current = h.Client;
+        h.Bridge.ConfirmKanDecisionDispatched(new ActionChoice(kind));
+        Assert.True(h.Bridge.CurrentHandQuarantined); Assert.False(current.IsRunning);
+        Assert.DoesNotContain(current.Sent, e => e is MjaiAnkan or MjaiKakan or MjaiDaiminkan);
+    }
+
+    private static byte[] SelfKanOpening()
+    {
+        var bytes = Opening();
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(28), 31);
+        int[] hand = [4, 4, 34, 0, 1, 2, 9, 10, 11, 24, 25, 26, 27];
+        for (int i = 0; i < hand.Length; i++) BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(48 + i * 4), hand[i]);
+        return bytes;
+    }
+    private static byte[] SelfKanDraw()
+    {
+        var bytes = Draw(); BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(8), 16); return bytes;
+    }
+    private static byte[] SelfKan()
+    {
+        var bytes = Draw(); BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), 0x130);
+        for (int offset = 12; offset < 20; offset += 2) BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(offset), (ushort)(offset == 18 ? 17 : 16));
+        return bytes;
+    }
+
     private static List<CapturedMahjongPacket> Drain(MahjongNetworkCapture capture)
     {
         List<CapturedMahjongPacket> result = [];

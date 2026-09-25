@@ -235,10 +235,13 @@ public sealed class MahjongPacketMjaiDecoder
             // Independent check: marker @10 + revealed result hands reproduce the
             // server's normal/ura/red bonus counts. Opponent @8 is NOT a 1m draw.
             string marker = KnownPhysical(payload, 10);
+            // Self @8 is independently matched to UI hand changes and 0x212.
+            // Opponent @8 remains hidden, even when the payload contains zero.
+            string tile = actor == 0 ? KnownPhysical(payload, 8) : MjaiTile.Unknown;
             output.Add(new MjaiDora(marker));
-            output.Add(new MjaiTsumo(actor, MjaiTile.Unknown));
+            output.Add(new MjaiTsumo(actor, tile));
             pendingKanActor = null;
-            lastDraw = new LastDraw(actor, MjaiTile.Unknown, Replacement: true);
+            lastDraw = new LastDraw(actor, tile, Replacement: true);
             return;
         }
         RequireNoPendingKan(action);
@@ -247,7 +250,7 @@ public sealed class MahjongPacketMjaiDecoder
             RequireDraw(actor, replacement: false, action);
             string[] consumed = [KnownPhysical(payload, 12), KnownPhysical(payload, 14),
                 KnownPhysical(payload, 16), KnownPhysical(payload, 18)];
-            BeginOpponentKan(actor, consumed, action);
+            BeginKan(actor, consumed, action);
             output.Add(new MjaiAnkan(actor, consumed));
             return;
         }
@@ -273,7 +276,7 @@ public sealed class MahjongPacketMjaiDecoder
             : [KnownPhysical(payload, 12), KnownPhysical(payload, 14)];
         if (action == 0x400)
         {
-            BeginOpponentKan(actor, [previous.Tile, .. used], action);
+            BeginKan(actor, [previous.Tile, .. used], action);
             output.Add(new MjaiDaiminkan(actor, previous.Actor, previous.Tile, used));
         }
         else
@@ -314,7 +317,7 @@ public sealed class MahjongPacketMjaiDecoder
             MjaiTile.TryParse(added, out var addedKind, out _);
             var pon = pons.SingleOrDefault(p => p.Actor == actor && p.Kind == addedKind.Id)
                 ?? throw new InvalidDataException($"0x{action:X} added kan has no matching confirmed pon.");
-            BeginOpponentKan(actor, [.. pon.Tiles, added], action);
+            BeginKan(actor, [.. pon.Tiles, added], action);
             pons.Remove(pon);
             output.Add(new MjaiKakan(actor, added, pon.Tiles));
             return;
@@ -340,6 +343,9 @@ public sealed class MahjongPacketMjaiDecoder
             if (actor == 0 && (tile == MjaiTile.Unknown || draw.Tile != tile))
                 throw new InvalidDataException("Combined riichi self discard conflicts with the drawn tile/red identity.");
         }
+        if (action == 0x212 && actor == 0
+            && (tile == MjaiTile.Unknown || lastDraw?.Tile != tile))
+            throw new InvalidDataException("Replacement tsumogiri conflicts with the drawn tile/red identity.");
         bool riichi = action is 0x111 or 0x113;
         if (riichi)
             output.Add(new MjaiReach(actor));
@@ -365,10 +371,10 @@ public sealed class MahjongPacketMjaiDecoder
             throw new InvalidDataException($"0x{action:X} requires the same actor's preceding {(replacement ? "replacement" : "ordinary")} draw.");
     }
 
-    private void BeginOpponentKan(int actor, string[] tiles, uint action)
+    private void BeginKan(int actor, string[] tiles, uint action)
     {
-        if (actor == 0)
-            throw new InvalidDataException($"0x{action:X} self kan/replacement layout is not yet independently observed.");
+        if (actor == 0 && action != 0x130)
+            throw new InvalidDataException($"0x{action:X} self open/added kan layout is not yet independently observed.");
         byte kind = RequireSameKind(tiles);
         if (tiles.Length != 4 || kanKinds.Count >= 4 || !kanKinds.Add(kind))
             throw new InvalidDataException($"0x{action:X} duplicate or excessive kan.");
