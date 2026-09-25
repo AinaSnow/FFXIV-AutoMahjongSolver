@@ -29,6 +29,7 @@ public sealed class DebugPacketSession
     private long written, dropped, rejected, bytes;
     private string? error, lastRejection;
     public string Path { get; }
+    public MatchArchiveEnvironment CaptureEnvironment { get; }
     public Task Completion { get; }
     public long Written => Interlocked.Read(ref written);
     public long Dropped => Interlocked.Read(ref dropped);
@@ -42,7 +43,7 @@ public sealed class DebugPacketSession
         long maxBytes = 64L << 20, Func<string, TextWriter>? writerFactory = null)
     {
         if (maxBytes < 8192) throw new ArgumentOutOfRangeException(nameof(maxBytes));
-        Path = path; this.maxBytes = maxBytes;
+        Path = path; CaptureEnvironment = environment; this.maxBytes = maxBytes;
         queue = Channel.CreateBounded<object>(new BoundedChannelOptions(capacity)
             { SingleReader = true, FullMode = BoundedChannelFullMode.Wait });
         Completion = Task.Run(() => WriteAsync(environment, writerFactory ?? OpenFile));

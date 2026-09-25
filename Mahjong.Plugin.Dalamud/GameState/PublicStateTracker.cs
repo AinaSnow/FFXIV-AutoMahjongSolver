@@ -16,6 +16,8 @@ public sealed class PublicStateTracker : IDisposable
     private readonly PublicStateReducer state = new();
     private long dropped, admissionGeneration = -1;
     private bool wasPresent;
+    public bool AwaitingNextHand => capture.ProtocolAdmitted && state.HandEnded;
+    public event Action? HandEnded;
     public PublicStateTracker(MahjongNetworkCapture capture, IFramework framework, AddonEmjReader reader,
         IPluginLog log, Action<CapturedMahjongPacket>? observer = null)
     {
@@ -51,7 +53,9 @@ public sealed class PublicStateTracker : IDisposable
                     if (capture.LimitedTrialActive && evt is MjaiStartKyoku start
                         && DomanMortalTrialGuard.RejectStart(start) is { } startReason)
                         throw new InvalidDataException(startReason);
+                    bool wasEnded = state.HandEnded;
                     state.Apply(evt, knownCounters: false);
+                    if (!wasEnded && state.HandEnded) HandEnded?.Invoke();
                 }
             }
             catch (Exception ex)
@@ -62,7 +66,7 @@ public sealed class PublicStateTracker : IDisposable
         }
     }
     public StateSnapshot Merge(StateSnapshot snapshot) =>
-        capture.ProtocolAdmitted && state.Complete ? state.Merge(snapshot) : snapshot;
+        capture.ProtocolAdmitted && (state.Complete || state.HandEnded) ? state.Merge(snapshot) : snapshot;
     public void Reset() { state.Reset(); decoder = new(); while (capture.TryDequeuePublic(out _)) { } }
     public void Dispose() { framework.Update -= Update; capture.PublicCaptureEnabled = false; Reset(); }
 }

@@ -96,25 +96,11 @@ public sealed class TrainingCorpusWriter
             if (!data.TryGetProperty("environment", out var env) || env.ValueKind != JsonValueKind.Object
                 || !env.TryGetProperty("protocol_verified", out var verified) || verified.ValueKind != JsonValueKind.True)
                 flags.Add("protocol_not_fully_verified");
-            // Summary scores may be a last-known score from an interrupted match. Only the observed final screen certifies a result.
-            bool finalObserved = false;
             string games = Path.Combine(staging, "archive", "games");
-            if (Directory.Exists(games)) foreach (var file in Files(games)) foreach (var line in File.ReadLines(file))
-            {
-                if (string.IsNullOrWhiteSpace(line)) continue;
-                try
-                {
-                    using var row = JsonDocument.Parse(line);
-                    var v = row.RootElement;
-                    finalObserved |= v.TryGetProperty("e", out var e) && e.GetString() == "state"
-                        && v.TryGetProperty("state_code", out var state) && state.TryGetInt32(out int code) && code == 27
-                        && v.TryGetProperty("hand", out var hand) && hand.ValueKind == JsonValueKind.Array && hand.GetArrayLength() == 0
-                        && v.TryGetProperty("scores", out var scores) && scores.ValueKind == JsonValueKind.Array && scores.GetArrayLength() == 4
-                        && scores.EnumerateArray().All(s => s.ValueKind == JsonValueKind.Number && s.TryGetInt32(out var points) && points is >= -200000 and <= 200000)
-                        && scores.EnumerateArray().Any(s => s.GetInt32() != 0);
-                }
-                catch (JsonException) { flags.Add("malformed_game_log"); }
-            }
+            var finalResult = FinalResultEvidence.Read(Directory.Exists(games)
+                ? Files(games).Where(f => f.EndsWith(".ndjson", StringComparison.OrdinalIgnoreCase)) : []);
+            bool finalObserved = finalResult.Scores is not null;
+            if (finalResult.Malformed) flags.Add("malformed_game_log");
             if (!finalObserved) flags.Add("final_result_unobserved");
             bool openingObserved = false;
             string packets = Path.Combine(staging, "archive", "packets.ndjson");

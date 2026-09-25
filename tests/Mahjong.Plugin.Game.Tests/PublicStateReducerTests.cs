@@ -9,6 +9,34 @@ public class PublicStateReducerTests
         scores=new[]{25000,25000,25000,25000}, dora_marker="1m",
         tehais=new[]{new[]{"1m","2m","3m","4p","5pr","6p","7s","8s","9s","E","E","S","S"},new[]{"?"},new[]{"?"},new[]{"?"}}
     });
+    [Theory]
+    [InlineData("end_kyoku")]
+    [InlineData("end_game")]
+    public void Confirmed_result_blocks_restored_ui_until_next_opening(string result)
+    {
+        var reducer = new PublicStateReducer(); reducer.ApplyJson(Start());
+        var ui = reducer.Snapshot(new LegalActions(ActionFlags.Ron | ActionFlags.Pon | ActionFlags.Pass, [], [], [], []));
+        Assert.NotEqual(ActionFlags.None, reducer.Merge(ui).Legal.Flags);
+        reducer.ApplyJson(JsonSerializer.Serialize(new { type = result }));
+        // Captured result animation: old buttons, scores and hand reappear.
+        foreach (int code in new[] { 12, 31, 15, 32, 29, 27, 6, 30 })
+        {
+            var restored = ui with { AddonStateCode = code, WallRemaining = 70, Scores = new[] { 25000, 25000, 25000, 25000 } };
+            Assert.True(reducer.HandEnded);
+            Assert.Equal(ActionFlags.None, reducer.Merge(restored).Legal.Flags);
+            Assert.False(reducer.Merge(restored).PublicStateConsistent);
+        }
+        reducer.Invalidate("late packet failure");
+        Assert.Equal(ActionFlags.None, reducer.Merge(ui).Legal.Flags);
+        reducer.ApplyJson(Start());
+        Assert.False(reducer.HandEnded);
+        Assert.Equal(ui.Legal, reducer.Merge(ui).Legal);
+        reducer.ApplyJson("{\"type\":\"end_kyoku\"}");
+        reducer.Reset();
+        Assert.False(reducer.HandEnded); // Leaving table must not disable UI-only play later.
+        Assert.Equal(ui, reducer.Merge(ui));
+    }
+
     [Theory] [InlineData(0,0)] [InlineData(1,3)] [InlineData(2,2)] [InlineData(3,1)]
     public void Relative_self_and_wind_are_independent(int dealer, int wind)
     {

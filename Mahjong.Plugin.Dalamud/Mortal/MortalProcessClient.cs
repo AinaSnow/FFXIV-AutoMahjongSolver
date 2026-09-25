@@ -25,6 +25,7 @@ internal interface IMortalProcessClient : IDisposable
     event Action<int?>? Exited;
     bool IsRunning { get; }
     string? ModelIdentityJson => null;
+    string Diagnostics => "transport diagnostics unavailable";
     void Start(MortalProcessSettings settings);
     void Send(IMjaiEvent evt);
     void SendReplay(string serializedEvent);
@@ -41,6 +42,10 @@ internal sealed class MortalProcessClient : IMortalProcessClient
     private readonly string runnerDirectory;
     private readonly string session = Guid.NewGuid().ToString("N");
     private long sequence, hand, actionableSequence;
+    private long writtenSequence, acknowledgedSequence;
+    private readonly Stopwatch elapsed = new();
+    private long childStartMs = -1, firstWriteMs = -1, firstAckMs = -1;
+    public string Diagnostics => $"queued={Interlocked.Read(ref sequence)}, written={Interlocked.Read(ref writtenSequence)}, acked={Interlocked.Read(ref acknowledgedSequence)}, elapsed_ms={elapsed.ElapsedMilliseconds}, child_start_ms={Interlocked.Read(ref childStartMs)}, first_write_ms={Interlocked.Read(ref firstWriteMs)}, first_ack_ms={Interlocked.Read(ref firstAckMs)}";
     // Send is serialized by the framework thread; Read/Poll compare this watermark.
     private string? previousType;
     private int? previousActor;
@@ -65,6 +70,7 @@ internal sealed class MortalProcessClient : IMortalProcessClient
         ObjectDisposedException.ThrowIf(disposed, this);
         if (!settings.IsValid) throw new ArgumentException("Mortal WSL settings are incomplete.", nameof(settings));
         if (worker is not null) throw new InvalidOperationException("Already started");
+        elapsed.Start();
         running = true;
         worker = Task.Run(() => RunAsync(settings));
     }
@@ -123,6 +129,7 @@ internal sealed class MortalProcessClient : IMortalProcessClient
         {
             child = processFactory(settings);
             child.Start();
+            Interlocked.Exchange(ref childStartMs, elapsed.ElapsedMilliseconds);
             var send = WriteAsync(child);
             var receive = ReadAsync(child);
             var errors = ReadErrorsAsync(child);
@@ -165,6 +172,8 @@ internal sealed class MortalProcessClient : IMortalProcessClient
         {
             await child.Input.WriteLineAsync(line.AsMemory(), lifetime.Token).ConfigureAwait(false);
             await child.Input.FlushAsync(lifetime.Token).ConfigureAwait(false);
+            Interlocked.Increment(ref writtenSequence);
+            Interlocked.CompareExchange(ref firstWriteMs, elapsed.ElapsedMilliseconds, -1);
         }
     }
     private async Task ReadAsync(IManagedJsonProcess child)
@@ -178,6 +187,9 @@ internal sealed class MortalProcessClient : IMortalProcessClient
             long seq = result.GetProperty("sequence").GetInt64();
             if (seq != ++acknowledged || seq > Interlocked.Read(ref sequence)) throw new IOException("Mortal acknowledgement sequence mismatch");
             long resultHand = result.GetProperty("hand").GetInt64();
+            Interlocked.Exchange(ref acknowledgedSequence, seq);
+            if (Interlocked.CompareExchange(ref firstAckMs, elapsed.ElapsedMilliseconds, -1) == -1)
+                log.Information($"[Mortal] First runner acknowledgement: {Diagnostics}");
             if (result.TryGetProperty("error", out var error)) throw new IOException(error.GetString());
             if (result.TryGetProperty("model", out var model) && model.ValueKind == JsonValueKind.Object)
             {

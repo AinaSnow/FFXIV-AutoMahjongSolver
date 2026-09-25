@@ -35,6 +35,25 @@ class DatasetTests(unittest.TestCase):
     def imported(self):
         return import_archive(self.archive, self.corpus)
 
+    def test_final_score_is_invalidated_by_later_hand_across_files(self):
+        for event in (dict(e="hand-start"), dict(e="hand-incomplete"), dict(e="state", hand=[1, 2, 3])):
+            with self.subTest(event=event):
+                (self.archive / "games/next.ndjson").write_text(json.dumps(event), encoding="utf-8")
+                destination = import_archive(self.archive, self.root / ("case-" + event["e"]))
+                manifest = read_manifest(destination)
+                self.assertFalse(manifest["final_result_observed"])
+                self.assertEqual("unassigned", manifest["split"])
+                rows, _ = export_match(destination, manifest)
+                self.assertIsNone(rows[0]["labels"]["final_scores"])
+
+    def test_later_real_settlement_replaces_intermediate_result(self):
+        latest = dict(self.final, scores=[17000, 36000, 27000, 20000])
+        self.write([self.state, self.action, self.final, dict(e="hand-start"), self.state, latest])
+        destination = self.imported()
+        rows, _ = export_match(destination, read_manifest(destination))
+        self.assertEqual(latest["scores"], rows[0]["labels"]["final_scores"])
+        self.assertEqual(4, rows[0]["labels"]["final_rank"])
+
     def test_model_at_close_flag_does_not_override_exact_decision_provenance(self):
         d = self.imported()
         for flag in ("mortal_model_unknown", "mortal_model_at_close_unknown"):

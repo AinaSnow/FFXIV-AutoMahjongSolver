@@ -187,7 +187,8 @@ public sealed class GameLogger : IDisposable
             MaybeRollHand(snap);
             if (currentPath is null) return;
             if (UiHandBoundaryTracker.ScoresKnown(snap.Scores)) lastKnownScores = snap.Scores.ToArray();
-            // State 27 with an empty hand is the observed final score screen. A result animation
+            if (snap.Hand.Count > 0) finalScoresObserved = false;
+            // State 27 with an empty hand observes updated scores. A result animation
             // alone (29/32) does not prove score memory has been updated.
             finalScoresObserved |= snap.Hand.Count == 0 && snap.AddonStateCode == 27
                 && UiHandBoundaryTracker.ScoresKnown(snap.Scores);

@@ -91,6 +91,7 @@ public sealed class AutoPlayLoop : IDisposable
         plugin.ConfigService.Changed += OnConfigurationChanged;
         plugin.EventLogger.CallbackObserved += OnInputCallback;
         plugin.MortalBridge.ServerEventObserved += OnServerEvent;
+        plugin.PublicState.HandEnded += OnHandEnded;
     }
 
     public void Dispose()
@@ -102,6 +103,7 @@ public sealed class AutoPlayLoop : IDisposable
         plugin.ConfigService.Changed -= OnConfigurationChanged;
         plugin.EventLogger.CallbackObserved -= OnInputCallback;
         plugin.MortalBridge.ServerEventObserved -= OnServerEvent;
+        plugin.PublicState.HandEnded -= OnHandEnded;
         framework.Update -= OnUpdate;
         plugin.Aggregator.Changed -= OnSnapshotChanged;
     }
@@ -136,6 +138,12 @@ public sealed class AutoPlayLoop : IDisposable
         }
     }
 
+    private void OnHandEnded()
+    {
+        CancelPending();
+        LastActionDescription = "server result confirmed; waiting for next hand";
+    }
+
     private void CancelPending()
     {
         serverCallOutcome.Reset();
@@ -149,8 +157,9 @@ public sealed class AutoPlayLoop : IDisposable
 
     private void OnSnapshotChanged(StateSnapshot snapshot)
     {
-        if (!IsAutomationArmed())
+        if (!IsAutomationArmed() || plugin.PublicState.AwaitingNextHand)
         {
+            pendingTerminalWin = null;
             terminalWinConfirmation.Reset();
             return;
         }
@@ -207,6 +216,13 @@ public sealed class AutoPlayLoop : IDisposable
             int earlyState = ReadStateCode();
             if (TryHandleHandResult(earlyState))
                 return;
+        }
+
+        if (plugin.PublicState.AwaitingNextHand)
+        {
+            CheckStuckStateAndEmit(null);
+            EmitSkipReason("server result confirmed; waiting for next hand", -1, -1, 0);
+            return;
         }
 
         // StateAggregator subscribed first and has already produced the current frame's snapshot.
@@ -702,6 +718,7 @@ public sealed class AutoPlayLoop : IDisposable
             try
             {
                 if (generation != dispatchGeneration || disposed || !IsAutomationArmed() || !plugin.AddonReader.LastObservation.Present || plugin.Configuration != scheduledConfig
+                    || (label != "hand-result-next" && plugin.PublicState.AwaitingNextHand)
                     || (plugin.Aggregator.Latest?.HandId ?? 0) != scheduledHand
                     || (plugin.Aggregator.Latest?.Revision ?? 0) != scheduledRevision)
                     return;
@@ -1258,6 +1275,11 @@ public sealed class AutoPlayLoop : IDisposable
     private bool TryChoose(StateSnapshot snapshot, out ActionChoice choice)
     {
         snapshot = plugin.Aggregator.Enrich(snapshot);
+        if (plugin.PublicState.AwaitingNextHand)
+        {
+            choice = ActionChoice.Pass("server result confirmed; waiting for next hand");
+            return false;
+        }
         if (snapshot.Legal.Can(ActionFlags.Ron) && plugin.MortalBridge.HasExpiredReactionWindow(snapshot))
         {
             choice = ActionChoice.Pass("waiting for a fresh opponent offer");

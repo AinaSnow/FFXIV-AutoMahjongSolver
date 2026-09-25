@@ -281,7 +281,7 @@ public sealed class Plugin : IDalamudPlugin
                 CandidateCorrections: MortalBridge.CandidateCorrections,
                 RecoveredDiscards: MortalBridge.RecoveredDiscardEvents,
                 LastModelEvalMilliseconds: MortalBridge.LastModelEvalMilliseconds),
-            new MatchArchiveEnvironment(NetworkCapture.GameVersion, AddonReader.ProtocolVariant,
+            raw?.CaptureEnvironment ?? new MatchArchiveEnvironment(NetworkCapture.GameVersion, AddonReader.ProtocolVariant,
                 NetworkCapture.ProtocolVerified, NetworkCapture.ProtocolStatus, typeof(Plugin).Module.ModuleVersionId.ToString(), AddonReader.ActiveLayout?.Name), training);
     }
 

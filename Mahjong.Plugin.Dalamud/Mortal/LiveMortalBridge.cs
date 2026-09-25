@@ -156,7 +156,7 @@ public sealed class LiveMortalBridge : IDisposable
         log.Warning(
             $"[Mortal] {reason}; using one local fallback and restarting with replay " +
             $"(events={EventsSent}, reactions={ReactionsReceived}, queued={reactions.Count}, " +
-            $"last_mjai={lastEvent}, dropped={capture.DroppedPackets}).");
+            $"last_mjai={lastEvent}, dropped={capture.DroppedPackets}, transport={client?.Diagnostics ?? "not-started"}).");
 
         Stop("Recovering from decision timeout", preserveMjaiState: true);
         capture.CaptureEnabled = true;

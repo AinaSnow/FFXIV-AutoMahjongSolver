@@ -22,12 +22,13 @@ public sealed class PublicStateReducer
     public long HandId { get; private set; }
     public long Revision { get; private set; }
     public bool Active { get; private set; }
+    public bool HandEnded { get; private set; }
     public bool Complete { get; private set; }
     public string? Failure { get; private set; }
     public int? ScheduledRounds { get; set; }
 
     public void Invalidate(string reason) { Complete = false; Failure = reason; Revision++; }
-    public void Reset() { Active = false; Complete = false; hand.Clear(); Revision++; }
+    public void Reset() { HandEnded = false; Active = false; Complete = false; hand.Clear(); Revision++; }
 
     public void Apply(IMjaiEvent evt, bool knownCounters = true) =>
         ApplyJson(JsonSerializer.Serialize(evt, evt.GetType()), knownCounters);
@@ -57,12 +58,17 @@ public sealed class PublicStateReducer
             scores = e.GetProperty("scores").EnumerateArray().Select(x => x.GetInt32()).ToArray();
             if (scores.Length != 4 || round < 0 || kyoku is < 1 or > 4) throw new InvalidDataException("Invalid round context");
             countersKnown = knownCounters;
-            Complete = true; Failure = null; Active = true; wall = 70; HandId++; Revision++;
+            HandEnded = false; Complete = true; Failure = null; Active = true; wall = 70; HandId++; Revision++;
             AddDora(e.GetProperty("dora_marker").GetString());
             handKnown = true;
             foreach (var value in e.GetProperty("tehais")[0].EnumerateArray())
                 if (TryTile(value.GetString(), out var tile)) hand.Add(tile); else handKnown = false;
             if (!handKnown) Invalidate("unknown starting hand");
+            return;
+        }
+        if (type is "end_kyoku" or "end_game")
+        {
+            HandEnded = true; Active = false; Revision++;
             return;
         }
         if (!Active) return;
@@ -139,7 +145,6 @@ public sealed class PublicStateReducer
                 }
                 break;
             case "dora": AddDora(e.GetProperty("dora_marker").GetString()); break;
-            case "end_kyoku": case "end_game": Active = false; break;
         }
     }
 
@@ -151,6 +156,9 @@ public sealed class PublicStateReducer
 
     public StateSnapshot Merge(StateSnapshot ui)
     {
+        // Result animations can restore stale buttons and even old hand/score memory.
+        // Only a confirmed opening (or an explicit table reset) releases this gate.
+        if (HandEnded) return ui with { Legal = LegalActions.None, PublicStateConsistent = false };
         if (!Active) return ui;
         bool redAgrees = !ui.Observations.HasFlag(SnapshotObservationFlags.HandRedIdentity) ||
             hand.Select(x => (x.Tile.Id, x.Red)).Order().SequenceEqual(ui.Hand.Select((t, i) => (t.Id, i < ui.HandIsRed.Count && ui.HandIsRed[i])).Order());

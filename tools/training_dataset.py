@@ -129,10 +129,18 @@ def match_quality(directory, files):
                         archived_packets.add(identity)
     if any(r.get("e") == "input-callback" and r.get("automated") is False for _, _, r in events):
         flags.add("external_input_observed")
-    finals = [r for _, _, r in events if r.get("e") == "state" and r.get("state_code") == 27 and r.get("hand") == []
-              and isinstance(r.get("scores"), list) and len(r["scores"]) == 4
-              and all(type(s) is int and -200000 <= s <= 200000 for s in r["scores"]) and any(r["scores"])]
-    final = finals[-1] if finals else None
+    events.sort(key=lambda item: (item[0], item[1]))
+    final = None
+    for _, _, row in events:
+        kind = row.get("e")
+        if kind in ("hand-start", "hand-incomplete") or (kind == "state" and isinstance(row.get("hand"), list) and row["hand"]):
+            final = None
+        elif kind == "state" and row.get("state_code") == 27:
+            scores = row.get("scores")
+            final = row if row.get("hand") == [] and isinstance(scores, list) and len(scores) == 4 \
+                and all(type(s) is int and -200000 <= s <= 200000 for s in scores) and any(scores) else None
+    if "malformed_game_log" in flags:
+        final = None
     if not opening:
         flags.add("match_start_unobserved")
     if final is None:

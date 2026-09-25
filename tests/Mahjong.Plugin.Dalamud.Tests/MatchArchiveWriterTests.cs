@@ -20,12 +20,35 @@ public class MatchArchiveWriterTests
         LastModelEvalMilliseconds: 8.5);
 
     [Theory]
+    [InlineData("hand-start")]
+    [InlineData("hand-incomplete")]
+    [InlineData("state")]
+    public async Task Intermediate_settlement_cannot_become_match_rank(string resumedEvent)
+    {
+        using var tmp = new TempDir();
+        string first = Path.Combine(tmp.Path, "game-01.ndjson"), next = Path.Combine(tmp.Path, "game-02.ndjson");
+        File.WriteAllLines(first, [
+            """{"e":"hand-start"}""",
+            """{"e":"state","state_code":27,"hand":[],"scores":[200,35000,40400,24400]}""",
+        ]);
+        File.WriteAllText(next, JsonSerializer.Serialize(new { e = resumedEvent, hand = new[] { 1, 2, 3 }, scores = new[] { 200, 35000, 40400, 24400 } }));
+        using var writer = new MatchArchiveWriter(tmp.Path, new StubPluginLog());
+        string archive = (await writer.FinalizeSessionAsync([next, first], Stats))!;
+        var summary = ReadSummary(archive);
+        Assert.False(summary.GetProperty("final_result_observed").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, summary.GetProperty("final_scores").ValueKind);
+        Assert.Equal(JsonValueKind.Null, summary.GetProperty("our_score").ValueKind);
+        Assert.Equal(JsonValueKind.Null, summary.GetProperty("our_rank").ValueKind);
+        Assert.False(summary.GetProperty("packet_write_failed").GetBoolean());
+    }
+
+    [Theory]
     [InlineData(0, 1)] [InlineData(1, 4)] [InlineData(2, 3)] [InlineData(3, 2)]
     public async Task Archive_breaks_ties_only_with_recorded_initial_order(int east, int rank)
     {
         using var tmp = new TempDir();
         string game = Path.Combine(tmp.Path, "game.ndjson");
-        File.WriteAllText(game, JsonSerializer.Serialize(new { e = "state", scores = new[] {25000,25000,25000,25000}, initial_dealer = east }));
+        File.WriteAllText(game, JsonSerializer.Serialize(new { e = "state", state_code = 27, hand = Array.Empty<int>(), scores = new[] {25000,25000,25000,25000}, initial_dealer = east }));
         using var writer = new MatchArchiveWriter(tmp.Path, new StubPluginLog());
         var archive = Assert.IsType<string>(await writer.FinalizeSessionAsync([game], Stats));
         using var summary = JsonDocument.Parse(File.ReadAllText(Path.Combine(archive, "summary.json")));
@@ -68,6 +91,7 @@ public class MatchArchiveWriterTests
             "{\"e\":\"decision\",\"kind\":\"Pass\",\"why\":\"Mortal timeout; local fallback\"}",
             "{\"e\":\"action\",\"kind\":\"Pass\",\"result\":\"Ok\"}",
             "{\"e\":\"hand-end\",\"kind\":\"ron\",\"deltas\":[8000,-8000,0,0],\"scores_after\":[33000,17000,25000,25000]}",
+            """{"e":"state","state_code":27,"hand":[],"scores":[33000,17000,25000,25000]}""",
         ]);
 
         using var writer = new MatchArchiveWriter(tmp.Path, new StubPluginLog());
@@ -87,7 +111,7 @@ public class MatchArchiveWriterTests
 
         using var summary = JsonDocument.Parse(File.ReadAllText(Path.Combine(archive, "summary.json")));
         var root = summary.RootElement;
-        Assert.Equal(4, root.GetProperty("schema_version").GetInt32());
+        Assert.Equal(5, root.GetProperty("schema_version").GetInt32());
         Assert.Equal(1, root.GetProperty("packet_count").GetInt32());
         Assert.Equal(1, root.GetProperty("hand_count").GetInt32());
         Assert.Equal(1, root.GetProperty("settled_hands").GetInt32());
@@ -114,8 +138,9 @@ public class MatchArchiveWriterTests
         [
             "{\"e\":\"hand-start\",\"scores\":[25000,25000,25000,25000]}",
             "{\"e\":\"hand-end\",\"kind\":\"ron\",\"deltas\":[8000,-8000,0,0],\"scores_after\":[33000,17000,25000,25000]}",
+            """{"e":"state","state_code":27,"hand":[],"scores":[33000,17000,25000,25000]}""",
             "{\"e\":\"hand-start\",\"scores\":[33000,17000,25000,25000]}",
-            "{\"e\":\"state\",\"scores\":[18000,39000,23000,20000]}",
+            "{\"e\":\"state\",\"state_code\":27,\"hand\":[],\"scores\":[18000,39000,23000,20000]}",
         ]);
 
         using var writer = new MatchArchiveWriter(tmp.Path, new StubPluginLog());
@@ -183,7 +208,8 @@ public class MatchArchiveWriterTests
         string archive = Assert.IsType<string>(await writer.FinalizeSessionAsync([game], Stats));
         var summary = ReadSummary(archive);
         Assert.Equal(1, summary.GetProperty("settled_hands").GetInt32());
-        Assert.Equal(scores, summary.GetProperty("final_scores").EnumerateArray().Select(x => x.GetInt32()).ToArray());
+        Assert.False(summary.GetProperty("final_result_observed").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, summary.GetProperty("final_scores").ValueKind);
         Assert.False(summary.GetProperty("packet_write_failed").GetBoolean());
     }
 

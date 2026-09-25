@@ -19,7 +19,7 @@ namespace Mahjong.Plugin.Dalamud.Logging;
 /// </summary>
 public sealed class MatchArchiveWriter : IDisposable
 {
-    private const int SchemaVersion = 4;
+    private const int SchemaVersion = 5;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -182,6 +182,8 @@ public sealed class MatchArchiveWriter : IDisposable
                     GameFiles: copiedNames.ToArray(),
                     HandCount: handCount,
                     SettledHands: settledHands,
+                    FinalResultObserved: metrics.FinalScores is not null,
+                    FinalResultReason: metrics.FinalResultReason,
                     FinalScores: metrics.FinalScores,
                     OurScore: ourScore,
                     OurRank: ourRank,
@@ -332,7 +334,7 @@ public sealed class MatchArchiveWriter : IDisposable
         DateTimeOffset? firstObservedAt = null;
         int handStarts = 0;
         int settledHands = 0;
-        int[]? finalScores = null;
+        var finalResult = new FinalResultEvidence();
         int? initialDealerSeat = null;
         bool conflictingInitialOrder = false;
         int decisions = 0;
@@ -356,6 +358,8 @@ public sealed class MatchArchiveWriter : IDisposable
                 {
                     using var doc = JsonDocument.Parse(line);
                     var root = doc.RootElement;
+                    finalResult.Observe(root);
+                    if (root.ValueKind != JsonValueKind.Object) { malformedLines++; continue; }
                     if (root.TryGetProperty("t", out var time) && time.ValueKind == JsonValueKind.String
                         && DateTimeOffset.TryParse(time.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var observed)
                         && (firstObservedAt is null || observed < firstObservedAt)) firstObservedAt = observed;
@@ -380,7 +384,6 @@ public sealed class MatchArchiveWriter : IDisposable
                                 break;
                             }
                             settledHands++;
-                            finalScores = handEndScores;
                             break;
 
                         case "state":
@@ -391,9 +394,6 @@ public sealed class MatchArchiveWriter : IDisposable
                                 { initialDealerSeat = null; conflictingInitialOrder = true; }
                                 else initialDealerSeat = east;
                             }
-                            if (root.TryGetProperty("scores", out var stateScores)
-                                && TryReadScores(stateScores) is { } latestScores)
-                                finalScores = latestScores;
                             break;
 
                         case "decision":
@@ -437,6 +437,7 @@ public sealed class MatchArchiveWriter : IDisposable
                 catch (JsonException)
                 {
                     malformedLines++;
+                    finalResult.InvalidateMalformed();
                     // A partially-written final line should not prevent the rest of the match from being archived.
                 }
             }
@@ -446,7 +447,8 @@ public sealed class MatchArchiveWriter : IDisposable
         return new ArchiveMetrics(
             handStarts,
             settledHands,
-            finalScores,
+            finalResult.Scores,
+            finalResult.MissingReason,
             decisions,
             actions,
             failedActions,
@@ -484,9 +486,11 @@ public sealed class MatchArchiveWriter : IDisposable
         [property: JsonPropertyName("game_files")] string[] GameFiles,
         [property: JsonPropertyName("hand_count")] int HandCount,
         [property: JsonPropertyName("settled_hands")] int SettledHands,
-        [property: JsonPropertyName("final_scores")] int[]? FinalScores,
-        [property: JsonPropertyName("our_score")] int? OurScore,
-        [property: JsonPropertyName("our_rank")] int? OurRank,
+        [property: JsonPropertyName("final_result_observed")] bool FinalResultObserved,
+        [property: JsonPropertyName("final_result_reason")] string? FinalResultReason,
+        [property: JsonPropertyName("final_scores"), JsonIgnore(Condition = JsonIgnoreCondition.Never)] int[]? FinalScores,
+        [property: JsonPropertyName("our_score"), JsonIgnore(Condition = JsonIgnoreCondition.Never)] int? OurScore,
+        [property: JsonPropertyName("our_rank"), JsonIgnore(Condition = JsonIgnoreCondition.Never)] int? OurRank,
         [property: JsonPropertyName("decision_count")] int DecisionCount,
         [property: JsonPropertyName("action_count")] int ActionCount,
         [property: JsonPropertyName("failed_actions")] int FailedActions,
@@ -500,6 +504,7 @@ public sealed class MatchArchiveWriter : IDisposable
         int HandStarts,
         int SettledHands,
         int[]? FinalScores,
+        string? FinalResultReason,
         int DecisionCount,
         int ActionCount,
         int FailedActions,

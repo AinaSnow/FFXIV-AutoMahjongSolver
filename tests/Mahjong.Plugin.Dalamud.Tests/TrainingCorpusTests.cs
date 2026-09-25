@@ -29,6 +29,22 @@ public class TrainingCorpusTests
         using var doc = JsonDocument.Parse(File.ReadAllText(path)); return doc.RootElement.Clone();
     }
 
+    [Theory]
+    [InlineData("hand-start")]
+    [InlineData("hand-incomplete")]
+    [InlineData("state")]
+    public void Next_hand_invalidates_final_result_and_training_partition(string nextEvent)
+    {
+        using var tmp = new TempDir(); string archive = Archive(tmp.Path);
+        File.WriteAllText(Path.Combine(archive, "games", "next.ndjson"),
+            JsonSerializer.Serialize(new { e = nextEvent, hand = new[] { 1, 2, 3 } }));
+        var writer = new TrainingCorpusWriter(tmp.Path, () => true, new StubPluginLog());
+        Assert.True(writer.Preserve(archive, null));
+        var manifest = Manifest(writer.RootDir);
+        Assert.False(manifest.GetProperty("final_result_observed").GetBoolean());
+        Assert.Equal("unassigned", manifest.GetProperty("split").GetString());
+    }
+
     [Fact]
     public void Quarantined_model_at_close_does_not_claim_all_decisions_have_unknown_models()
     {
