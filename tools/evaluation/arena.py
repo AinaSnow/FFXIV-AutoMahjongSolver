@@ -37,6 +37,9 @@ def report(groups, split, opponent="mortal", match_mode="libriichi-hanchan"):
         matches = [m for group in groups for m in group[variant]]
         summary[variant] = dict(average_rank=statistics.mean(m["rank"] for m in matches),
                                first_rate=statistics.mean(m["rank"]==1 for m in matches),
+                               second_rate=statistics.mean(m["rank"]==2 for m in matches),
+                               third_rate=statistics.mean(m["rank"]==3 for m in matches),
+                               top_two_rate=statistics.mean(m["rank"]<=2 for m in matches),
                                fourth_rate=statistics.mean(m["rank"]==4 for m in matches),
                                average_score=statistics.mean(m["score"] for m in matches),
                                average_score_delta=statistics.mean(m["score"]-25000 for m in matches),

@@ -1,0 +1,200 @@
+"""Paired Mortal checkpoint comparison in the pinned standard hanchan arena."""
+import argparse
+from collections import Counter
+import hashlib
+import json
+import os
+from pathlib import Path
+import random
+import subprocess
+import sys
+import time
+
+from arena import report
+from rule_profile import rule_profile, REQUESTED_MODES
+from self_play import canonical_identity, inspect_log, seeds_for, SEED_KEY, write_json
+
+
+def match_outcome(events, seat, outcome):
+    scores = list(outcome.take_final_scores())
+    ranks = [int(rank) + 1 for rank in outcome.take_rank_by_player()]
+    if len(scores) != 4 or sorted(ranks) != [1, 2, 3, 4]:
+        raise ValueError("Missing final scores or distinct final placements")
+    hands = wins = deal_ins = 0
+    won = dealt = False
+    for event in events:
+        if event["type"] == "start_kyoku":
+            won = dealt = False
+        elif event["type"] == "hora":
+            won |= event["actor"] == seat
+            dealt |= event["target"] == seat and event["actor"] != seat
+        elif event["type"] == "end_kyoku":
+            hands += 1
+            wins += int(won)
+            deal_ins += int(dealt)
+    if not hands:
+        raise ValueError("Match contains no completed hands")
+    return dict(seat=seat, rank=ranks[seat], score=int(scores[seat]),
+                score_delta=int(scores[seat])-25000, hands=hands, wins=wins,
+                deal_ins=deal_ins, gameplay_sha256=canonical_identity(events))
+
+
+def read_results(directory, seed, role, grp):
+    expected = [directory / f"{seed}_{SEED_KEY}_{letter}.json.gz" for letter in "abcd"]
+    if set(directory.glob("*.json.gz")) != set(expected):
+        raise ValueError("Expected exactly four logs, one per rotated seat")
+    results = []
+    for seat, path in enumerate(expected):
+        raw, events = inspect_log(path, seed)
+        names = ["opponent"]*4
+        names[seat] = role
+        if events[0].get("names") != names:
+            raise ValueError("Log model names do not match the expected seat assignment")
+        result = match_outcome(events, seat, grp.load_log(raw))
+        result.update(log=path.name, log_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+        results.append(result)
+    return results
+
+
+def paired_report(groups, split, identities, match_mode="libriichi-hanchan"):
+    for group in groups:
+        for role in ("candidate", "baseline"):
+            if len(group[role]) != 4 or sorted(m["seat"] for m in group[role]) != [0, 1, 2, 3]:
+                raise ValueError("Incomplete paired seed group")
+    same_model = identities["candidate"]["checkpoint_sha256"] == identities["baseline"]["checkpoint_sha256"]
+    if same_model:
+        for group in groups:
+            left = {m["seat"]: m for m in group["candidate"]}
+            right = {m["seat"]: m for m in group["baseline"]}
+            fields = ("gameplay_sha256", "rank", "score", "hands", "wins", "deal_ins")
+            if any(left[seat][field] != right[seat][field] for seat in range(4) for field in fields):
+                raise ValueError("Identical-checkpoint control produced different paired outcomes")
+    result = report(groups, split, "mortal", match_mode)
+    result.update(comparison="mortal-checkpoints", same_model_control=same_model,
+                  control_passed=True if same_model else None, models=identities,
+                  live_weights_modified=False, ffxiv_rating_gain=None,
+                  sample_unit="paired seed group; four seats are correlated",
+                  conclusion="same-model control" if same_model else
+                             "acceptance statistics only" if result["promotion_statistics_pass"] else
+                             "exploratory; insufficient evidence to replace the live model")
+    for role in ("candidate", "baseline"):
+        counts = Counter(m["rank"] for group in groups for m in group[role])
+        result[role]["placement_counts"] = [counts[rank] for rank in range(1, 5)]
+    return result
+
+
+def markdown_report(result):
+    lines = ["# Mortal 半庄模型对照", "",
+             f"独立种子组：{result['groups']}；物理对局：{result['matches']}。同组四座有关联，置信区间按种子组计算。", "",
+             "| 指标 | 候选 | 基线 |", "|---|---:|---:|"]
+    for label, key, percent in (("平均名次", "average_rank", False), ("前二率", "top_two_rate", True),
+                                ("一位率", "first_rate", True), ("四位率", "fourth_rate", True),
+                                ("每手和牌率", "win_rate", True), ("每手放铳率", "deal_in_rate", True),
+                                ("平均牌桌得失分", "average_score_delta", False)):
+        values = [result[role][key] for role in ("candidate", "baseline")]
+        display = ["未知" if value is None else f"{value:.1%}" if percent else f"{value:.3f}" for value in values]
+        lines.append(f"| {label} | {display[0]} | {display[1]} |")
+    lines += ["", f"平均名次差（候选−基线，负数更好）：{result['rank_delta']:.4f}；95% 区间：{result['rank_delta_95_ci']}。",
+              f"四位率差：{result['fourth_delta']:.4f}；95% 区间：{result['fourth_delta_95_ci']}。", "",
+              "同模型对照检查通过。" if result["same_model_control"] else "探索性结果不构成更换线上模型的依据。",
+              "当前是标准 libriichi 半庄，FF14 规则尚未完全对齐；牌桌得失分不是 Rating 收益。模型未自动替换。", "",
+              "## 权重身份", ""]
+    lines += [f"- {role}: `{result['models'][role]['checkpoint_sha256']}`" for role in ("candidate", "baseline", "opponent")]
+    lines += ["", "## 规则边界", ""] + [f"- {difference}" for difference in result["rule_differences"]]
+    return "\n".join(lines) + "\n"
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--mortal-dir", type=Path, required=True)
+    parser.add_argument("--candidate", type=Path, required=True, help="Checkpoint path relative to mortal-dir or absolute")
+    parser.add_argument("--baseline", type=Path, help="Default: configured live checkpoint, read only")
+    parser.add_argument("--opponent", type=Path, help="Default: baseline checkpoint for all three opponents")
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--split", choices=("development", "acceptance"), default="development")
+    parser.add_argument("--groups", type=int, default=2)
+    parser.add_argument("--offset", type=int, default=200)
+    parser.add_argument("--threads", type=int, default=2)
+    parser.add_argument("--device", help="Default: configured device; no online configuration is modified")
+    parser.add_argument("--match-mode", choices=REQUESTED_MODES, default="libriichi-hanchan")
+    args = parser.parse_args()
+    try:
+        rules = rule_profile(args.match_mode)
+        seeds = seeds_for(args.split, args.offset, args.groups)
+        if args.threads < 1:
+            raise ValueError("threads must be positive")
+        if args.output.exists():
+            raise ValueError("Output exists; choose a fresh run directory")
+    except ValueError as error:
+        parser.error(str(error))
+    mortal_dir, output = args.mortal_dir.resolve(), args.output.resolve()
+    os.chdir(mortal_dir)
+    sys.path[:0] = [str(Path(__file__).resolve().parents[1]), str(mortal_dir)]
+    import torch
+    import numpy as np
+    from config import config
+    from mortal_runner import create_engine
+    from libriichi.arena import OneVsThree
+    from libriichi.dataset import Grp
+    torch.set_num_threads(args.threads)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+    paths = dict(candidate=args.candidate, baseline=args.baseline or Path(config["control"]["state_file"]))
+    paths["opponent"] = args.opponent or paths["baseline"]
+    engines = {role: create_engine(checkpoint_path=path, name=role, device_name=args.device, enable_amp=False)
+               for role, path in paths.items()}
+    identities = {role: engine.model_identity.copy() for role, engine in engines.items()}
+    engine_commit = subprocess.check_output(["git", "-C", str(mortal_dir), "rev-parse", "HEAD"], text=True).strip()
+    manifest = dict(schema_version=1, status="running", comparison="mortal-checkpoints", rules=rules,
+                    models=identities, model_paths={role: str(path.resolve()) for role, path in paths.items()},
+                    engine_commit=engine_commit, source_hashes={name: hashlib.sha256((mortal_dir/name).read_bytes()).hexdigest()
+                        for name in ("engine.py", "model.py", "config.toml")},
+                    evaluator_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+                    torch_version=torch.__version__, devices={role: str(engine.device) for role, engine in engines.items()},
+                    threads=args.threads, inference=dict(oracle=False, epsilon=0, stochastic_latent=False,
+                        amp=False, quick_eval=True, rule_based_agari_guard=True, cudnn_benchmark=False, cudnn_deterministic=True),
+                    split=args.split, seed_start=seeds.start, seed_end_exclusive=seeds.stop, seed_key=SEED_KEY,
+                    requested_groups=args.groups, completed_groups=0, live_weights_modified=False,
+                    model_provenance_verified=False, ffxiv_rating_gain=None)
+    output.mkdir(parents=True, exist_ok=False)
+    write_json(output/"manifest.json", manifest)
+    groups = []
+    started = time.monotonic()
+    try:
+        with (output/"results.jsonl").open("w", encoding="utf-8") as sink:
+            for index, seed in enumerate(seeds):
+                group = dict(seed=seed, key=SEED_KEY)
+                # Alternate run order to avoid always giving one role the cold GPU.
+                order = ("candidate", "baseline") if index % 2 == 0 else ("baseline", "candidate")
+                for role in order:
+                    random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
+                    directory = output/f"seed-{seed}"/role
+                    rankings = list(OneVsThree(disable_progress_bar=True, log_dir=str(directory)).py_vs_py(
+                        engines[role], engines["opponent"], (seed, SEED_KEY), 1))
+                    group[role] = read_results(directory, seed, role, Grp)
+                    counts = Counter(match["rank"] for match in group[role])
+                    if rankings != [counts[rank] for rank in range(1, 5)]:
+                        raise ValueError("Arena rankings disagree with logged outcomes")
+                    print(f"seed {seed}: {role} four seats complete", flush=True)
+                # Run the identical-model control before publishing this group.
+                result = paired_report([group], args.split, identities, args.match_mode)
+                groups.append(group)
+                sink.write(json.dumps(group)+"\n")
+                sink.flush()
+                manifest.update(completed_groups=len(groups), elapsed_seconds=time.monotonic()-started)
+                write_json(output/"manifest.json", manifest)
+                print(f"completed paired seed group {len(groups)}/{args.groups}", flush=True)
+        result = paired_report(groups, args.split, identities, args.match_mode)
+        write_json(output/"report.json", result)
+        (output/"report.md").write_text(markdown_report(result), encoding="utf-8")
+        manifest.update(status="complete", elapsed_seconds=time.monotonic()-started)
+        write_json(output/"manifest.json", manifest)
+        print(json.dumps({key: result[key] for key in ("groups", "matches", "rank_delta", "rank_delta_95_ci", "conclusion")}), flush=True)
+    except BaseException as error:
+        manifest.update(status="failed", error=f"{type(error).__name__}: {error}", elapsed_seconds=time.monotonic()-started)
+        write_json(output/"manifest.json", manifest)
+        raise
+
+
+if __name__ == "__main__":
+    main()

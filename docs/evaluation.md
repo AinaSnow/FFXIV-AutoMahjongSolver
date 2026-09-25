@@ -76,3 +76,29 @@ python "$REPO/tools/evaluation/self_play.py" \
 这条入口仅验证牌谱能通过 GameplayLoader。完整 Mortal 训练还需要 GRP 排名预测模型、独立训练配置和奖励设计；它不是一键训练脚本。当前引擎仍是标准半庄，与 FF14 快速东风模式的结束条件不等价，不能用模拟结果宣布 FF14 上分提升。
 
 本机冒烟验证：2 个训练种子，8 个物理输出，去重后 2 场、25 手局、1,615 条玩家决策；包含 3 次加杠、1 次暗杠和 4 次宝牌更新。耗时约 176 秒，只说明该小批次运行成功，不代表大规模吞吐。真实网络同步仍由捕获回放验证。详见 [预训练权重与训练建议](reviews/20260925-pretrained-and-training.md)。
+
+
+## 两份 Mortal 权重的半庄对照
+
+`tools/evaluation/compare_models.py` 用于比较两份兼容 Mortal checkpoint。它独立加载候选、基线及固定对手；每个种子先后执行候选对三名固定对手、基线对相同三名对手，各轮换四座，共八场。各组交替运行先后次序。模型读取只使用当前玩家可见信息，关闭探索与混合精度，不修改在线配置或模型文件。
+
+本机 WSL 示例（输出目录必须尚不存在）：
+
+```powershell
+wsl -d Ubuntu --cd /mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/.loacl/Mortal/mortal --exec python /mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/tools/evaluation/compare_models.py --mortal-dir /mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/.loacl/Mortal/mortal --candidate patch/mortal_298k.pth --groups 2 --offset 300 --output /mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/artifacts/evaluation/models-dev-001
+```
+
+`--candidate` 必填；`--baseline` 默认读取当前 config 中的权重，`--opponent` 默认与基线相同。三项权重路径均相对于 Mortal 工作目录，也可传绝对路径。默认读取已配置设备，可用 `--device cpu` 显式覆盖；CPU 模式可能较慢。`--threads` 默认 2。两份本地文件存在只证明可以尝试加载，不证明候选来源、授权或训练质量已验证。
+
+首次使用应先把 candidate 设为当前基线文件，执行 `--groups 1` 做同模型对照；四座的完整牌局事件、名次、得分和和牌/放铳统计必须逐一相同，否则评测失败。不能把这四座当四个独立随机种子。新模型小样本对照仍只是流程验证，不应据此替换在线权重。
+
+每个输出目录包含：
+
+- `manifest.json`：实际加载权重哈希、架构、引擎和运行参数、种子区间，以及 running/failed/complete 状态。只有 complete 可作为完整报告；失败时保留此前完整配对组供诊断。
+- `results.jsonl`：每个种子一行，候选/基线各四座；每场保存原始牌谱哈希、完整牌局事件哈希、名次和和牌/放铳次数。只有八场均完整且座位/种子对应时才写入该组。
+- `report.json` 与 `report.md`：平均名次、前二率、一位/四位率、牌桌得失分、每手和牌/放铳率，以及按种子组计算的配对区间。
+- `seed-*/candidate` 和 `seed-*/baseline`：原始压缩 MJAI 牌谱。原始牌谱包含全局信息，只供事后校验，不进入模型不可见输入。
+
+开发阶段使用 `--split development`。正式统计验收使用未被训练或开发选模使用的 `--split acceptance --groups 1000`，共 8,000 场；这可能需要较长时间，默认不会启动。每次使用新的 offset 和输出目录，跨批次需核对种子重复，不能把重复运行算成更多独立证据。统计门槛沿用平均名次至少改善 0.03 且 95% 区间上界小于 0、四位率差区间上界不超过 0.01。
+
+本阶段优先半庄，因为用户两种模式都接受，且现有引擎本来支持半庄。FF14 半庄与当前标准天凤半庄仍有结束条件和特殊结算差异，报告继续明确 `doman_promotion_eligible=false`，不把牌桌得失分换算为 Rating，也不自动替换线上模型。没有改动自动排队模式；本轮交付针对离线模型评测。

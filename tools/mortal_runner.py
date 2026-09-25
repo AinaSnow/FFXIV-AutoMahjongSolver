@@ -17,32 +17,37 @@ def load_checkpoint(torch_module, path):
     return torch_module.load(io.BytesIO(payload), weights_only=True, map_location="cpu"), identity
 
 
-def create_engine():
+def create_engine(*, checkpoint_path=None, name="mortal", device_name=None, enable_amp=None):
     sys.path.insert(0, os.getcwd())
     import prelude  # noqa: F401
     import torch
     from config import config
     from model import Brain, DQN
     from engine import MortalEngine
-    from libriichi.mjai import Bot
-    device_name = config["control"].get("device", "cpu")
+    if device_name is None:
+        device_name = config["control"].get("device", "cpu")
     if str(device_name).startswith("cuda") and not torch.cuda.is_available():
         device_name = "cpu"
     device = torch.device(device_name)
     global _model_identity
-    state, _model_identity = load_checkpoint(torch, config["control"]["state_file"])
+    state, identity = load_checkpoint(torch, checkpoint_path if checkpoint_path is not None else config["control"]["state_file"])
     cfg = state["config"]
     version = cfg["control"].get("version", 1)
-    _model_identity["architecture_version"] = version
+    identity["architecture_version"] = version
     with open(__file__, "rb") as runner:
-        _model_identity["runner_sha256"] = hashlib.sha256(runner.read()).hexdigest()
+        identity["runner_sha256"] = hashlib.sha256(runner.read()).hexdigest()
     brain = Brain(version=version, **{k: cfg["resnet"][k] for k in ("num_blocks", "conv_channels")}).eval()
     dqn = DQN(version=version).eval()
     brain.load_state_dict(state["mortal"])
     dqn.load_state_dict(state["current_dqn"])
+    if enable_amp is None:
+        enable_amp = bool(config["control"].get("enable_amp", False))
     engine = MortalEngine(brain, dqn, version=version, is_oracle=False, device=device,
-                          enable_amp=bool(config["control"].get("enable_amp", False)) and device.type == "cuda",
-                          enable_quick_eval=True, enable_rule_based_agari_guard=True, name="mortal")
+                          enable_amp=enable_amp and device.type == "cuda",
+                          enable_quick_eval=True, enable_rule_based_agari_guard=True, name=name)
+    # Each offline role retains its own identity; subsequent loads must not relabel it.
+    engine.model_identity = identity.copy()
+    _model_identity = identity.copy()
     return engine
 
 
