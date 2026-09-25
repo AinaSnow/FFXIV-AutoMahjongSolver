@@ -1,4 +1,4 @@
-"""Paired Mortal checkpoint comparison in the pinned standard hanchan arena."""
+"""Paired Mortal checkpoint comparison in standard or experimental Doman arenas."""
 import argparse
 from collections import Counter
 import hashlib
@@ -11,6 +11,7 @@ import sys
 import time
 
 from arena import report
+from doman_engine import load_doman, validate_match_events
 from rule_profile import rule_profile, REQUESTED_MODES
 from self_play import canonical_identity, inspect_log, seeds_for, SEED_KEY, write_json
 
@@ -39,13 +40,14 @@ def match_outcome(events, seat, outcome):
                 deal_ins=deal_ins, gameplay_sha256=canonical_identity(events))
 
 
-def read_results(directory, seed, role, grp):
+def read_results(directory, seed, role, grp, match_mode="libriichi-hanchan"):
     expected = [directory / f"{seed}_{SEED_KEY}_{letter}.json.gz" for letter in "abcd"]
     if set(directory.glob(f"{seed}_{SEED_KEY}_*.json.gz")) != set(expected):
         raise ValueError("Expected exactly four logs, one per rotated seat")
     results = []
     for seat, path in enumerate(expected):
         raw, events = inspect_log(path, seed)
+        validate_match_events(events, match_mode)
         names = ["opponent"]*4
         names[seat] = role
         if events[0].get("names") != names:
@@ -57,12 +59,12 @@ def read_results(directory, seed, role, grp):
 
 
 
-def read_batch_results(directory, seed_start, seed_count, role, grp, rankings):
+def read_batch_results(directory, seed_start, seed_count, role, grp, rankings, match_mode="libriichi-hanchan"):
     expected = {directory/f"{seed}_{SEED_KEY}_{letter}.json.gz"
                 for seed in range(seed_start, seed_start+seed_count) for letter in "abcd"}
     if set(directory.glob("*.json.gz")) != expected:
         raise ValueError("Batch must contain exactly four logs per expected seed")
-    matches = {seed: read_results(directory, seed, role, grp)
+    matches = {seed: read_results(directory, seed, role, grp, match_mode)
                for seed in range(seed_start, seed_start+seed_count)}
     counts = Counter(match["rank"] for group in matches.values() for match in group)
     if list(rankings) != [counts[rank] for rank in range(1, 5)]:
@@ -98,7 +100,8 @@ def paired_report(groups, split, identities, match_mode="libriichi-hanchan"):
 
 
 def markdown_report(result):
-    lines = ["# Mortal 半庄模型对照", "",
+    title = {"libriichi-hanchan": "标准半庄", "doman-quick": "FF14 东风实验", "doman-full": "FF14 半庄实验"}[result["match_mode"]]
+    lines = [f"# Mortal {title}模型对照", "",
              f"独立种子组：{result['groups']}；物理对局：{result['matches']}。同组四座有关联，置信区间按种子组计算。", "",
              "| 指标 | 候选 | 基线 |", "|---|---:|---:|"]
     for label, key, percent in (("平均名次", "average_rank", False), ("前二率", "top_two_rate", True),
@@ -111,7 +114,7 @@ def markdown_report(result):
     lines += ["", f"平均名次差（候选−基线，负数更好）：{result['rank_delta']:.4f}；95% 区间：{result['rank_delta_95_ci']}。",
               f"四位率差：{result['fourth_delta']:.4f}；95% 区间：{result['fourth_delta_95_ci']}。", "",
               "同模型对照检查通过。" if result["same_model_control"] else "探索性结果不构成更换线上模型的依据。",
-              "当前是标准 libriichi 半庄，FF14 规则尚未完全对齐；牌桌得失分不是 Rating 收益。模型未自动替换。", "",
+              f"模式：{result['match_mode']}。FF14 规则尚未完全对齐；牌桌得失分不是 Rating 收益。模型未自动替换。", "",
               "## 权重身份", ""]
     lines += [f"- {role}: `{result['models'][role]['checkpoint_sha256']}`" for role in ("candidate", "baseline", "opponent")]
     lines += ["", "## 规则边界", ""] + [f"- {difference}" for difference in result["rule_differences"]]
@@ -132,9 +135,10 @@ def main():
     parser.add_argument("--batch-groups", type=int, default=1, help="Seed groups per GPU batch; statistics remain paired by seed")
     parser.add_argument("--device", help="Default: configured device; no online configuration is modified")
     parser.add_argument("--match-mode", choices=REQUESTED_MODES, default="libriichi-hanchan")
+    parser.add_argument("--doman-engine", type=Path, help="Isolated build directory; required for Doman modes")
     args = parser.parse_args()
     try:
-        rules = rule_profile(args.match_mode)
+        rules = rule_profile(args.match_mode, allow_experimental=True)
         seeds = seeds_for(args.split, args.offset, args.groups)
         if not 1 <= args.batch_groups <= 256:
             raise ValueError("batch-groups must be between 1 and 256")
@@ -144,6 +148,12 @@ def main():
             raise ValueError("Output exists; choose a fresh run directory")
     except ValueError as error:
         parser.error(str(error))
+    native_build = None
+    if args.match_mode != "libriichi-hanchan":
+        try:
+            OneVsThree, Grp, native_build = load_doman(args.doman_engine)
+        except (ValueError, OSError, ImportError) as error:
+            parser.error(str(error))
     mortal_dir, output = args.mortal_dir.resolve(), args.output.resolve()
     os.chdir(mortal_dir)
     sys.path[:0] = [str(Path(__file__).resolve().parents[1]), str(mortal_dir)]
@@ -151,8 +161,9 @@ def main():
     import numpy as np
     from config import config
     from mortal_runner import create_engine
-    from libriichi.arena import OneVsThree
-    from libriichi.dataset import Grp
+    if native_build is None:
+        from libriichi.arena import OneVsThree
+        from libriichi.dataset import Grp
     torch.set_num_threads(args.threads)
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
@@ -163,7 +174,7 @@ def main():
     identities = {role: engine.model_identity.copy() for role, engine in engines.items()}
     engine_commit = subprocess.check_output(["git", "-C", str(mortal_dir), "rev-parse", "HEAD"], text=True).strip()
     manifest = dict(schema_version=1, status="running", comparison="mortal-checkpoints", rules=rules,
-                    models=identities, model_paths={role: str(path.resolve()) for role, path in paths.items()},
+                    native_build=native_build, models=identities, model_paths={role: str(path.resolve()) for role, path in paths.items()},
                     engine_commit=engine_commit, source_hashes={name: hashlib.sha256((mortal_dir/name).read_bytes()).hexdigest()
                         for name in ("engine.py", "model.py", "config.toml")},
                     evaluator_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
@@ -187,9 +198,10 @@ def main():
                 for role in order:
                     random.seed(seed_start); np.random.seed(seed_start); torch.manual_seed(seed_start)
                     directory = output/f"batch-{seed_start}"/role
-                    rankings = OneVsThree(disable_progress_bar=True, log_dir=str(directory)).py_vs_py(
+                    arena_options = dict(match_mode=args.match_mode) if native_build else {}
+                    rankings = OneVsThree(disable_progress_bar=True, log_dir=str(directory), **arena_options).py_vs_py(
                         engines[role], engines["opponent"], (seed_start, SEED_KEY), seed_count)
-                    batch[role] = read_batch_results(directory, seed_start, seed_count, role, Grp, rankings)
+                    batch[role] = read_batch_results(directory, seed_start, seed_count, role, Grp, rankings, args.match_mode)
                     for matches in batch[role].values():
                         for match in matches:
                             match["log"] = (directory/match["log"]).relative_to(output).as_posix()

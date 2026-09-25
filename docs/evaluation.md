@@ -119,3 +119,37 @@ wsl -d Ubuntu --cd /mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/.loacl/Mortal/m
 
 
 本轮运行已完成：100 组、800 场，约 19 分 15 秒；先行与补充同模型对照均通过。平均名次差 −0.0625 的 95% 区间跨过 0，因此保留当前在线权重。见 [完整筛选报告](reviews/20260925-mortal-dev100.md)。
+
+
+## FF14 东风／半庄离线实验引擎
+
+`compare_models.py` 现在接受 `doman-quick`（东风）及 `doman-full`（半庄）。这两个模式必须显式指定受测的独立引擎；标准 `arena.py` 内置策略入口和 `self_play.py` 仍保持原来的标准半庄，不能用改标签的方式生成东风数据。
+
+在 WSL／Linux 中构建（使用运行 Mortal 的同一个 Python，需已安装 Rust、Git 和锁定依赖）：
+
+```sh
+REPO=/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver
+python "$REPO/tools/evaluation/build_doman_engine.py" \
+  --mortal-source "$REPO/.loacl/Mortal" \
+  --output "$REPO/artifacts/doman-engine-v1"
+```
+
+输出目录必须不存在。脚本从 Mortal `0cff2b52982be5b1163aa9a62fb01f03ce91e0d2` 的 Git 对象导出源码，应用仓库内的 `tools/evaluation/patches/libriichi-doman.patch`，运行原生回归测试并编译 `libriichi_doman.so`。补丁基于 Equim-chan/Mortal，沿用上游 AGPL-3.0-or-later 授权。源码、测试日志、库文件及身份清单都留在输出目录；构建失败不会获得可用状态。原来的 `libriichi.so`、在线配置和权重不被替换。
+
+实际东风对照示例（候选及基线各轮换四座，20 组共 160 场）：
+
+```sh
+python "$REPO/tools/evaluation/compare_models.py" \
+  --mortal-dir "$REPO/.loacl/Mortal/mortal" \
+  --candidate patch/mortal_298k.pth   --match-mode doman-quick   --doman-engine "$REPO/artifacts/doman-engine-v1" \
+  --groups 20 --batch-groups 20 --offset 2100 \
+  --output "$REPO/artifacts/evaluation/doman-quick-dev20-20260925"
+```
+
+换成 `--match-mode doman-full` 即为实验半庄。清单记录补丁、库文件和测试日志的哈希；补丁更新、库文件被改动或构建未通过测试时拒绝使用。牌谱验收额外禁止东风进入南场、半庄进入西场，允许连庄及负分提前结束。
+
+已适配的差异：东四／南四终局、无延长赛、最后庄家首位和牌或听牌结束且不要求 30,000 分；三家荣和流局、四家立直继续、第五杠流局；天然役满与天和／地和组合及四倍封顶。保留真实场风和旧模型观察编码，终局和牌／流局规则辅助判断使用真实比赛长度。
+
+这仍是实验规则档案，不等于完整 FF14 一致性认证。四家立直继续和东风不进入南场分别依据官方完整流局列表及短局长度推导，尚缺受控游戏验证；双荣和本场与供托分配、包牌边界、立直后杠的听牌限制仍需补实战对照。80／120 分钟游戏计时、输入延迟和 Rating 未模拟。半庄权重没有新增“东风长度”训练特征，不把东场伪装成南场来欺骗模型。结果不会自动触发线上换权重，也不能直接当作 FF14 胜率保证。
+
+官方依据：[高级规则](https://na.finalfantasyxiv.com/lodestone/playguide/contentsguide/goldsaucer/doman-mahjong/special_rule/)、[5.4 版本加入 Quick Match](https://na.finalfantasyxiv.com/lodestone/topics/detail/230f6e0af3536f9a40654d783c8c2f1094131070)。

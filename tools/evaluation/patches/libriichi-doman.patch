@@ -1,0 +1,716 @@
+--- a/libriichi/Cargo.toml
++++ b/libriichi/Cargo.toml
+@@ -5,7 +5,7 @@
+ license = "AGPL-3.0-or-later"
+ 
+ [lib]
+-name = "riichi"
++name = "riichi_doman"
+ crate-type = ["cdylib", "rlib"]
+ 
+ [dependencies]
+--- a/libriichi/src/lib.rs
++++ b/libriichi/src/lib.rs
+@@ -133,7 +133,7 @@
+ /// - Statistical works on mjai logs (via `stat.Stat`).
+ /// - mjai interface (via `mjai.Bot`).
+ #[pymodule]
+-fn libriichi(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
++fn libriichi_doman(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
+     pyo3_log::init();
+     algo::shanten::ensure_init();
+     algo::agari::ensure_init();
+@@ -148,6 +148,12 @@
+     }
+     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
+ 
++    m.add("DOMAN_RULES_REVISION", 1)?;
++    m.add(
++        "DOMAN_BASE_COMMIT",
++        "0cff2b52982be5b1163aa9a62fb01f03ce91e0d2",
++    )?;
++
+     consts::register_module(py, name, m)?;
+     state::register_module(py, name, m)?;
+     dataset::register_module(py, name, m)?;
+--- a/libriichi/src/arena/game.rs
++++ b/libriichi/src/arena/game.rs
+@@ -12,6 +12,7 @@
+ pub struct BatchGame {
+     /// 8 for hanchan and 4 for tonpuu
+     pub length: u8,
++    pub doman: bool,
+     pub init_scores: [i32; 4],
+     pub disable_progress_bar: bool,
+ }
+@@ -27,6 +28,7 @@
+ #[derive(Default)]
+ struct Game {
+     length: u8,
++    doman: bool,
+     seed: (u64, u64),
+     indexes: [Index; 4],
+ 
+@@ -55,6 +57,31 @@
+ }
+ 
+ impl Game {
++    fn scheduled_end(&self) -> bool {
++        if self.doman {
++            self.kyoku >= self.length
++        } else {
++            self.kyoku >= self.length + 4
++                || self.kyoku >= self.length
++                    && !self.in_renchan
++                    && self.scores.iter().any(|&s| s >= 30000)
++        }
++    }
++
++    // Called only after a normal hand with dealer win/tenpai, never an abortive draw.
++    fn renchan_owari(&self) -> bool {
++        let oya = self.kyoku as usize % 4;
++        self.kyoku >= self.length - 1
++            && (self.doman || self.scores[oya] >= 30000)
++            && self
++                .scores
++                .iter()
++                .enumerate()
++                .min_by_key(|&(_, &s)| -s)
++                .map(|(i, _)| i)
++                == Some(oya)
++    }
++
+     /// Returns iff any player in the game can act or the game has ended.
+     fn poll(&mut self, agents: &mut [Box<dyn BatchAgent>]) -> Result<()> {
+         if self.ended {
+@@ -66,16 +93,13 @@
+             // or, after all-last
+             //   and, oya is not in renchan (if oya is in renchan, it would already have been ended in the renchan owari check)
+             //   and, anyone has more than 30k
+-            if self.kyoku >= self.length + 4
+-                || self.kyoku >= self.length
+-                    && !self.in_renchan
+-                    && self.scores.iter().any(|&s| s >= 30000)
+-            {
++            if self.scheduled_end() {
+                 self.ended = true;
+                 return Ok(());
+             }
+ 
+             let mut next_board = Board {
++                doman_length: if self.doman { self.length } else { 0 },
+                 kyoku: self.kyoku,
+                 honba: self.honba,
+                 kyotaku: self.kyotaku,
+@@ -120,6 +144,7 @@
+                 }
+ 
+                 let kyoku_result = self.board.end();
++                debug_assert_eq!(self.kyoku, kyoku_result.kyoku);
+                 self.kyotaku = kyoku_result.kyotaku_left;
+                 self.scores = kyoku_result.scores;
+ 
+@@ -152,19 +177,9 @@
+                 // 2. is at all-last
+                 // 3. oya has at least 30000
+                 // 4. oya is the top
+-                let oya = kyoku_result.kyoku as usize % 4;
+-                if kyoku_result.kyoku >= self.length - 1 && self.scores[oya] >= 30000 {
+-                    let top = kyoku_result
+-                        .scores
+-                        .iter()
+-                        .enumerate()
+-                        .min_by_key(|&(_, &s)| -s)
+-                        .map(|(i, _)| i)
+-                        .unwrap();
+-                    if top == oya {
+-                        self.ended = true;
+-                        return Ok(());
+-                    }
++                if self.renchan_owari() {
++                    self.ended = true;
++                    return Ok(());
+                 }
+ 
+                 // renchan
+@@ -222,6 +237,7 @@
+     pub const fn tenhou_hanchan(disable_progress_bar: bool) -> Self {
+         Self {
+             length: 8,
++            doman: false,
+             init_scores: [25000; 4],
+             disable_progress_bar,
+         }
+@@ -255,6 +271,7 @@
+ 
+                 let game = Box::new(Game {
+                     length: self.length,
++                    doman: self.doman,
+                     seed,
+                     indexes: *idxs,
+                     scores: self.init_scores,
+@@ -371,3 +388,90 @@
+             .unwrap();
+     }
+ }
++
++#[cfg(test)]
++mod doman_tests {
++    use super::*;
++    use crate::agent::Tsumogiri;
++    use crate::mjai::Event;
++    use crate::t;
++
++    #[test]
++    fn doman_no_extension_even_below_30000() {
++        for length in [4, 8] {
++            let mut game = Game {
++                length,
++                doman: true,
++                scores: [25000; 4],
++                ..Default::default()
++            };
++            game.kyoku = length - 1;
++            assert!(!game.scheduled_end());
++            game.kyoku = length;
++            assert!(game.scheduled_end());
++            game.doman = false;
++            assert!(!game.scheduled_end());
++            game.scores[0] = 30000;
++            assert!(game.scheduled_end());
++        }
++    }
++
++    #[test]
++    fn doman_dealer_finish_and_initial_seat_ties() {
++        for length in [4, 8] {
++            let mut game = Game {
++                length,
++                doman: true,
++                kyoku: length - 1,
++                scores: [24000, 24000, 23000, 29000],
++                ..Default::default()
++            };
++            assert!(game.renchan_owari());
++            game.doman = false;
++            assert!(!game.renchan_owari());
++            game.doman = true;
++            game.scores = [25000; 4];
++            assert!(!game.renchan_owari());
++            game.kyoku -= 1;
++            game.scores = [24000, 24000, 29000, 23000];
++            assert!(!game.renchan_owari());
++        }
++    }
++
++    #[test]
++    fn doman_complete_quick_and_full_without_south_or_west_extension() {
++        for length in [4, 8] {
++            let game = BatchGame {
++                length,
++                doman: true,
++                init_scores: [25000; 4],
++                disable_progress_bar: true,
++            };
++            let mut agents =
++                [Box::new(Tsumogiri::new_batched(&[0, 1, 2, 3]).unwrap()) as Box<dyn BatchAgent>];
++            let indexes = [array::from_fn(|i| Index {
++                agent_idx: 0,
++                player_id_idx: i,
++            })];
++            let results = game.run(&mut agents, &indexes, &[(1002000, 42)]).unwrap();
++            let hands: Vec<_> = results[0]
++                .game_log
++                .iter()
++                .map(|hand| match &hand[0].event {
++                    Event::StartKyoku { bakaze, kyoku, .. } => (*bakaze, *kyoku),
++                    _ => panic!("missing start_kyoku"),
++                })
++                .collect();
++            assert!(
++                hands
++                    .iter()
++                    .all(|(wind, _)| *wind == t!(E) || length == 8 && *wind == t!(S))
++            );
++            assert_eq!(
++                hands.last(),
++                Some(&(if length == 4 { t!(E) } else { t!(S) }, 4))
++            );
++            assert_eq!(results[0].scores.iter().sum::<i32>(), 100000);
++        }
++    }
++}
+--- a/libriichi/src/arena/one_vs_three.rs
++++ b/libriichi/src/arena/one_vs_three.rs
+@@ -7,7 +7,7 @@
+ use std::path::PathBuf;
+ use std::time::Duration;
+ 
+-use anyhow::Result;
++use anyhow::{Result, bail};
+ use flate2::Compression;
+ use flate2::read::GzEncoder;
+ use indicatif::{ParallelProgressIterator, ProgressBar, ProgressStyle};
+@@ -19,17 +19,25 @@
+ pub struct OneVsThree {
+     pub disable_progress_bar: bool,
+     pub log_dir: Option<String>,
++    pub doman_length: u8,
+ }
+ 
+ #[pymethods]
+ impl OneVsThree {
+     #[new]
+-    #[pyo3(signature = (*, disable_progress_bar=false, log_dir=None))]
+-    const fn new(disable_progress_bar: bool, log_dir: Option<String>) -> Self {
+-        Self {
++    #[pyo3(signature = (*, disable_progress_bar=false, log_dir=None, match_mode="libriichi-hanchan"))]
++    fn new(disable_progress_bar: bool, log_dir: Option<String>, match_mode: &str) -> Result<Self> {
++        let doman_length = match match_mode {
++            "libriichi-hanchan" => 0,
++            "doman-quick" => 4,
++            "doman-full" => 8,
++            _ => bail!("unknown match mode: {match_mode}"),
++        };
++        Ok(Self {
+             disable_progress_bar,
+             log_dir,
+-        }
++            doman_length,
++        })
+     }
+ 
+     /// Returns the rankings of the challenger.
+@@ -129,7 +137,7 @@
+         }
+ 
+         log::info!(
+-            "seed: [{}, {}) w/ {:#x}, start {} sets, {} hanchans",
++            "seed: [{}, {}) w/ {:#x}, start {} sets, {} matches",
+             seed_start.0,
+             seed_start.0 + seed_count,
+             seed_start.1,
+@@ -159,7 +167,11 @@
+             new_challenger_agent(&challenger_player_ids)?,
+             new_champion_agent(&champion_player_ids)?,
+         ];
+-        let batch_game = BatchGame::tenhou_hanchan(self.disable_progress_bar);
++        let mut batch_game = BatchGame::tenhou_hanchan(self.disable_progress_bar);
++        if self.doman_length != 0 {
++            batch_game.length = self.doman_length;
++            batch_game.doman = true;
++        }
+ 
+         let mut challenger_idx = 0;
+         let mut champion_idx = 0;
+--- a/libriichi/src/arena/board.rs
++++ b/libriichi/src/arena/board.rs
+@@ -28,6 +28,7 @@
+ ///    always 1x yakuman.
+ #[derive(Debug, Default)]
+ pub struct Board {
++    pub doman_length: u8,
+     /// Counts from 0
+     pub kyoku: u8,
+     pub honba: u8,
+@@ -126,10 +127,15 @@
+         let oya = self.kyoku % 4;
+         let dora_indicators_full = self.dora_indicators.clone();
+ 
++        let player_states = array::from_fn(|i| {
++            let mut state = PlayerState::new(i as u8);
++            state.doman_length = self.doman_length;
++            state
++        });
+         BoardState {
+             board: self,
+             oya,
+-            player_states: array::from_fn(|i| PlayerState::new(i as u8)),
++            player_states,
+             dora_indicators_full,
+             ..Default::default()
+         }
+@@ -516,7 +522,7 @@
+             return Ok(Poll::InGame);
+         }
+ 
+-        if self.accepted_riichis == 4 {
++        if self.board.doman_length == 0 && self.accepted_riichis == 4 {
+             // 四家立直
+             self.abortive_ryukyoku();
+             return Ok(Poll::End);
+@@ -550,6 +556,25 @@
+             return Ok(Poll::End);
+         }
+ 
++        if self.board.doman_length != 0 {
++            let triple_ron = reactions
++                .iter()
++                .filter(
++                    |ev| matches!(ev.event, Event::Hora { actor, target, .. } if actor != target),
++                )
++                .count()
++                == 3;
++            let fifth_kan = self.kans == 4
++                && matches!(
++                    ev.event,
++                    Event::Ankan { .. } | Event::Daiminkan { .. } | Event::Kakan { .. }
++                );
++            if triple_ron || fifth_kan {
++                // No points, dora reveal or replacement draw before repeating this hand.
++                self.abortive_ryukyoku();
++                return Ok(Poll::End);
++            }
++        }
+         self.update_nagashi_mangan_and_four_wind(&ev.event);
+ 
+         match ev.event {
+@@ -824,3 +849,170 @@
+     t!(F), t!(F), t!(F), t!(F),
+     t!(C), t!(C), t!(C), t!(C),
+ ];
++
++#[cfg(test)]
++mod doman_tests {
++    use super::*;
++    use crate::hand::{hand_with_aka, tile37_to_vec};
++
++    // Every tile comes from one physical 136-tile pool.
++    fn fixture(doman: bool, hands: [Option<&str>; 4], draw: Tile) -> BoardState {
++        let mut board = Board {
++            doman_length: if doman { 4 } else { 0 },
++            scores: [25000; 4],
++            kyotaku: 2,
++            ..Default::default()
++        };
++        let mut pool = UNSHUFFLED.to_vec();
++        for (i, hand) in hands.iter().enumerate() {
++            if let Some(hand) = hand {
++                let tiles = tile37_to_vec(&hand_with_aka(hand).unwrap());
++                for tile in &tiles {
++                    let pos = pool.iter().position(|t| t == tile).unwrap();
++                    pool.remove(pos);
++                }
++                board.haipai[i] = tiles.try_into().unwrap();
++            }
++        }
++        let pos = pool.iter().position(|t| *t == draw).unwrap();
++        pool.remove(pos);
++        for (i, hand) in hands.iter().enumerate() {
++            if hand.is_none() {
++                board.haipai[i] = pool.drain(..13).collect::<Vec<_>>().try_into().unwrap();
++            }
++        }
++        board.rinshan = pool.drain(..4).collect();
++        board.dora_indicators = pool.drain(..5).collect();
++        board.ura_indicators = pool.drain(..5).collect();
++        board.yama = pool;
++        board.yama.push(draw);
++        assert_eq!(board.yama.len(), 70);
++        let mut state = board.into_state();
++        state.step(&Default::default()).unwrap();
++        state
++    }
++
++    fn reaction(actor: u8, event: Event) -> [EventExt; 4] {
++        let mut reactions: [EventExt; 4] = Default::default();
++        reactions[actor as usize] = EventExt::no_meta(event);
++        reactions
++    }
++
++    #[test]
++    fn doman_triple_ron_is_abortive_but_double_ron_pays_both() {
++        for winners in [2, 3] {
++            let mut state = fixture(
++                true,
++                [
++                    None,
++                    Some("123456789m123p1z"),
++                    Some("123456789s456p1z"),
++                    Some("111999p111999s1z"),
++                ],
++                t!(E),
++            );
++            state
++                .step(&reaction(
++                    0,
++                    Event::Dahai {
++                        actor: 0,
++                        pai: t!(E),
++                        tsumogiri: true,
++                    },
++                ))
++                .unwrap();
++            let mut reactions: [EventExt; 4] = Default::default();
++            for actor in 1..=winners {
++                reactions[actor] = EventExt::no_meta(Event::Hora {
++                    actor: actor as u8,
++                    target: 0,
++                    deltas: None,
++                    ura_markers: None,
++                });
++            }
++            assert!(matches!(state.poll(reactions).unwrap(), Poll::End));
++            let result = state.end();
++            assert_eq!(result.has_abortive_ryukyoku, winners == 3);
++            assert_eq!(result.has_hora, winners == 2);
++            if winners == 3 {
++                assert_eq!(result.scores, [25000; 4]);
++                assert_eq!(result.kyotaku_left, 2);
++                assert!(result.can_renchan);
++                assert_eq!(
++                    state
++                        .log
++                        .iter()
++                        .filter(|e| matches!(e.event, Event::Hora { .. }))
++                        .count(),
++                    0
++                );
++            } else {
++                assert!(result.scores[1] > 25000 && result.scores[2] > 25000);
++                assert_eq!(result.scores.iter().sum::<i32>(), 102000);
++            }
++        }
++    }
++
++    #[test]
++    fn doman_nagashi_is_a_draw_with_dealer_tenpai_continuation() {
++        for (hand, tenpai) in [("123456789m123p1z", true), ("147m147p147s1234z", false)] {
++            let mut state = fixture(true, [Some(hand), None, None, None], t!(9s));
++            state
++                .step(&reaction(
++                    0,
++                    Event::Dahai {
++                        actor: 0,
++                        pai: t!(9s),
++                        tsumogiri: true,
++                    },
++                ))
++                .unwrap();
++            state.can_nagashi_mangan = [true, false, false, false];
++            state.exhaustive_ryukyoku();
++            assert!(!state.has_hora);
++            assert_eq!(state.can_renchan, tenpai);
++            assert_eq!(state.kyoku_deltas, [12000, -4000, -4000, -4000]);
++            assert_eq!(state.board.kyotaku, 2);
++        }
++    }
++
++    #[test]
++    fn doman_four_riichi_continues_standard_aborts() {
++        for doman in [false, true] {
++            let mut state = fixture(doman, [None; 4], t!(9s));
++            state.accepted_riichis = 4;
++            let result = state
++                .step(&reaction(
++                    0,
++                    Event::Dahai {
++                        actor: 0,
++                        pai: t!(9s),
++                        tsumogiri: true,
++                    },
++                ))
++                .unwrap();
++            assert_eq!(matches!(result, Poll::End), !doman);
++        }
++    }
++
++    #[test]
++    fn doman_fifth_kan_aborts_before_extra_dora_or_rinshan() {
++        let mut state = fixture(true, [Some("111m234p234s2345m"), None, None, None], t!(1m));
++        state.kans = 4;
++        let log_len = state.log.len();
++        let dora_len = state.board.dora_indicators.len();
++        let rinshan_len = state.board.rinshan.len();
++        let action = Event::Ankan {
++            actor: 0,
++            consumed: [t!(1m); 4],
++        };
++        assert!(matches!(
++            state.poll(reaction(0, action)).unwrap(),
++            Poll::End
++        ));
++        assert!(state.end().has_abortive_ryukyoku);
++        assert_eq!(state.board.dora_indicators.len(), dora_len);
++        assert_eq!(state.board.rinshan.len(), rinshan_len);
++        assert_eq!(state.log.len(), log_len + 2);
++    }
++}
+--- a/libriichi/src/state/player_state.rs
++++ b/libriichi/src/state/player_state.rs
+@@ -22,6 +22,7 @@
+ #[derive(Clone, Derivative)]
+ #[derivative(Default)]
+ pub struct PlayerState {
++    pub(crate) doman_length: u8,
+     pub(super) player_id: u8,
+ 
+     /// Does not include aka.
+--- a/libriichi/src/state/update.rs
++++ b/libriichi/src/state/update.rs
+@@ -149,10 +149,14 @@
+         self.oya = self.rel(oya) as u8;
+         self.jikaze = must_tile!(tu8!(E) + (4 - self.oya) % 4);
+         self.kyoku = kyoku - 1;
+-        self.is_all_last = match self.bakaze.as_u8() {
+-            tu8!(E) => false,
+-            tu8!(S) => self.kyoku == 3,
+-            _ => true,
++        self.is_all_last = if self.doman_length != 0 {
++            (self.bakaze.as_u8() - tu8!(E)) * 4 + self.kyoku >= self.doman_length - 1
++        } else {
++            match self.bakaze.as_u8() {
++                tu8!(E) => false,
++                tu8!(S) => self.kyoku == 3,
++                _ => true,
++            }
+         };
+ 
+         self.scores = scores;
+@@ -272,7 +276,7 @@
+         }
+ 
+         if self.riichi_accepted[0] {
+-            if self.kans_on_board < 4 {
++            if self.kans_on_board < 4 || self.doman_length != 0 && self.kans_on_board == 4 {
+                 // Using Tenhou rule here.
+                 self.last_cans.can_ankan =
+                     agari::check_ankan_after_riichi(&self.tehai, self.tehai_len_div3, pai, false);
+@@ -283,7 +287,7 @@
+             return Ok(());
+         }
+ 
+-        if self.kans_on_board < 4 {
++        if self.kans_on_board < 4 || self.doman_length != 0 && self.kans_on_board == 4 {
+             self.tehai
+                 .iter()
+                 .enumerate()
+@@ -420,8 +424,9 @@
+             self.set_can_chi_from_tile(pai);
+         }
+         self.last_cans.can_pon = self.tehai[pai.deaka().as_usize()] >= 2;
+-        self.last_cans.can_daiminkan =
+-            self.kans_on_board < 4 && self.tehai[pai.deaka().as_usize()] == 3;
++        self.last_cans.can_daiminkan = (self.kans_on_board < 4
++            || self.doman_length != 0 && self.kans_on_board == 4)
++            && self.tehai[pai.deaka().as_usize()] == 3;
+ 
+         Ok(())
+     }
+--- a/libriichi/src/state/agent_helper.rs
++++ b/libriichi/src/state/agent_helper.rs
+@@ -1,5 +1,5 @@
+ use super::{PlayerState, SinglePlayerTables};
+-use crate::algo::agari::AgariCalculator;
++use crate::algo::agari::{Agari, AgariCalculator};
+ use crate::algo::point::Point;
+ use crate::algo::shanten;
+ use crate::algo::sp::{InitState, SPCalculator};
+@@ -282,7 +282,7 @@
+             if self.kyoku < 3 {
+                 return true;
+             }
+-        } else if self.scores.iter().all(|&s| s < 30000) {
++        } else if self.doman_length == 0 && self.scores.iter().all(|&s| s < 30000) {
+             // Agari if 西入 is possible. Note that this condition is sound but
+             // not complete.
+             return true;
+@@ -382,7 +382,7 @@
+ 
+         // Here, 天和 and 地和 are handled individually as special cases, and
+         // there is no multi yakuman for these two.
+-        if !is_ron && self.can_w_riichi {
++        if self.doman_length == 0 && !is_ron && self.can_w_riichi {
+             return Ok(Point::yakuman(self.oya == 0, 1));
+         }
+ 
+@@ -458,6 +458,11 @@
+             .agari(additional_hans, final_doras_owned)
+             .context("not a hora hand")?;
+ 
++        let agari = if self.doman_length != 0 {
++            doman_agari(agari, !is_ron && self.can_w_riichi)
++        } else {
++            agari
++        };
+         Ok(agari.point(self.oya == 0))
+     }
+ 
+@@ -592,3 +597,40 @@
+         Ok(SinglePlayerTables { max_ev_table })
+     }
+ }
++
++fn doman_agari(agari: Agari, blessing: bool) -> Agari {
++    match agari {
++        Agari::Yakuman(n) => Agari::Yakuman((n + u8::from(blessing)).min(4)),
++        _ if blessing => Agari::Yakuman(1),
++        _ => agari,
++    }
++}
++
++#[cfg(test)]
++mod doman_tests {
++    use super::*;
++    #[test]
++    fn doman_blessing_combines_with_natural_yakuman_and_caps_at_four() {
++        assert_eq!(doman_agari(Agari::Yakuman(1), true).point(false).ron, 64000);
++        assert_eq!(
++            doman_agari(Agari::Yakuman(4), true).point(false).ron,
++            128000
++        );
++        assert_eq!(
++            doman_agari(Agari::Yakuman(5), false).point(true).ron,
++            192000
++        );
++        assert_eq!(
++            doman_agari(Agari::Normal { fu: 30, han: 13 }, false)
++                .point(false)
++                .ron,
++            32000
++        );
++        assert_eq!(
++            doman_agari(Agari::Normal { fu: 30, han: 13 }, true)
++                .point(false)
++                .ron,
++            32000
++        );
++    }
++}
+--- a/libriichi/src/state/test.rs
++++ b/libriichi/src/state/test.rs
+@@ -1416,3 +1416,34 @@
+     assert!(ps.at_furiten);
+     assert!(!ps.has_next_shanten_discard);
+ }
++
++#[test]
++fn doman_all_last_and_fifth_kan_legal_mask() {
++    for length in [0, 4, 8] {
++        let mut ps = PlayerState::new(0);
++        ps.doman_length = length;
++        let mut tehais = [[t!(?); 13]; 4];
++        tehais[0] = tile37_to_vec(&hand_with_aka("111m234p234s2345m").unwrap())
++            .try_into()
++            .unwrap();
++        ps.update(&Event::StartKyoku {
++            bakaze: t!(E),
++            dora_marker: t!(C),
++            kyoku: 4,
++            honba: 0,
++            kyotaku: 0,
++            oya: 3,
++            scores: [25000; 4],
++            tehais,
++        })
++        .unwrap();
++        assert_eq!(ps.is_all_last, length == 4);
++        ps.kans_on_board = 4;
++        ps.update(&Event::Tsumo {
++            actor: 0,
++            pai: t!(1m),
++        })
++        .unwrap();
++        assert_eq!(ps.last_cans.can_ankan, length != 0);
++    }
++}

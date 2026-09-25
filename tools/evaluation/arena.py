@@ -26,7 +26,7 @@ def paired_interval(values, replicates=10000):
 
 
 def report(groups, split, opponent="mortal", match_mode="libriichi-hanchan"):
-    rules = rule_profile(match_mode)
+    rules = rule_profile(match_mode, allow_experimental=True)
     rank_delta = [statistics.mean(m["rank"] for m in g["candidate"]) - statistics.mean(m["rank"] for m in g["baseline"]) for g in groups]
     fourth_delta = [statistics.mean(m["rank"] == 4 for m in g["candidate"]) - statistics.mean(m["rank"] == 4 for m in g["baseline"]) for g in groups]
     rank_ci, fourth_ci = paired_interval(rank_delta), paired_interval(fourth_delta)
