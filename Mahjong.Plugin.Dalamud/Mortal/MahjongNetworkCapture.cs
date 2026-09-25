@@ -70,7 +70,7 @@ public sealed class MahjongNetworkCapture : IDisposable
     }
     public bool ProtocolVerified => profiles.Any(p => p.Matches(gameVersion, variantAccessor()));
     public string ProtocolStatus => ProtocolVerified ? $"Verified protocol; {TransportStatus}"
-        : LimitedTrialActive ? $"Limited trial: East rounds, zero opening riichi pool, no kans; {TransportStatus}"
+        : LimitedTrialActive ? $"Limited trial: East rounds, score-derived riichi pool, combined riichi, no kans; {TransportStatus}"
         : $"No admitted protocol for {gameVersion ?? "unknown build"}/{variantAccessor() ?? "unknown variant"}";
     public bool TryDequeuePublic(out CapturedMahjongPacket packet) => publicQueue.TryDequeue(out packet);
     private volatile bool disposed;

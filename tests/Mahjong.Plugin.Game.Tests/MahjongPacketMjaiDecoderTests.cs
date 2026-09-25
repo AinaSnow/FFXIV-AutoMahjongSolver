@@ -171,11 +171,70 @@ public sealed class MahjongPacketMjaiDecoderTests
     {
         var decoder = new MahjongPacketMjaiDecoder();
         decoder.Process(637, HandStart());
+        decoder.Process(638, Draw(3, 60));
         var events = decoder.Process(641, Discard(3, 60, 0x113));
         Assert.Collection(events,
             e => Assert.Equal(new MjaiReach(0), e),
             e => Assert.Equal(new MjaiDahai(0, "7p", true), e),
             e => Assert.Equal(new MjaiReachAccepted(0), e));
+    }
+
+    [Theory]
+    [InlineData(0)] [InlineData(1)] [InlineData(2)] [InlineData(3)]
+    public void Verified_combined_riichi_keeps_self_seat_and_red_draw_identity(int self)
+    {
+        var decoder = new MahjongPacketMjaiDecoder();
+        var opening = HandStart(); WriteInt32(opening, 24, self);
+        var state = new PublicStateReducer();
+        foreach (var e in decoder.Process(637, opening)) state.Apply(e);
+        foreach (var e in decoder.Process(638, Draw(self, 89))) state.Apply(e);
+        var before = state.Snapshot(LegalActions.None);
+        var events = decoder.Process(641, Discard(self, 89, 0x113));
+        Assert.Equal(new MjaiReach(0), events[0]);
+        Assert.Equal(new MjaiDahai(0, "5sr", true), events[1]);
+        Assert.Equal(new MjaiReachAccepted(0), events[2]);
+        foreach (var e in events) state.Apply(e);
+        var after = state.Snapshot(LegalActions.None);
+        Assert.True(state.Complete);
+        Assert.Equal(before.Scores[0] - 1000, after.Scores[0]);
+        Assert.Equal(before.RiichiSticks + 1, after.RiichiSticks);
+        Assert.True(after.OurRiichi);
+        Assert.Equal(13, after.Hand.Count);
+        Assert.True(Assert.Single(after.Seats[0].DiscardIsRed));
+        Assert.False(Assert.Single(after.Seats[0].DiscardIsTedashi));
+    }
+
+    [Theory]
+    [InlineData(0)] // No preceding draw.
+    [InlineData(1)] // Another actor drew.
+    [InlineData(2)] // Self discarded a different tile.
+    [InlineData(3)] // Same kind but a different red identity.
+    [InlineData(4)] // An intervening discard consumed the draw context.
+    [InlineData(5)] // Already declared riichi earlier in the hand.
+    [InlineData(6)] // New hand cannot reuse previous draw evidence.
+    public void Combined_riichi_rejects_missing_or_conflicting_history(int scenario)
+    {
+        var decoder = new MahjongPacketMjaiDecoder();
+        decoder.Process(637, HandStart()); // Self is absolute seat 3.
+        if (scenario != 0) decoder.Process(638, Draw(scenario == 1 ? 0 : 3, 89));
+        if (scenario == 4) decoder.Process(641, Discard(3, 89));
+        if (scenario == 5)
+        {
+            decoder.Process(641, Discard(3, 89, 0x113));
+            decoder.Process(638, Draw(3, 89));
+        }
+        if (scenario == 6) decoder.Process(637, HandStart());
+        ushort physical = scenario == 2 ? (ushort)60 : scenario == 3 ? (ushort)88 : (ushort)89;
+        Assert.Throws<InvalidDataException>(() => decoder.Process(641, Discard(3, physical, 0x113)));
+    }
+
+    [Fact]
+    public void Opponent_combined_riichi_never_reveals_the_hidden_draw()
+    {
+        var decoder = new MahjongPacketMjaiDecoder();
+        decoder.Process(637, HandStart());
+        Assert.Equal(new MjaiTsumo(1, "?"), Assert.Single(decoder.Process(638, Draw(0, 0))));
+        Assert.Equal(new MjaiDahai(1, "P", true), decoder.Process(641, Discard(0, 124, 0x113))[1]);
     }
 
     [Fact]

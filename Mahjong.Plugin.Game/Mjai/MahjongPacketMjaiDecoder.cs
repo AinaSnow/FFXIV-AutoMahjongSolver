@@ -24,6 +24,8 @@ public sealed class MahjongPacketMjaiDecoder
     private bool handOpen;
     private int? selfSeat;
     private LastDiscard? lastDiscard;
+    private LastDraw? lastDraw;
+    private readonly bool[] declaredRiichi = new bool[4];
 
     /// <summary>Raw tile-kind values from the most recently decoded hand-start packet.</summary>
     public IReadOnlyList<int> LastHandStartTileKinds { get; private set; } = [];
@@ -53,6 +55,7 @@ public sealed class MahjongPacketMjaiDecoder
                     handOpen = false;
                     selfSeat = null;
                     lastDiscard = null;
+                    lastDraw = null;
                 }
                 break;
 
@@ -81,6 +84,7 @@ public sealed class MahjongPacketMjaiDecoder
                     output.Add(new MjaiEndKyoku());
                     handOpen = false;
                     lastDiscard = null;
+                    lastDraw = null;
                 }
                 break;
         }
@@ -99,6 +103,7 @@ public sealed class MahjongPacketMjaiDecoder
         gameStarted = false;
         selfSeat = null;
         lastDiscard = null;
+        lastDraw = null;
         return output;
     }
 
@@ -108,6 +113,7 @@ public sealed class MahjongPacketMjaiDecoder
         if (!handOpen || !IsSeat(actor) || actor == 0 || tile == MjaiTile.Unknown)
             throw new ArgumentException("Recovered discard must be a known opponent tile in an open hand.");
         lastDiscard = new LastDiscard(actor, tile);
+        lastDraw = null;
     }
 
     public static string DecodePhysicalTile(ushort physical)
@@ -199,8 +205,10 @@ public sealed class MahjongPacketMjaiDecoder
             Tehais: tehais));
 
         selfSeat = absoluteSelfSeat;
+        Array.Clear(declaredRiichi);
         handOpen = true;
         lastDiscard = null;
+        lastDraw = null;
     }
 
     private void DecodeDrawOrCall(ReadOnlySpan<byte> payload, List<IMjaiEvent> output)
@@ -221,6 +229,7 @@ public sealed class MahjongPacketMjaiDecoder
                 : MjaiTile.Unknown;
             output.Add(new MjaiTsumo(actor, tile));
             lastDiscard = null;
+            lastDraw = new LastDraw(actor, tile);
             return;
         }
 
@@ -235,6 +244,7 @@ public sealed class MahjongPacketMjaiDecoder
             previous.Tile,
             [DecodePhysicalTile(ReadUInt16(payload, 12)), DecodePhysicalTile(ReadUInt16(payload, 14))]));
         lastDiscard = null;
+        lastDraw = null;
     }
 
     private void DecodeDiscard(ReadOnlySpan<byte> payload, List<IMjaiEvent> output)
@@ -256,13 +266,26 @@ public sealed class MahjongPacketMjaiDecoder
         LastDiscardPhysical = physical;
         LastDiscardAction = action;
         string tile = DecodePhysicalTile(physical);
+        if (action == 0x113)
+        {
+            if (lastDraw is not { } draw || draw.Actor != actor)
+                throw new InvalidDataException("Combined riichi requires the same actor's preceding draw.");
+            if (declaredRiichi[actor])
+                throw new InvalidDataException("Combined riichi repeats an accepted declaration.");
+            if (actor == 0 && (tile == MjaiTile.Unknown || draw.Tile != tile))
+                throw new InvalidDataException("Combined riichi self discard conflicts with the drawn tile/red identity.");
+        }
         bool riichi = action is 0x111 or 0x113;
         if (riichi)
             output.Add(new MjaiReach(actor));
         output.Add(new MjaiDahai(actor, tile, action is 0x112 or 0x113));
         if (riichi)
+        {
             output.Add(new MjaiReachAccepted(actor));
+            declaredRiichi[actor] = true;
+        }
         lastDiscard = new LastDiscard(actor, tile);
+        lastDraw = null;
     }
 
     private void StartGame(List<IMjaiEvent> output)
@@ -290,4 +313,5 @@ public sealed class MahjongPacketMjaiDecoder
         BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(offset, sizeof(uint)));
 
     private sealed record LastDiscard(int Actor, string Tile);
+    private sealed record LastDraw(int Actor, string Tile);
 }

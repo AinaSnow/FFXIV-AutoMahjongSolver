@@ -5,7 +5,7 @@ namespace Mahjong.Plugin.Game.Mjai;
 /// <summary>Deliberately narrow trial admission; no guessed kan or dora; opening sticks use score conservation.</summary>
 public static class DomanMortalTrialGuard
 {
-    public const string Scope = "doman-east-score-pool-no-kan-v2";
+    public const string Scope = "doman-east-combined-riichi-no-kan-v3";
 
     public static string? RejectStart(MjaiStartKyoku start)
     {
@@ -43,11 +43,10 @@ public static class DomanMortalTrialGuard
         if (messageId is MahjongPacketMjaiDecoder.DrawOrCallMessageId or MahjongPacketMjaiDecoder.DiscardMessageId
             && payload.Length >= 4 && BinaryPrimitives.ReadInt32LittleEndian(payload[..4]) is < 0 or > 3)
             return "Limited trial: unknown event actor";
-        // Combined declaration/tsumogiri has decoder tests but no independent live
-        // field verification. Leave it outside this opt-in scope as well as all kans.
-        if (messageId == MahjongPacketMjaiDecoder.DiscardMessageId && payload.Length >= 12
-            && BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(8, 4)) == 0x113)
-            return "Limited trial: combined riichi flag is not independently verified";
+        // The captured self declaration + drawn-tile click independently verifies
+        // 0x113. The decoder additionally requires the actor's preceding draw and
+        // checks exact self tile/red identity. Kan/dora stay unsupported.
+        // Evidence: docs/reviews/20260925-combined-riichi-protocol.md.
         return null;
     }
 }

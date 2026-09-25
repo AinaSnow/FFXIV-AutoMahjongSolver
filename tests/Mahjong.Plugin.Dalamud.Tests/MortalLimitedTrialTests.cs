@@ -64,8 +64,9 @@ public sealed class MortalLimitedTrialTests
         Assert.True(capture.DroppedPackets > 0); Assert.Empty(Drain(capture));
     }
 
-    [Fact]
-    public void Actual_riichi_discard_is_sent_once_after_virtual_reach_and_replay_is_authoritative()
+    [Theory]
+    [InlineData(0x111u, false)] [InlineData(0x113u, true)]
+    public void Actual_riichi_discard_is_sent_once_after_virtual_reach_and_replay_is_authoritative(uint action, bool tsumogiri)
     {
         using var h = new Harness(); h.Open(); h.Send(0x02BB, Draw());
         var old = h.Client;
@@ -73,9 +74,12 @@ public sealed class MortalLimitedTrialTests
         old.Emit("{\"type\":\"dahai\",\"actor\":0,\"pai\":\"5sr\",\"tsumogiri\":false}");
         Assert.True(h.Bridge.TryChoose(h.Snapshot, out var choice));
         Assert.Equal(ActionKind.Riichi, choice.Kind); Assert.True(choice.DiscardIsRed);
-        h.Send(0x0214, Discard(0x111));
+        h.Send(0x0214, Discard(action));
+        Assert.False(h.Bridge.CurrentHandQuarantined);
+        Assert.Equal(24000, h.Snapshot.Scores[0]);
+        Assert.Equal(1, h.Snapshot.RiichiSticks);
         Assert.Single(old.Sent.OfType<MjaiReach>());
-        Assert.Equal(new MjaiDahai(0, "5sr", false), Assert.Single(old.Sent.OfType<MjaiDahai>()));
+        Assert.Equal(new MjaiDahai(0, "5sr", tsumogiri), Assert.Single(old.Sent.OfType<MjaiDahai>()));
         Assert.Single(old.Sent.OfType<MjaiReachAccepted>());
         h.Bridge.RecoverUnresponsiveDecision("test timeout"); h.Bridge.Update();
         var replay = h.Client.Replayed.Select(x => JsonDocument.Parse(x).RootElement.GetProperty("type").GetString()!).ToArray();
@@ -83,11 +87,45 @@ public sealed class MortalLimitedTrialTests
         Assert.Empty(h.Client.Sent); // The pre-roll must not duplicate the replay journal.
     }
 
+    [Fact]
+    public void Observed_self_white_draw_declaration_and_slot13_discard_stay_in_one_session()
+    {
+        // Anonymous state-equivalent reproduction of the captured self 0x113 window.
+        using var h = new Harness();
+        var opening = Opening();
+        BinaryPrimitives.WriteInt32LittleEndian(opening.AsSpan(24), 3);
+        int[] hand = [0, 1, 2, 11, 12, 13, 19, 20, 21, 22, 24, 25, 26];
+        for (int i = 0; i < hand.Length; i++)
+            BinaryPrimitives.WriteInt32LittleEndian(opening.AsSpan(48 + i * 4), hand[i]);
+        h.Send(0x0133, opening);
+        var original = h.Client;
+        var draw = Draw(); BinaryPrimitives.WriteInt32LittleEndian(draw, 3);
+        BinaryPrimitives.WriteUInt16LittleEndian(draw.AsSpan(8), 124);
+        h.Send(0x02BB, draw);
+        Assert.Equal(31, h.Snapshot.Hand[^1].Id);
+        var discard = Discard(0x113); BinaryPrimitives.WriteInt32LittleEndian(discard, 3);
+        BinaryPrimitives.WriteUInt16LittleEndian(discard.AsSpan(12), 124);
+        h.Send(0x0214, discard);
+        Assert.Same(original, h.Client);
+        Assert.True(original.IsRunning);
+        Assert.False(h.Bridge.CurrentHandQuarantined);
+        Assert.Equal(new MjaiDahai(0, "P", true), Assert.Single(original.Sent.OfType<MjaiDahai>()));
+        Assert.Single(original.Sent.OfType<MjaiReach>());
+        Assert.Single(original.Sent.OfType<MjaiReachAccepted>());
+        Assert.Equal(hand, h.Snapshot.Hand.Select(t => (int)t.Id));
+        Assert.True(h.Snapshot.OurRiichi);
+        Assert.Equal(24000, h.Snapshot.Scores[0]);
+        Assert.Equal(1, h.Snapshot.RiichiSticks);
+        h.Send(0x018D, new byte[264]);
+        Assert.Single(original.Sent.OfType<MjaiEndKyoku>());
+        Assert.Equal(0, h.Bridge.DecisionTimeouts);
+    }
+
     [Theory]
     [InlineData(0x140)]
     [InlineData(0x130)]
     [InlineData(0x113)]
-    public void Unsupported_action_quarantines_then_resumes_at_observed_next_opening(int action)
+    public void Unsupported_or_unsequenced_action_quarantines_then_resumes_at_observed_next_opening(int action)
     {
         using var h = new Harness(); h.Open();
         var old = h.Client; var late = old.ReactionReceivedSnapshot;
@@ -408,8 +446,8 @@ public sealed class MortalLimitedTrialTests
     }
 
     [Theory]
-    [InlineData(1, 2, 0)] [InlineData(2, 1, 0)] [InlineData(3, 1, 866)] [InlineData(4, 1, 0)]
-    public void Captured_carried_pool_hand_is_admitted_until_result_or_unverified_flag(int index, int sticks, int rejectedSequence)
+    [InlineData(1, 2)] [InlineData(2, 1)] [InlineData(3, 1)] [InlineData(4, 1)]
+    public void Captured_carried_pool_and_combined_riichi_hands_are_admitted_until_result(int index, int sticks)
     {
         using var h = new Harness();
         using var data = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory,
@@ -419,17 +457,11 @@ public sealed class MortalLimitedTrialTests
         {
             h.Send(Convert.ToUInt16(row.GetProperty("opcode").GetString()![2..], 16),
                 Convert.FromHexString(row.GetProperty("payload_hex").GetString()!));
-            if (row.GetProperty("sequence").GetInt32() == rejectedSequence)
-            {
-                Assert.True(h.Bridge.CurrentHandQuarantined);
-                Assert.Contains("combined riichi flag", h.Bridge.Status);
-                break; // Do not silently broaden protocol admission to make a replay pass.
-            }
             Assert.Same(original, h.Client);
             Assert.True(h.Client.IsRunning, $"Unexpected isolation at {row.GetProperty("sequence")}: {h.Bridge.Status}");
         }
         Assert.Equal(sticks, Assert.Single(h.Client.Sent.OfType<MjaiStartKyoku>()).Kyotaku);
-        Assert.Equal(rejectedSequence == 0 ? 1 : 0, h.Client.Sent.OfType<MjaiEndKyoku>().Count());
+        Assert.Single(h.Client.Sent.OfType<MjaiEndKyoku>());
         Assert.Single(h.Clients);
         Assert.Equal(0, h.Bridge.DecisionTimeouts);
     }

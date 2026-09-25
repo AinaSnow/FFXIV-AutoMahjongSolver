@@ -62,4 +62,4 @@ wsl.exe -d Ubuntu -e python /mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/tools/
 
 这些结果仍为离线诊断；新的实战入口是另一个默认关闭、范围受限且有逐局保护的 [Mortal 有限试用](reviews/20260924-mortal-limited-trial.md)。离线通过本身不会改写配置或解锁完整协议。
 
-2026-09-25 新增四个带供托开局的脱敏回放：真实模型全部完成，共 427 条关联输入、66 条响应。实战接入另有 guard：第 3 个样本在后半局 sequence 866 的 `0x113` 仍应隔离；离线兼容不能越过实战字段验证。见 [覆盖修复报告](reviews/20260925-mortal-decision-coverage.md)。
+2026-09-25 新增四个带供托开局的脱敏回放：真实模型全部完成，共 427 条关联输入、66 条响应，见 [覆盖修复报告](reviews/20260925-mortal-decision-coverage.md)。随后通过自身摸牌、立直点击与服务端弃牌回执独立核对了 `0x113`，第 3 个样本现可在有限试用中通过 sequence 866 并走到结果；新增六段完整组合立直手局也通过实际模型（689 条输入、96 条响应）。两段包含更早未验证杠的历史继续跳过。见 [组合立直证据与回放](reviews/20260925-combined-riichi-protocol.md)。离线兼容不替代字段验证或胜率评测。
