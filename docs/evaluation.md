@@ -155,3 +155,5 @@ python "$REPO/tools/evaluation/compare_models.py" \
 官方依据：[高级规则](https://na.finalfantasyxiv.com/lodestone/playguide/contentsguide/goldsaucer/doman-mahjong/special_rule/)、[5.4 版本加入 Quick Match](https://na.finalfantasyxiv.com/lodestone/topics/detail/230f6e0af3536f9a40654d783c8c2f1094131070)。
 
 首批东风验证已完成：20 组、160 场模型比较，另有 160 场同模型对照。见 [结果与验收记录](reviews/20260925-doman-quick-dev20.md)。
+
+扩大验证已完成：另用 100 个新开发种子组、800 场东风对照。候选前二率 49.75%，基线 50%，平均名次 2.495 对 2.500，未证明换权重能提高表现。继续保留现有模型，见 [100 组完整报告](reviews/20260925-doman-quick-dev100.md)。
