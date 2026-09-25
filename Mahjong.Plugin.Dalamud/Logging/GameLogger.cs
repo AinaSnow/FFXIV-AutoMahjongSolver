@@ -277,6 +277,14 @@ public sealed class GameLogger : IDisposable
         }
     }
 
+    /// <summary>A scheduled follow-up was rejected before input; do not count the earlier popup click as completion.</summary>
+    public void RecordActionAborted(ActionKind kind, Tile? tile, string label, string reason, bool? isRed = null)
+    {
+        if (!configService.Current.EnableGameLogging || disposed) return;
+        RecordAction(kind, tile, null, "Aborted", $"{label}: {reason}", isRed);
+        RecordActionOutcome(LastActionId, label, "aborted", reason);
+    }
+
     public void RecordActionOutcome(long actionId, string label, string status, string path)
     {
         if (!configService.Current.EnableGameLogging || disposed) return;

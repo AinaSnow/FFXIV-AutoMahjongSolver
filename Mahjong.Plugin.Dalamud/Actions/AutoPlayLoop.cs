@@ -973,43 +973,24 @@ public sealed class AutoPlayLoop : IDisposable
         {
             var snap = plugin.AddonReader.TryBuildSnapshot();
             if (snap is not null) snap = plugin.Aggregator.Enrich(snap);
-            if (snap is null || snap.OurRiichi || snap.Hand.Count < 14)
+            if (snap?.OurRiichi == true) return; // The server already accepted the declaration.
+            var rawSlots = plugin.AddonReader.DumpHandArrayRaw();
+            int textureBase = plugin.AddonReader.ActiveLayout?.TileTextureBase ?? 0;
+            if (!RiichiDiscardResolver.TryResolve(snap, rawSlots ?? [], textureBase,
+                fsm.RiichiConfirmTile, fsm.RiichiConfirmTileIsRed,
+                out var tile, out int slot, out bool isRed, out string reason))
             {
-                LastActionDescription = $"riichi-tsumogiri aborted: hand={snap?.Hand.Count ?? -1}";
-                return;
-            }
-
-            // Latch carries the policy-chosen tile; fall back to slot 13 only when no tile was latched (post-confirm yaku-preview popup).
-            int slot;
-            Tile tile;
-            if (fsm.RiichiConfirmTile is { } target)
-            {
-                slot = plugin.AddonReader.FindAddonSlotOfTile(target, fsm.RiichiConfirmTileIsRed);
-                if (slot < 0)
-                {
-                    LastActionDescription = $"riichi-tsumogiri aborted: latched tile {target} not in hand";
-                    log.Info($"[AutoPlayLoop] {LastActionDescription}");
-                    return;
-                }
-                tile = target;
-            }
-            else
-            {
-                slot = 13;
-                tile = snap.Hand[13];
-            }
-
-            if (!snap.Legal.AllowsDiscard(tile))
-            {
-                LastActionDescription = "riichi declaration discard is no longer legal";
+                LastActionDescription = $"riichi-tsumogiri aborted: {reason}; hand={snap?.Hand.Count ?? -1}";
+                log.Warning($"[AutoPlayLoop] {LastActionDescription}");
+                plugin.GameLogger.RecordActionAborted(ActionKind.Discard, fsm.RiichiConfirmTile,
+                    "riichi-tsumogiri", reason, fsm.RiichiConfirmTileIsRed);
                 return;
             }
             var result = plugin.Dispatcher.DispatchDiscard(slot);
             LastActionDescription = $"auto-riichi-tsumogiri {tile} slot={slot} → {result}";
             log.Info($"[AutoPlayLoop] riichi-tsumogiri dispatch: {LastActionDescription}");
             plugin.GameLogger.RecordAction(ActionKind.Discard, tile, slot, result.ToString(), "riichi-tsumogiri",
-                fsm.RiichiConfirmTile is not null ? fsm.RiichiConfirmTileIsRed :
-                    snap.Observations.HasFlag(SnapshotObservationFlags.HandRedIdentity) && snap.HandIsRed.Count > 13 ? snap.HandIsRed[13] : null);
+                isRed);
             EmitDispatchFinding("riichi-tsumogiri", result, tile: tile, slot: slot, snap: snap);
             ClearRetryDebounceIfHookFailed(result);
             // Do not clear the latch here — ObserveWall clears it on the next hand; otherwise policy.Choose would re-approve riichi in the same hand.
