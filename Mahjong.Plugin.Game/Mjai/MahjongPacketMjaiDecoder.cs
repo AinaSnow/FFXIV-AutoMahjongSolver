@@ -18,7 +18,7 @@ public sealed class MahjongPacketMjaiDecoder
     // 642 remains the historical roster ID. This is an analysis ID, not a wire opcode.
     public const int DrawResultMessageId = 643;
 
-    private static readonly string[] SeatNames = ["E", "S", "W", "N"];
+    private static readonly string[] RoundWindNames = ["E", "S"];
 
     private bool gameStarted;
     private bool handOpen;
@@ -169,11 +169,18 @@ public sealed class MahjongPacketMjaiDecoder
         if (!IsSeat(absoluteSelfSeat))
             return;
 
+        int roundWindIndex = ReadInt32(payload, 4);
+        if (roundWindIndex is < 0 or >= 2)
+            throw new InvalidDataException("Opening round wind is outside the verified Doman range.");
+
+        int kyokuIndex = ReadInt32(payload, 8);
+        if (kyokuIndex is < 0 or > 3)
+            throw new InvalidDataException("Opening hand index is outside the verified Doman range.");
+
         StartGame(output);
         if (handOpen)
             output.Add(new MjaiEndKyoku());
 
-        int handIndex = ReadInt32(payload, 8);
         int doraId = (int)(ReadUInt32(payload, 28) & 0xff);
         LastHandStartDoraKind = doraId;
         string dora = DecodeTileKind(doraId);
@@ -196,11 +203,10 @@ public sealed class MahjongPacketMjaiDecoder
         }
         LastHandStartTileKinds = rawTileKinds;
 
-        int round = Math.Max(0, handIndex / 4);
         output.Add(new MjaiStartKyoku(
-            Bakaze: round < SeatNames.Length ? SeatNames[round] : "E",
+            Bakaze: RoundWindNames[roundWindIndex],
             DoraMarker: dora,
-            Kyoku: Math.Abs(handIndex % 4) + 1,
+            Kyoku: kyokuIndex + 1,
             Honba: ReadInt32(payload, 12),
             Kyotaku: kyotaku,
             Oya: RelativeSeat(0, absoluteSelfSeat),

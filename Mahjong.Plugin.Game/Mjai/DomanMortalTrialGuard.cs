@@ -5,7 +5,7 @@ namespace Mahjong.Plugin.Game.Mjai;
 /// <summary>Deliberately narrow trial admission; observed opponent kans, self closed/ordinary added kans and result-checked dora; opening sticks use score conservation.</summary>
 public static class DomanMortalTrialGuard
 {
-    public const string Scope = "doman-east-self-kakan-v6";
+    public const string Scope = "doman-east-self-kakan-v7";
 
     public static string? RejectStart(MjaiStartKyoku start)
     {
@@ -35,10 +35,13 @@ public static class DomanMortalTrialGuard
     {
         if (messageId == MahjongPacketMjaiDecoder.HandStartMessageId && payload.Length >= 28)
         {
-            int round = BinaryPrimitives.ReadInt32LittleEndian(payload.Slice(8, 4));
+            int roundWindIndex = BinaryPrimitives.ReadInt32LittleEndian(payload.Slice(4, 4));
+            int kyokuIndex = BinaryPrimitives.ReadInt32LittleEndian(payload.Slice(8, 4));
             int seat = BinaryPrimitives.ReadInt32LittleEndian(payload.Slice(24, 4));
-            if (round is < 0 or > 3 || seat is < 0 or > 3)
+            if (roundWindIndex is < 0 or > 1 || kyokuIndex is < 0 or > 3 || seat is < 0 or > 3)
                 return "Limited trial: invalid or unsupported opening context";
+            if (roundWindIndex != 0)
+                return "Limited trial: South rounds are outside the captured East-round scope";
         }
         if (messageId is MahjongPacketMjaiDecoder.DrawOrCallMessageId or MahjongPacketMjaiDecoder.DiscardMessageId
             && payload.Length >= 4 && BinaryPrimitives.ReadInt32LittleEndian(payload[..4]) is < 0 or > 3)

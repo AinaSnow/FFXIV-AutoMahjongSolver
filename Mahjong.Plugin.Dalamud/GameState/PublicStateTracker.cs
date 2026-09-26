@@ -60,6 +60,8 @@ public sealed class PublicStateTracker : IDisposable
             }
             catch (Exception ex)
             {
+                decoder = new MahjongPacketMjaiDecoder();
+                state.Reset();
                 state.Invalidate("public event rejected");
                 log.Warning(ex, "[Mahjong] Public state unavailable until the next verified hand.");
             }
