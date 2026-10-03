@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
@@ -21,7 +22,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: '10.0.400'
+          dotnet-version: '10.0.401'
 
       - name: Verify version sync (Directory.Build.props ↔ repo.json)
         shell: bash
@@ -46,7 +47,7 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: |
-            10.0.400
+            10.0.401
             8.0.x
       - name: Logic tests (fixtures must exist, no golden update mode)
         shell: bash
@@ -83,7 +84,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: '10.0.400'
+          dotnet-version: '10.0.401'
 
       - name: Install pinned Dalamud build
         shell: pwsh

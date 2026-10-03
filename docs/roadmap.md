@@ -4,6 +4,8 @@ Current implementation and outstanding acceptance work: [stability and strategy 
 
 The end goal is full intelligent automation across **all clients** (EU, NA, JP, OC): addon detection, tile reading, hint overlay, auto-discard, and full call acceptance (Pon / Chi / Kan / Riichi / Tsumo / Ron) at parity on every variant.
 
+Current execution order and gates: [October 3 plan](plan-20261003.md), [offline audit results](reviews/20261003-offline-audit.md). South-round offline replay passes; live South admission remains disabled.
+
 ## Shipped
 
 - Multi-variant addon resolution (`Emj` + `EmjL`) with auto-detect on load

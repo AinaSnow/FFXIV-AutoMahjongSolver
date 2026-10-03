@@ -11,7 +11,9 @@ entry.
 - 🔴 **Broken** — observed not committing in live play; needs fix.
 - ⚫ **Unknown** — no capture, no implementation, no live exposure yet.
 
-Last updated: 2026-09-24.
+Current scope note updated: 2026-10-03. Historical tables retain their original observation dates.
+
+See [v7/offline audit acceptance](reviews/20261003-offline-audit.md) for current evidence. South rounds decode offline but remain rejected by the East-only live trial; this does not revalidate every historical dispatch table.
 
 Historical inventory below includes May observations. Current capture evidence and release limits are in [implementation status](implementation-status.md) and the [complete-match review](reviews/20260924-complete-match.md); old unverified entries do not authorize a current-client protocol.
 
