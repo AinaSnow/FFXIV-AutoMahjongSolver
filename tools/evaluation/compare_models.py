@@ -222,7 +222,7 @@ def main():
         (output/"report.md").write_text(markdown_report(result), encoding="utf-8")
         manifest.update(status="complete", elapsed_seconds=time.monotonic()-started)
         write_json(output/"manifest.json", manifest)
-        print(json.dumps({key: result[key] for key in ("groups", "matches", "rank_delta", "rank_delta_95_ci", "conclusion")}), flush=True)
+        print(json.dumps({key: result[key] for key in ("groups", "matches", "rank_delta", "rank_delta_95_ci", "fourth_delta", "fourth_delta_95_ci", "conclusion")}), flush=True)
     except BaseException as error:
         manifest.update(status="failed", error=f"{type(error).__name__}: {error}", elapsed_seconds=time.monotonic()-started)
         write_json(output/"manifest.json", manifest)

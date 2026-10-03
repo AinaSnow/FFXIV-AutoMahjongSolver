@@ -18,7 +18,7 @@ public sealed record MortalProcessSettings(
         && !string.IsNullOrWhiteSpace(PythonExecutable);
 }
 
-/// <summary>Nonblocking ordered transport. Callbacks are drained on the framework thread.</summary>
+/// <summary>Nonblocking ordered transport. Callbacks run on the transport worker; subscribers must synchronize or enqueue state changes.</summary>
 internal interface IMortalProcessClient : IDisposable
 {
     event Action<string>? ReactionReceived;

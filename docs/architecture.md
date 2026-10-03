@@ -8,7 +8,7 @@ How the codebase is laid out, what each project owns, and how to extend it.
 
 The relative player index is always zero in live merged states; `SeatWind` is independent. Unknown observations have no corresponding observation flag. Unsupported game builds keep UI reads and disable network inference. See [Mortal and compatibility](mortal.md).
 
-`MortalProcessClient` owns bounded sequential IPC on a worker. The maintained Python runner acknowledges every session/hand/sequence envelope. `IGameActionScheduler` and `TimeProvider` separate delayed clicks and deadlines from the host. Dispatch checks configuration, hand, revision and current legal UI before sending input. `BackgroundIoWorker` serializes logs and archive end markers; main-thread disposal initiates cancellation without waiting for disk/process completion.
+`MortalProcessClient` owns bounded sequential IPC on a worker. Transport callbacks execute on the worker; consumers must synchronize or enqueue state changes. The maintained Python runner acknowledges every session/hand/sequence envelope and writes startup stage timings to stderr. `IGameActionScheduler` and `TimeProvider` separate delayed clicks and deadlines from the host. Dispatch checks configuration, hand, revision and current legal UI before sending input. `BackgroundIoWorker` serializes logs and archive end markers; main-thread disposal initiates cancellation without waiting for disk/process completion.
 
 `Mahjong.Policy.Mjai` exposes the builtin policy to an external complete arena. `EnhancedSearch` is an opt-in experiment, with shadow comparison by default. See [evaluation](evaluation.md) and [remaining acceptance work](implementation-status.md).
 
@@ -20,7 +20,7 @@ The relative player index is always zero in live merged states; `SeatWind` is in
                          └──────────────┬──────────┘
                                         │
                          ┌──────────────▼──────────┐
-                         │  Mahjong.Plugin.Dalamud (plugin) │  thin shell —
+                         │  Mahjong.Plugin.Dalamud (plugin) │  host/runtime —
                          │  - Plugin.cs (DI root)   │  Dalamud lives here
                          │  - Adapters/             │  and only here
                          │  - UI / commands / hooks │

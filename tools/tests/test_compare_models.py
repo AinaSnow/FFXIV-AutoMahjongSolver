@@ -182,8 +182,11 @@ class ModelComparisonTests(unittest.TestCase):
         original_identity = mortal_runner._model_identity
         try:
             with patch.dict(sys.modules, modules), patch.object(mortal_runner, "load_checkpoint", side_effect=load):
-                live = mortal_runner.create_engine()
+                timings = {}
+                live = mortal_runner.create_engine(startup_timings=timings)
                 candidate = mortal_runner.create_engine(checkpoint_path="candidate.pth", name="candidate", device_name="cpu", enable_amp=False)
+            self.assertEqual(set(timings), {"imports_ms", "device_check_ms", "checkpoint_read_hash_load_ms", "model_construct_load_ms", "engine_device_setup_ms"})
+            self.assertTrue(all(value >= 0 for value in timings.values()))
             self.assertEqual("live.pth", cfg["control"]["state_file"])
             self.assertTrue(cfg["control"]["enable_amp"])
             self.assertEqual("live.pth", live.model_identity["checkpoint_sha256"])
