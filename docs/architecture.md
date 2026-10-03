@@ -8,9 +8,11 @@ How the codebase is laid out, what each project owns, and how to extend it.
 
 The relative player index is always zero in live merged states; `SeatWind` is independent. Unknown observations have no corresponding observation flag. Unsupported game builds keep UI reads and disable network inference. See [Mortal and compatibility](mortal.md).
 
-`MortalProcessClient` owns bounded sequential IPC on a worker. Transport callbacks execute on the worker; consumers must synchronize or enqueue state changes. The maintained Python runner acknowledges every session/hand/sequence envelope and writes startup stage timings to stderr. `IGameActionScheduler` and `TimeProvider` separate delayed clicks and deadlines from the host. Dispatch checks configuration, hand, revision and current legal UI before sending input. `BackgroundIoWorker` serializes logs and archive end markers; main-thread disposal initiates cancellation without waiting for disk/process completion.
+`MortalProcessClient` owns bounded sequential IPC on a worker. Worker responses enter a notification queue; callbacks execute when the framework owner calls Poll. The maintained Python runner acknowledges every session/hand/sequence envelope and writes startup stage timings to stderr. `IGameActionScheduler` and `TimeProvider` separate delayed clicks and deadlines from the host. Dispatch checks configuration, hand, revision and current legal UI before sending input. `BackgroundIoWorker` serializes logs and archive end markers; main-thread disposal initiates cancellation without waiting for disk/process completion.
 
 `Mahjong.Policy.Mjai` exposes the builtin policy to an external complete arena. `EnhancedSearch` is an opt-in experiment, with shadow comparison by default. See [evaluation](evaluation.md) and [remaining acceptance work](implementation-status.md).
+
+A framework-owned single-use preparation slot loads Mortal before the table appears, without sending MJAI. The live bridge adopts it after protocol/transport admission. Table exit cancels the session and clears old capture pre-roll; configuration changes stop old callbacks before Poll. See [prewarm lifecycle](reviews/20261003-mortal-prewarm.md).
 
 ## Layered overview
 

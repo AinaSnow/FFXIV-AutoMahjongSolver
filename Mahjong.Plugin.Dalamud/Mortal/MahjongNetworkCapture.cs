@@ -186,6 +186,16 @@ public sealed class MahjongNetworkCapture : IDisposable
         target.Enqueue(packet);
     }
 
+    internal void ForgetTableHistory()
+    {
+        lock (admissionLock)
+        {
+            preRoll.Clear();
+            while (queue.TryDequeue(out _)) { }
+            while (publicQueue.TryDequeue(out _)) { }
+        }
+    }
+
     internal void MarkTransportGap() => Interlocked.Increment(ref droppedPackets);
 
     private readonly record struct PacketSpec(int MessageId, int PayloadLength);

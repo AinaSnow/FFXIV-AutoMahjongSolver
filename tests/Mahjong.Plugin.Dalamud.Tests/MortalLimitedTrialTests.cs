@@ -757,6 +757,125 @@ public sealed class MortalLimitedTrialTests
         Assert.False(h.Bridge.HasExpiredReactionWindow(Prompt()));
     }
 
+    [Fact]
+    public void Prewarm_sends_nothing_until_admitted_opening_and_is_adopted_without_restart()
+    {
+        string? variant = null;
+        using var h = new Harness(() => variant);
+        var prepared = Assert.Single(h.Clients);
+        Assert.True(prepared.IsRunning);
+        Assert.False(h.Bridge.Enabled);
+        Assert.False(h.Capture.CaptureEnabled);
+        Assert.Empty(prepared.Sent);
+        variant = "Emj"; h.Capture.RefreshProfile();
+        h.Bridge.Update(); h.Open();
+        Assert.Same(prepared, h.Client);
+        Assert.Single(h.Clients);
+        Assert.Single(prepared.Sent.OfType<MjaiStartKyoku>());
+        Assert.Equal(1, prepared.Starts);
+    }
+
+    [Fact]
+    public void Leaving_cancels_old_callbacks_and_cannot_readopt_the_previous_match()
+    {
+        string? variant = "Emj";
+        using var h = new Harness(() => variant);
+        h.Open();
+        var old = h.Client;
+        var stale = old.ReactionReceivedSnapshot;
+        h.Bridge.CancelForTableExit();
+        h.Bridge.Update(); // Reader can still show the old table during PreFinalize.
+        Assert.False(h.Bridge.Enabled);
+        Assert.False(old.IsRunning);
+        Assert.Single(h.Clients);
+        stale?.Invoke("{\"type\":\"reach\",\"actor\":0}");
+        Assert.Equal(0, h.Bridge.ReactionsReceived);
+        variant = null; h.Capture.RefreshProfile(); h.Bridge.Update();
+        Assert.Equal(2, h.Clients.Count);
+        Assert.Empty(h.Client.Sent);
+        variant = "Emj"; h.Capture.RefreshProfile(); h.Bridge.Update(); h.Open();
+        Assert.Single(h.Client.Sent.OfType<MjaiStartKyoku>());
+        Assert.Empty(h.Client.Replayed);
+        Assert.NotSame(old, h.Client);
+    }
+
+    [Fact]
+    public void Loading_process_cannot_publish_an_action_and_configuration_disable_cancels_it()
+    {
+        string? variant = null;
+        using var h = new Harness(() => variant);
+        h.Client.Ready = false;
+        variant = "Emj"; h.Capture.RefreshProfile(); h.Bridge.Update(); h.Open();
+        h.Client.Emit("{\"type\":\"dahai\",\"actor\":0,\"pai\":\"9m\"}");
+        Assert.False(h.Bridge.TryChoose(h.Snapshot, out _));
+        h.Config.Update(c => c with { MortalEnabled = false });
+        h.Bridge.Update();
+        Assert.False(h.Client.IsRunning);
+        Assert.False(h.Bridge.Enabled);
+    }
+
+    [Fact]
+    public void Off_mode_cancels_prewarm_and_unknown_build_never_starts_it()
+    {
+        bool allowed = true;
+        using var h = new Harness(() => null, () => allowed);
+        var prepared = h.Client;
+        allowed = false; h.Bridge.Update();
+        Assert.False(prepared.IsRunning);
+        Assert.False(h.Bridge.Enabled);
+        using var unknown = new Harness(() => null, version: "unverified-build");
+        Assert.Empty(unknown.Clients);
+    }
+
+    [Fact]
+    public void Changed_model_settings_dispose_prewarm_before_table_adoption()
+    {
+        string? variant = null;
+        using var h = new Harness(() => variant);
+        var old = h.Client;
+        h.Config.Update(c => c with { MortalWorkingDirectory = "/different" });
+        h.Bridge.Update();
+        Assert.False(old.IsRunning);
+        Assert.Equal(2, h.Clients.Count);
+        var prepared = h.Client;
+        variant = "Emj"; h.Capture.RefreshProfile(); h.Bridge.Update(); h.Open();
+        Assert.Same(prepared, h.Client);
+        Assert.Empty(old.Sent);
+        Assert.Single(prepared.Sent.OfType<MjaiStartKyoku>());
+    }
+
+    [Fact]
+    public void Configuration_change_cancels_old_session_before_draining_its_callbacks()
+    {
+        using var h = new Harness(); h.Open();
+        var old = h.Client;
+        old.OnPoll = () => old.Emit("{\"type\":\"reach\",\"actor\":0}");
+        h.Config.Update(c => c with { MortalWorkingDirectory = "/different" });
+        h.Bridge.Update();
+        Assert.False(old.IsRunning);
+        Assert.Empty(old.Sent.OfType<MjaiReach>());
+        Assert.Equal(0, h.Bridge.ReactionsReceived);
+        Assert.NotSame(old, h.Client);
+    }
+
+    [Fact]
+    public void Prepared_model_cannot_bypass_transport_or_south_round_admission()
+    {
+        string? variant = null;
+        using var h = new Harness(() => variant);
+        var prepared = h.Client;
+        variant = "Emj"; h.Capture.RefreshProfile(); h.Capture.TransportReady = false;
+        h.Bridge.Update();
+        Assert.False(h.Bridge.Enabled);
+        Assert.Empty(prepared.Sent);
+        h.Capture.TransportReady = true; h.Bridge.Update();
+        var south = Opening(); BinaryPrimitives.WriteInt32LittleEndian(south.AsSpan(4), 1);
+        h.Send(0x0133, south);
+        Assert.True(h.Bridge.CurrentHandQuarantined);
+        Assert.False(prepared.IsRunning);
+        Assert.Empty(prepared.Sent.OfType<MjaiStartKyoku>());
+    }
+
     private static List<CapturedMahjongPacket> Drain(MahjongNetworkCapture capture)
     {
         List<CapturedMahjongPacket> result = [];
@@ -799,10 +918,10 @@ public sealed class MortalLimitedTrialTests
         public FakeClient Client = null!;
         public List<FakeClient> Clients = [];
         public StateSnapshot Snapshot => state.Snapshot(new LegalActions(ActionFlags.Discard | ActionFlags.Riichi, [], [], [], []));
-        public Harness(Func<string?>? variant = null)
+        public Harness(Func<string?>? variant = null, Func<bool>? runtimeAllowed = null, string? version = null)
         {
-            Capture = new(Profile.GameVersion, variant ?? (() => "Emj"), [Profile], () => Config.Current.MortalLimitedTrial) { TransportReady = true };
-            Bridge = new(Capture, DispatchProxy.Create<IFramework, FrameworkStub>(), Config, () => null, new StubPluginLog())
+            Capture = new(version ?? Profile.GameVersion, variant ?? (() => "Emj"), [Profile], () => Config.Current.MortalLimitedTrial) { TransportReady = true };
+            Bridge = new(Capture, DispatchProxy.Create<IFramework, FrameworkStub>(), Config, () => null, new StubPluginLog(), runtimeAllowed: runtimeAllowed)
                 { ClientFactory = () => { Client = new FakeClient(); Clients.Add(Client); return Client; } };
             Bridge.Update();
         }
@@ -826,12 +945,16 @@ public sealed class MortalLimitedTrialTests
         public Action<string>? ReactionReceivedSnapshot => ReactionReceived;
         public bool IsRunning { get; private set; }
         public bool RejectInput;
+        public bool Ready = true;
+        public bool IsReady => IsRunning && Ready;
+        public int Starts;
+        public Action? OnPoll;
         public List<IMjaiEvent> Sent = [];
         public List<string> Replayed = [];
-        public void Start(MortalProcessSettings settings) => IsRunning = true;
+        public void Start(MortalProcessSettings settings) { Starts++; IsRunning = true; }
         public void Send(IMjaiEvent evt) { if (RejectInput) throw new IOException("full"); Sent.Add(evt); }
         public void SendReplay(string evt) => Replayed.Add(evt);
-        public void Poll() { }
+        public void Poll() => OnPoll?.Invoke();
         public void Emit(string json) => ReactionReceived?.Invoke(json);
         public void Dispose() => IsRunning = false;
     }

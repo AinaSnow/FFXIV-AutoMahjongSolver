@@ -18,12 +18,13 @@ public sealed record MortalProcessSettings(
         && !string.IsNullOrWhiteSpace(PythonExecutable);
 }
 
-/// <summary>Nonblocking ordered transport. Callbacks run on the transport worker; subscribers must synchronize or enqueue state changes.</summary>
+/// <summary>Nonblocking ordered transport. Worker responses are queued; callbacks run on the thread calling Poll (the framework owner).</summary>
 internal interface IMortalProcessClient : IDisposable
 {
     event Action<string>? ReactionReceived;
     event Action<int?>? Exited;
     bool IsRunning { get; }
+    bool IsReady => IsRunning;
     string? ModelIdentityJson => null;
     string Diagnostics => "transport diagnostics unavailable";
     void Start(MortalProcessSettings settings);
@@ -45,12 +46,12 @@ internal sealed class MortalProcessClient : IMortalProcessClient
     private long writtenSequence, acknowledgedSequence;
     private readonly Stopwatch elapsed = new();
     private long childStartMs = -1, firstWriteMs = -1, firstAckMs = -1;
-    public string Diagnostics => $"queued={Interlocked.Read(ref sequence)}, written={Interlocked.Read(ref writtenSequence)}, acked={Interlocked.Read(ref acknowledgedSequence)}, elapsed_ms={elapsed.ElapsedMilliseconds}, child_start_ms={Interlocked.Read(ref childStartMs)}, first_write_ms={Interlocked.Read(ref firstWriteMs)}, first_ack_ms={Interlocked.Read(ref firstAckMs)}";
+    public string Diagnostics => $"queued={Interlocked.Read(ref sequence)}, written={Interlocked.Read(ref writtenSequence)}, acked={Interlocked.Read(ref acknowledgedSequence)}, elapsed_ms={elapsed.ElapsedMilliseconds}, child_start_ms={Interlocked.Read(ref childStartMs)}, first_write_ms={Interlocked.Read(ref firstWriteMs)}, first_ack_ms={Interlocked.Read(ref firstAckMs)}, ready={IsReady}";
     // Send is serialized by the framework thread; Read/Poll compare this watermark.
     private string? previousType;
     private int? previousActor;
     private bool previousWasReachDiscard;
-    private volatile bool running, disposed;
+    private volatile bool running, disposed, ready;
     private Task? worker;
     private string? modelIdentityJson;
     public string? ModelIdentityJson => Volatile.Read(ref modelIdentityJson);
@@ -59,6 +60,7 @@ internal sealed class MortalProcessClient : IMortalProcessClient
     public event Action<string>? ReactionReceived;
     public event Action<int?>? Exited;
     public bool IsRunning => running && !disposed;
+    public bool IsReady => IsRunning && ready;
     public MortalProcessClient(IPluginLog log, string? runnerDirectory = null, Func<MortalProcessSettings, IManagedJsonProcess>? processFactory = null)
     {
         this.log = log; this.runnerDirectory = runnerDirectory ?? AppContext.BaseDirectory;
@@ -191,6 +193,7 @@ internal sealed class MortalProcessClient : IMortalProcessClient
             if (Interlocked.CompareExchange(ref firstAckMs, elapsed.ElapsedMilliseconds, -1) == -1)
                 log.Information($"[Mortal] First runner acknowledgement: {Diagnostics}");
             if (result.TryGetProperty("error", out var error)) throw new IOException(error.GetString());
+            ready = true; // A validated ack also supports runners without startup diagnostics.
             if (result.TryGetProperty("model", out var model) && model.ValueKind == JsonValueKind.Object)
             {
                 var identity = JsonSerializer.Serialize(new { session, model });
@@ -210,8 +213,29 @@ internal sealed class MortalProcessClient : IMortalProcessClient
     private async Task ReadErrorsAsync(IManagedJsonProcess child)
     {
         while (await child.Error.ReadLineAsync(lifetime.Token).ConfigureAwait(false) is { } line)
-            log.Warning($"[Mortal stderr] {line}");
+        {
+            if (IsStartupReady(line))
+            {
+                ready = true;
+                log.Information($"[Mortal] Runner ready: {line}");
+            }
+            else log.Warning($"[Mortal stderr] {line}");
+        }
     }
+    internal static bool IsStartupReady(string line)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(line);
+            var root = document.RootElement;
+            return root.ValueKind == JsonValueKind.Object
+                && root.TryGetProperty("type", out var type) && type.ValueKind == JsonValueKind.String
+                && type.GetString() == "mortal_startup"
+                && root.TryGetProperty("ready", out var value) && value.ValueKind == JsonValueKind.True;
+        }
+        catch (JsonException) { return false; }
+    }
+
     public void Dispose()
     {
         if (disposed) return;

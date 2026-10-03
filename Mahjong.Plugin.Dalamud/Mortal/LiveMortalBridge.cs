@@ -66,6 +66,10 @@ public sealed class LiveMortalBridge : IDisposable
     private long observedDrops;
     private readonly MonotonicClock clock;
     private readonly string? runnerDirectory;
+    private readonly MortalProcessWarmup warmup;
+    private readonly Func<bool> runtimeAllowed;
+    private readonly Func<bool> tablePresent;
+    private bool awaitingTableAbsence;
 
     public LiveMortalBridge(
         MahjongNetworkCapture capture,
@@ -73,7 +77,8 @@ public sealed class LiveMortalBridge : IDisposable
         IConfigService<Configuration> configService,
         Func<StateSnapshot?> snapshotAccessor,
         IPluginLog log,
-        Action<CapturedMahjongPacket>? packetObserver = null, TimeProvider? timeProvider = null, string? runnerDirectory = null)
+        Action<CapturedMahjongPacket>? packetObserver = null, TimeProvider? timeProvider = null, string? runnerDirectory = null,
+        Func<bool>? runtimeAllowed = null, Func<bool>? tablePresent = null)
     {
         ArgumentNullException.ThrowIfNull(capture);
         ArgumentNullException.ThrowIfNull(framework);
@@ -82,6 +87,9 @@ public sealed class LiveMortalBridge : IDisposable
         ArgumentNullException.ThrowIfNull(log);
         this.runnerDirectory = runnerDirectory;
         clock = new MonotonicClock(timeProvider);
+        this.runtimeAllowed = runtimeAllowed ?? (() => true);
+        this.tablePresent = tablePresent ?? (() => capture.ProtocolAdmitted);
+        warmup = new MortalProcessWarmup(() => ClientFactory?.Invoke() ?? new MortalProcessClient(log, runnerDirectory), clock);
         this.capture = capture;
         this.framework = framework;
         this.configService = configService;
@@ -94,7 +102,7 @@ public sealed class LiveMortalBridge : IDisposable
     public event Action<StateSnapshot, PolicyEvaluation>? DecisionPublished;
     internal event Action<IMjaiEvent>? ServerEventObserved;
 
-    public bool Enabled => configService.Current.MortalEnabled && capture.ProtocolAdmitted && capture.TransportReady;
+    public bool Enabled => configService.Current.MortalEnabled && runtimeAllowed() && !awaitingTableAbsence && capture.ProtocolAdmitted && capture.TransportReady;
 
     public string? ModelIdentityJson => client?.ModelIdentityJson;
 
@@ -166,7 +174,7 @@ public sealed class LiveMortalBridge : IDisposable
     public bool TryChoose(StateSnapshot snapshot, out ActionChoice choice)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        if (!Enabled || CurrentHandQuarantined || awaitingSelfKanConfirmation || !snapshot.PublicStateConsistent
+        if (!Enabled || client?.IsReady != true || CurrentHandQuarantined || awaitingSelfKanConfirmation || !snapshot.PublicStateConsistent
             || capture.LimitedTrialActive && !trialState.Merge(snapshot).PublicStateConsistent)
         {
             ClearRecommendation();
@@ -256,7 +264,7 @@ public sealed class LiveMortalBridge : IDisposable
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         int key = StateAggregator.ComputeContentHash(snapshot);
-        if (!Enabled || CurrentHandQuarantined || awaitingSelfKanConfirmation || !snapshot.PublicStateConsistent
+        if (!Enabled || client?.IsReady != true || CurrentHandQuarantined || awaitingSelfKanConfirmation || !snapshot.PublicStateConsistent
             || capture.LimitedTrialActive && !trialState.Merge(snapshot).PublicStateConsistent)
         {
             choice = ActionChoice.Pass("waiting for a matching public/UI state");
@@ -351,7 +359,16 @@ public sealed class LiveMortalBridge : IDisposable
             return;
         disposed = true;
         framework.Update -= OnFrameworkUpdate;
+        warmup.Dispose();
         Stop("Disposed");
+    }
+
+    public void CancelForTableExit()
+    {
+        awaitingTableAbsence = true;
+        warmup.Cancel();
+        Stop("Left table; old session cancelled");
+        capture.ForgetTableHistory();
     }
 
     private void OnFrameworkUpdate(IFramework _) => Update();
@@ -361,10 +378,29 @@ public sealed class LiveMortalBridge : IDisposable
         if (disposed)
             return;
 
+        var config = configService.Current;
+        var settings = new MortalProcessSettings(
+            config.MortalWslDistribution.Trim(),
+            config.MortalWorkingDirectory.Trim(),
+            string.IsNullOrWhiteSpace(config.MortalPythonExecutable) ? "python" : config.MortalPythonExecutable.Trim());
+        bool present = tablePresent();
+        if (awaitingTableAbsence)
+        {
+            if (present) return; // PreFinalize can precede the reader's absent observation.
+            awaitingTableAbsence = false;
+        }
+        bool allowed = config.MortalEnabled && runtimeAllowed();
+        warmup.Update(allowed && capture.HasAdmittedBuild, !present && client is null, settings);
+        if (!allowed)
+        {
+            if (client is not null || capture.CaptureEnabled) Stop("Disabled");
+            Status = "Disabled";
+            return;
+        }
         if (!capture.ProtocolAdmitted)
         {
             if (client is not null) Stop(capture.ProtocolStatus);
-            Status = capture.ProtocolStatus;
+            Status = warmup.HasProcess ? $"{warmup.Status}; {capture.ProtocolStatus}" : capture.ProtocolStatus;
             return;
         }
         if (admissionGeneration != capture.AdmissionGeneration)
@@ -383,21 +419,6 @@ public sealed class LiveMortalBridge : IDisposable
             observedDrops = capture.DroppedPackets;
             QuarantineCurrentHand("Packet loss; waiting for next hand");
         }
-        client?.Poll();
-        var config = configService.Current;
-        if (!config.MortalEnabled)
-        {
-            if (client is not null || capture.CaptureEnabled)
-                Stop("Disabled");
-            return;
-        }
-
-        var settings = new MortalProcessSettings(
-            config.MortalWslDistribution.Trim(),
-            config.MortalWorkingDirectory.Trim(),
-            string.IsNullOrWhiteSpace(config.MortalPythonExecutable)
-                ? "python"
-                : config.MortalPythonExecutable.Trim());
         if (!settings.IsValid)
         {
             const string incomplete = "Configure WSL distribution and Mortal directory";
@@ -414,6 +435,10 @@ public sealed class LiveMortalBridge : IDisposable
             activeSettings = settings;
             lastStartAttemptUtc = DateTime.MinValue;
         }
+
+        client?.Poll();
+        if (client?.IsReady == true && Status == "Running (model may still be loading)")
+            Status = "Running (model ready)";
 
         long replayDeadline = Interlocked.Read(ref replayValidationDeadlineTicks);
         if (replayDeadline > 0 && clock.UtcNow.Ticks > replayDeadline)
@@ -435,7 +460,7 @@ public sealed class LiveMortalBridge : IDisposable
 
         if (client?.IsRunning != true)
         {
-            if (clock.UtcNow - lastStartAttemptUtc < RestartBackoff)
+            if (!warmup.HasProcess && clock.UtcNow - lastStartAttemptUtc < RestartBackoff)
                 return;
             Start(settings);
         }
@@ -693,13 +718,14 @@ public sealed class LiveMortalBridge : IDisposable
         lastStartAttemptUtc = clock.UtcNow;
         try
         {
-            var next = ClientFactory?.Invoke() ?? new MortalProcessClient(log, runnerDirectory);
+            var prepared = warmup.Take(settings);
+            var next = prepared ?? ClientFactory?.Invoke() ?? new MortalProcessClient(log, runnerDirectory);
+            client = next; // Also makes synchronous Start failure cleanup own this instance.
             clientReactionHandler = json => { if (ReferenceEquals(client, next)) OnReactionReceived(json); };
             clientExitHandler = code => { if (ReferenceEquals(client, next)) OnProcessExited(code); };
             next.ReactionReceived += clientReactionHandler;
             next.Exited += clientExitHandler;
-            next.Start(settings);
-            client = next;
+            if (prepared is null) next.Start(settings);
             capture.CaptureEnabled = true;
             int replayed = 0;
             if (replayStateOnNextStart)
@@ -716,7 +742,7 @@ public sealed class LiveMortalBridge : IDisposable
                 ref replayValidationDeadlineTicks,
                 replayed > 0 ? clock.UtcNow.Add(ReplayValidationWindow).Ticks : 0);
             Status = replayed == 0
-                ? "Running (model may still be loading)"
+                ? next.IsReady ? "Running (model ready)" : "Running (model may still be loading)"
                 : $"Running (replayed {replayed} MJAI events)";
             log.Information($"[Mortal] Started in WSL distribution '{settings.WslDistribution}'.");
             if (replayed > 0)
@@ -724,8 +750,7 @@ public sealed class LiveMortalBridge : IDisposable
         }
         catch (Exception ex)
         {
-            capture.CaptureEnabled = false;
-            Status = $"Start failed: {ex.Message}";
+            Stop($"Start failed: {ex.Message}");
             log.Error(ex, "[Mortal] Could not start the WSL process.");
         }
     }

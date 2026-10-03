@@ -189,6 +189,27 @@ public class BackgroundReliabilityTests
         await fake.Stdout.Lines.Writer.WriteAsync(response.ToJsonString());
     }
 
+    [Fact]
+    public async Task Ready_arrives_without_any_game_inputs_and_dispose_revokes_readiness()
+    {
+        var fake = new FakeProcess();
+        using var client = new MortalProcessClient(new StubPluginLog(), processFactory: _ => fake);
+        int reactions = 0;
+        client.ReactionReceived += _ => reactions++;
+        client.Start(new("test", "test", "python"));
+        Assert.False(client.IsReady);
+        await ((QueueReader)fake.Error).Lines.Writer.WriteAsync("{\"type\":\"mortal_startup\",\"ready\":true}");
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (!client.IsReady) await Task.Delay(1, timeout.Token);
+        client.Poll();
+        Assert.False(fake.Writes.Reader.TryRead(out _));
+        Assert.Equal(0, reactions);
+        client.Dispose();
+        Assert.False(client.IsReady);
+        await client.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(fake.Terminated);
+    }
+
     private static async Task AwaitBarrier(MortalProcessClient client)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));

@@ -186,7 +186,9 @@ public sealed class Plugin : IDalamudPlugin
             Framework,
             ConfigService,
             () => Aggregator.Latest,
-            Log, runnerDirectory: pluginAssemblyDir);
+            Log, runnerDirectory: pluginAssemblyDir,
+            runtimeAllowed: () => ClientState.IsLoggedIn && (Configuration.SuggestionOnly || Configuration.AutomationArmed),
+            tablePresent: () => AddonReader.LastObservation.Present);
         MortalBridge.DecisionPublished += Aggregator.PublishExternal;
         AddonLifecycle.RegisterListener(
             AddonEvent.PreFinalize,
@@ -254,6 +256,7 @@ public sealed class Plugin : IDalamudPlugin
     {
         ArchiveCurrentMatch();
         PublicState.Reset();
+        MortalBridge.CancelForTableExit();
         MortalBridge.ResetSessionStatistics();
         GameLogger.ResetSession();
         StrategyDiagnostics.ResetSession();
