@@ -9,7 +9,7 @@ import subprocess
 import sys
 import tarfile
 
-from doman_engine import BASE_COMMIT, PATCH, REVISION, sha256
+from doman_engine import BASE_COMMIT, PATCH, REVISION, DATASET_PATCH, DATASET_REVISION, sha256
 
 
 def main():
@@ -28,7 +28,8 @@ def main():
     checkout = output / "source"
     checkout.mkdir()
     manifest = dict(status="building", base_commit=BASE_COMMIT, rules_revision=REVISION,
-                    patch_sha256=sha256(PATCH), python=sys.version,
+                    patch_sha256=sha256(PATCH), dataset_revision=DATASET_REVISION,
+                    dataset_patch_sha256=sha256(DATASET_PATCH), python=sys.version,
                     rustc=subprocess.check_output(["rustc", "--version"], text=True).strip())
     path = output / "build-manifest.json"
     def save():
@@ -40,6 +41,8 @@ def main():
         subprocess.run(["git", "init", "--quiet"], cwd=checkout, check=True)
         subprocess.run(["git", "apply", "--check", str(PATCH)], cwd=checkout, check=True)
         subprocess.run(["git", "apply", str(PATCH)], cwd=checkout, check=True)
+        subprocess.run(["git", "apply", "--check", str(DATASET_PATCH)], cwd=checkout, check=True)
+        subprocess.run(["git", "apply", str(DATASET_PATCH)], cwd=checkout, check=True)
         env = {**os.environ, "PYO3_PYTHON": sys.executable}
         for label, command in (
             ("tests", ["cargo", "test", "--locked", "-p", "libriichi", "--lib", "--no-default-features"]),
@@ -54,7 +57,9 @@ def main():
         check = ("import sys; sys.path.insert(0, sys.argv[1]); import libriichi_doman as m; "
                  f"assert m.DOMAN_RULES_REVISION == {REVISION}; "
                  f"assert m.DOMAN_BASE_COMMIT == '{BASE_COMMIT}'; "
-                 "m.arena.OneVsThree(match_mode='doman-quick'); m.arena.OneVsThree(match_mode='doman-full')")
+                 "m.arena.OneVsThree(match_mode='doman-quick'); m.arena.OneVsThree(match_mode='doman-full'); "
+                 f"assert m.DOMAN_DATASET_REVISION == {DATASET_REVISION}; "
+                 "assert m.dataset.GameplayLoader(4, oracle=False, match_mode='doman-quick').doman_length == 4")
         subprocess.run([sys.executable, "-c", check, str(output)], cwd=output, check=True)
         manifest.update(status="validated", library_sha256=sha256(library),
                         tests_log_sha256=sha256(output/"tests.log"), build_log_sha256=sha256(output/"build.log"))

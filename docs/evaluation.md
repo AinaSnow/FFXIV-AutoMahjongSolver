@@ -123,7 +123,7 @@ wsl -d Ubuntu --cd /mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/.loacl/Mortal/m
 
 ## FF14 东风／半庄离线实验引擎
 
-`compare_models.py` 现在接受 `doman-quick`（东风）及 `doman-full`（半庄）。这两个模式必须显式指定受测的独立引擎；标准 `arena.py` 内置策略入口和 `self_play.py` 仍保持原来的标准半庄，不能用改标签的方式生成东风数据。
+`compare_models.py` 现在接受 `doman-quick`（东风）及 `doman-full`（半庄）。这两个模式必须显式指定受测的独立引擎；标准 `arena.py` 内置策略入口仍保持原来的标准半庄。`self_play.py` 已接通东风/半庄实验模式，但必须使用带 dataset adapter 的独立构建，见下文；不能只改标签生成东风数据。
 
 在 WSL／Linux 中构建（使用运行 Mortal 的同一个 Python，需已安装 Rust、Git 和锁定依赖）：
 
@@ -184,3 +184,54 @@ python "$REPO/tools/evaluation/compare_models.py" \
 报告将权重与观测变换分别标识，清单记录适配器文件 SHA-256 及实际适配观测数量。同一权重而特征不同不能标记为“同模型控制组”；原始 native 对原始 native 的控制检查仍要求所有配对牌谱和结果一致。同模型控制应与实验使用相同批大小，输出到另一个新目录。开发、验收种子继续分离；实战配置不随统计结果自动更新。
 
 本轮 dev20 已完成，未证明改善，保持仅离线：见 [2026-10-05 实验报告](reviews/20261005-east-progress-ablation.md)。
+
+
+## 东风自对战与可见输入导出（2026-10-05）
+
+`self_play.py --match-mode doman-quick` 已接通隔离的东风引擎。比赛长度同时传入 arena 和 GameplayLoader；否则原版读取器会按标准半庄重建终局状态和部分杠动作。新构建除原规则补丁外应用 `libriichi-doman-dataset.patch`，保留 rules revision 1，并新增 dataset revision 1。补丁沿用上游 AGPL-3.0-or-later。旧 v1 构建仍可复现旧评测，但用于新自对战导出时会明确拒绝；不能直接替换原生库冒充已验证。
+
+以下在 Mortal 的 WSL Python 环境运行，输出目录均须不存在：
+
+```sh
+REPO=/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver
+python "$REPO/tools/evaluation/build_doman_engine.py" \
+  --mortal-source "$REPO/.loacl/Mortal" --output "$REPO/artifacts/doman-engine-v2-dataset"
+python "$REPO/tools/evaluation/self_play.py" \
+  --mortal-dir "$REPO/.loacl/Mortal/mortal" \
+  --match-mode doman-quick --doman-engine "$REPO/artifacts/doman-engine-v2-dataset" \
+  --split train --groups 2 --offset 4000 --epsilon 0.02 --device cuda:0 \
+  --output "$REPO/artifacts/selfplay/doman-train-smoke-r2-20261005"
+python "$REPO/tools/evaluation/self_play.py" \
+  --mortal-dir "$REPO/.loacl/Mortal/mortal" \
+  --match-mode doman-quick --doman-engine "$REPO/artifacts/doman-engine-v2-dataset" \
+  --split development --groups 1 --offset 4100 --device cuda:0 \
+  --output "$REPO/artifacts/selfplay/doman-dev-smoke-20261005"
+python "$REPO/tools/evaluation/verify_self_play.py" \
+  "$REPO/artifacts/selfplay/doman-train-smoke-r2-20261005" \
+  "$REPO/artifacts/selfplay/doman-dev-smoke-20261005"
+```
+
+示例种子本轮已经使用；复现可使用相同参数和新目录，但不能将复现副本当更多训练数据。扩量应登记新的 offset；合并数据之前把所有待用目录交给验收器，重复种子或重复游戏轨迹会被拒绝。四座轮换去重后，unique 数可能小于物理对局数，仍须以原始种子组理解样本相关性。
+
+`doman-full` 也连接相应的 8 局规则读取器，原生长度/动作回归覆盖它；本轮端到端生成实测为东风与标准半庄，未把实验半庄另作实测验收。默认不传 match-mode 时仍为标准半庄。train 使用显式 epsilon（默认 0.02，温度 0.05）；development/acceptance 强制 epsilon=0。AMP 关闭、固定种子并记录模型/引擎/补丁/生成器身份；不改在线配置。前一轮的进度变换不在此入口启用。
+
+### schema 2 数据格式
+
+- `manifest.json`：running/failed/complete、比赛模式、计划局数、种子范围、权重与引擎身份、读取器设置及统计。只有 complete 可验收；异常写 failed，训练入口置空。
+- `raw/`：四座轮换产生的完整 MJAI 日志，**含全局牌信息，仅供重建和审计**。
+- `unique/`：去除计时、模型名字及种子字段后按游戏内容去重的日志。
+- `matches.jsonl`：每场来源哈希、重复标记、实际手局上下文（连庄独立索引）、最终得分/名次和四个玩家导出文件的哈希。
+- `players/<match-id>/player-N.npz`：obs、masks、actions、hand_index、dones、apply_gamma。v4 obs 形状为 N×1012×34，masks 为 N×46。严格检查动作合法、数据有限值、维度、手局关联与终止标记。没有行动机会的玩家可保留零条决策，不编造样本。
+- `player-N.labels.json`：玩家身份、比赛长度、公开手局上下文与最终名次/分数。**最终结果是训练标签，不是推理输入**；feature_fields 明确仅 obs、masks。比赛长度供未来训练设计使用，目前未给旧模型额外添加通道。
+
+验收器独立核对文件内容哈希、完整场次/四视角、分组、合法动作、手局分数连续性、最终名次、原始日志与标签一致性，并拒绝越界路径及未登记样本。NPZ 读取禁用 pickle。原生回归验证改变对手起手牌不改变己方观测、动作和掩码；生成与读取均为 non-oracle。此处不声称通过形式化方法验证了上游全部编码逻辑。
+
+Doman 的 training_glob 保持 null，避免直接喂给原版标准半庄训练器。train 数据通过 experimental_training_glob / perspective_glob 单列；开发和验收集均不发布训练入口。读取原始 Doman 日志必须使用上述 dataset adapter。真实游戏素材仍沿用独立的质量门禁，不能混称已训练就绪。
+
+### 下一步训练门槛
+
+本轮只建立生成/导出/验收链路，不产生新权重。先固定新的训练和开发种子清单、数据量与对手混合方案，再扩量；随后做东风 GRP/名次奖励校准和隔离训练配置，小规模微调后用原有配对评测比较。最终验收种子不提前生成或用于选模。
+
+完整 FF14 规则差异依然存在，特别是多赢家本场/供托、包牌、立直后杠及游戏时限。Grp 对未领取供托使用当前引擎“给予第一名”的结算约定，报告不将其视为新增实机规则证据。自对战样本增多不等于权重会自动增强，模仿现有模型的动作也不是最优动作监督。
+
+Python 普通测试现在固定 Python 3.13 与 NumPy 2.5.3 的 CI 验收环境；未安装 NumPy 的本地轻量环境会显式跳过数组测试。实际原生构建、GPU 冒烟和完整对战仍是按需执行。结果见 [本轮自对战验收](reviews/20261005-doman-selfplay.md)。

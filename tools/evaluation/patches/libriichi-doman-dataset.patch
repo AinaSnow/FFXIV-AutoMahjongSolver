@@ -1,0 +1,141 @@
+--- a/libriichi/src/dataset/gameplay.rs
++++ b/libriichi/src/dataset/gameplay.rs
+@@ -24,6 +24,8 @@
+ pub struct GameplayLoader {
+     #[pyo3(get)]
+     version: u32,
++    #[pyo3(get)]
++    doman_length: u8,
+     #[pyo3(get)]
+     oracle: bool,
+     #[pyo3(get)]
+@@ -89,6 +91,7 @@
+         trust_seed = false,
+         always_include_kan_select = true,
+         augmented = false,
++        match_mode = "libriichi-hanchan",
+     ))]
+     fn new(
+         version: u32,
+@@ -98,13 +101,21 @@
+         trust_seed: bool,
+         always_include_kan_select: bool,
+         augmented: bool,
+-    ) -> Self {
++        match_mode: &str,
++    ) -> Result<Self> {
++        let doman_length = match match_mode {
++            "libriichi-hanchan" => 0,
++            "doman-quick" => 4,
++            "doman-full" => 8,
++            _ => bail!("unknown dataset match mode: {match_mode}"),
++        };
+         let player_names = player_names.unwrap_or_default();
+         let player_names_set = player_names.iter().cloned().collect();
+         let excludes = excludes.unwrap_or_default();
+         let excludes_set = excludes.iter().cloned().collect();
+-        Self {
++        Ok(Self {
+             version,
++            doman_length,
+             oracle,
+             player_names,
+             excludes,
+@@ -113,7 +124,13 @@
+             augmented,
+             player_names_set,
+             excludes_set,
+-        }
++        })
++    }
++
++    fn player_state(&self, player_id: u8) -> PlayerState {
++        let mut state = PlayerState::new(player_id);
++        state.doman_length = self.doman_length;
++        state
+     }
+ 
+     // Nested result is too hard to handle...
+@@ -254,10 +271,10 @@
+         let mut ctx = LoaderContext {
+             config,
+             invisibles,
+-            state: PlayerState::new(player_id),
++            state: config.player_state(player_id),
+             kyoku_idx: 0,
+             // end_state: EndState::Passive,
+-            opponent_states: array::from_fn(|i| PlayerState::new((player_id + i as u8 + 1) % 4)),
++            opponent_states: array::from_fn(|i| config.player_state((player_id + i as u8 + 1) % 4)),
+             from_rinshan: false,
+             yama_idx: 0,
+             rinshan_idx: 0,
+@@ -441,3 +458,59 @@
+         }
+     }
+ }
++
++#[cfg(test)]
++mod doman_dataset_tests {
++    use super::*;
++    use crate::{t, hand::{hand_with_aka, tile37_to_vec}};
++
++    fn loader(mode: &str) -> GameplayLoader {
++        GameplayLoader::new(4, false, None, None, false, true, false, mode).unwrap()
++    }
++
++    fn opening() -> Event {
++        let mut tehais = [[t!(?); 13]; 4];
++        tehais[0] = tile37_to_vec(&hand_with_aka("111m234p234s2345m").unwrap()).try_into().unwrap();
++        Event::StartKyoku { bakaze: t!(E), dora_marker: t!(C), kyoku: 4, honba: 0,
++            kyotaku: 0, oya: 3, scores: [25000; 4], tehais }
++    }
++
++    #[test]
++    fn dataset_state_uses_arena_length_and_fifth_kan_mask() {
++        for (mode, length) in [("libriichi-hanchan", 0), ("doman-quick", 4), ("doman-full", 8)] {
++            let config = loader(mode);
++            let mut state = config.player_state(0);
++            assert_eq!(state.doman_length, length);
++            state.update(&opening()).unwrap();
++            for tile in [t!(E), t!(S), t!(W), t!(N)] {
++                state.update(&Event::Ankan { actor: 1, consumed: [tile; 4] }).unwrap();
++            }
++            state.update(&Event::Tsumo { actor: 0, pai: t!(1m) }).unwrap();
++            assert_eq!(state.last_cans().can_ankan, length != 0);
++            assert_eq!(state.encode_obs(4, false).1[42], length != 0);
++        }
++        assert!(GameplayLoader::new(4, false, None, None, false, true, false, "unknown").is_err());
++    }
++
++    #[test]
++    fn non_oracle_loader_does_not_expose_other_starting_hands() {
++        let config = loader("doman-quick");
++        let first = opening();
++        let mut second = opening();
++        if let Event::StartKyoku { tehais, .. } = &mut second {
++            tehais[1] = tile37_to_vec(&hand_with_aka("123456789p1234s").unwrap()).try_into().unwrap();
++        }
++        let log = |start| vec![Event::StartGame { names: ["selfplay".into(), "selfplay".into(),
++            "selfplay".into(), "selfplay".into()], seed: None }, start,
++            Event::Tsumo { actor: 0, pai: t!(1m) },
++            Event::Dahai { actor: 0, pai: t!(1m), tsumogiri: true },
++            Event::Ryukyoku { deltas: Some([0; 4]) }, Event::EndKyoku, Event::EndGame];
++        let a = Gameplay::load_events_by_player(&config, &log(first), 0, None).unwrap();
++        let b = Gameplay::load_events_by_player(&config, &log(second), 0, None).unwrap();
++        assert!(!a.obs.is_empty());
++        assert!(a.invisible_obs.is_empty() && b.invisible_obs.is_empty());
++        assert_eq!(a.obs, b.obs);
++        assert_eq!(a.masks, b.masks);
++        assert_eq!(a.actions, b.actions);
++    }
++}
+--- a/libriichi/src/lib.rs
++++ b/libriichi/src/lib.rs
+@@ -149,6 +149,7 @@
+     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
+ 
+     m.add("DOMAN_RULES_REVISION", 1)?;
++    m.add("DOMAN_DATASET_REVISION", 1)?;
+     m.add(
+         "DOMAN_BASE_COMMIT",
+         "0cff2b52982be5b1163aa9a62fb01f03ce91e0d2",
