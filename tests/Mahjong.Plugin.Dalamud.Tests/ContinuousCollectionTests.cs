@@ -209,16 +209,54 @@ public class ContinuousCollectionTests
         Assert.Equal(CollectionAction.None, c.Tick(true, Pop)); Assert.NotNull(c.Fault);
     }
 
-    [Fact]
-    public void Final_result_must_remain_visible_in_target_duty()
+    [Theory]
+    [InlineData(true)] [InlineData(false)]
+    public void Confirmed_completion_survives_transient_final_panel(bool enabled)
     {
         var clock = new Clock(); var c = new ContinuousCollectionController(clock);
-        var final = Playing with { FinalResult = true, CanLeave = true };
-        c.Tick(true, final); clock.Advance(4); c.Tick(true, Playing); clock.Advance(5);
-        Assert.Equal(CollectionAction.None, c.Tick(true, final)); clock.Advance(4);
-        Assert.Equal(CollectionAction.None, c.Tick(true, final)); clock.Advance(1);
-        Assert.Equal(CollectionAction.Leave, c.Tick(true, final));
-        Assert.Equal(CollectionAction.None, c.Tick(true, final with { InTargetDuty = false, InOtherDuty = true }));
+        c.Tick(true, Playing);
+        c.Tick(enabled, Playing with { MatchCompleted = true, FinalResult = true, CanLeave = true });
+        clock.Advance(1);
+        var completed = Playing with { MatchCompleted = true, CanLeave = true };
+        Assert.Equal(CollectionAction.None, c.Tick(enabled, completed));
+        clock.Advance(3);
+        Assert.Equal(CollectionAction.None, c.Tick(enabled, completed));
+        clock.Advance(1);
+        Assert.Equal(CollectionAction.Leave, c.Tick(enabled, completed));
+        Assert.Equal(CollectionAction.None, c.Tick(enabled, completed));
+        Assert.Equal(CollectionAction.None, c.Tick(enabled, completed with { InTargetDuty = false }));
+        c.Tick(enabled, Idle); Assert.Equal(1, c.CompletedMatches);
+        c.Tick(true, Playing); clock.Advance(100);
+        Assert.Equal(CollectionAction.None, c.Tick(true, Playing with { CanLeave = true }));
+    }
+
+    [Theory]
+    [InlineData(true, true, true, "Emj", false, true, true)]
+    [InlineData(false, true, true, "Emj", false, true, false)]
+    [InlineData(true, false, true, "Emj", false, true, false)]
+    [InlineData(true, true, false, "Emj", false, true, false)]
+    [InlineData(true, true, true, "EmjRank", false, true, false)]
+    [InlineData(true, true, true, "Emj", true, true, false)]
+    [InlineData(true, true, true, "Emj", false, false, false)]
+    public void Leave_gate_requires_confirmed_same_table_and_native_permission(
+        bool completed, bool target, bool present, string variant, bool transition, bool native, bool expected)
+    {
+        Assert.Equal(expected, ContinuousCollectionLoop.CanLeaveCompletedMatch(
+            completed, target, present, variant, transition, native));
+    }
+
+    [Fact]
+    public void Completed_match_leave_retries_remain_bounded_without_score_panel()
+    {
+        var clock = new Clock(); var c = new ContinuousCollectionController(clock);
+        var completed = Playing with { MatchCompleted = true, CanLeave = true };
+        c.Tick(true, completed); clock.Advance(5);
+        for (int i = 0; i < 3; i++)
+        {
+            Assert.Equal(CollectionAction.Leave, c.Tick(true, completed));
+            Assert.Equal(CollectionAction.None, c.Tick(true, completed)); clock.Advance(10);
+        }
+        Assert.Equal(CollectionAction.None, c.Tick(true, completed)); Assert.NotNull(c.Fault);
     }
 
     [Fact]

@@ -108,7 +108,7 @@ internal sealed class ContinuousCollectionController(TimeProvider? timeProvider 
         if (s.InTargetDuty && s.AtTable)
         {
             queueSentAt = null;
-            if (!s.FinalResult) { finalSince = null; Status = running ? "Playing and recording" : "Finishing current match; no new queue"; return CollectionAction.None; }
+            if (!matchCompleted) { finalSince = null; Status = running ? "Playing and recording" : "Finishing current match; no new queue"; return CollectionAction.None; }
             if (!finishingMatch || !s.AutomationAllowed) return CollectionAction.None;
             finalSince ??= clock.GetTimestamp();
             Status = "Final standings; waiting to leave";
