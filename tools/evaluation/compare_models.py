@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 
+from progress_observation import MODES, NATIVE, apply_candidate_transform, describe_ablation
 from arena import report
 from doman_engine import load_doman, validate_match_events
 from rule_profile import rule_profile, REQUESTED_MODES
@@ -77,7 +78,11 @@ def paired_report(groups, split, identities, match_mode="libriichi-hanchan"):
         for role in ("candidate", "baseline"):
             if len(group[role]) != 4 or sorted(m["seat"] for m in group[role]) != [0, 1, 2, 3]:
                 raise ValueError("Incomplete paired seed group")
-    same_model = identities["candidate"]["checkpoint_sha256"] == identities["baseline"]["checkpoint_sha256"]
+    transforms = {role: identity.get("observation_transform", NATIVE) for role, identity in identities.items()}
+    ablation = any(value != NATIVE for value in transforms.values())
+    same_model = (identities["candidate"]["checkpoint_sha256"] == identities["baseline"]["checkpoint_sha256"]
+                  and transforms["candidate"] == transforms["baseline"]
+                  and identities["candidate"].get("observation_transform_sha256") == identities["baseline"].get("observation_transform_sha256"))
     if same_model:
         for group in groups:
             left = {m["seat"]: m for m in group["candidate"]}
@@ -86,13 +91,16 @@ def paired_report(groups, split, identities, match_mode="libriichi-hanchan"):
             if any(left[seat][field] != right[seat][field] for seat in range(4) for field in fields):
                 raise ValueError("Identical-checkpoint control produced different paired outcomes")
     result = report(groups, split, "mortal", match_mode)
-    result.update(comparison="mortal-checkpoints", same_model_control=same_model,
+    result.update(comparison="mortal-observation-ablation" if ablation else "mortal-checkpoints", same_model_control=same_model,
                   control_passed=True if same_model else None, models=identities,
                   live_weights_modified=False, ffxiv_rating_gain=None,
                   sample_unit="paired seed group; four seats are correlated",
                   conclusion="same-model control" if same_model else
                              "acceptance statistics only" if result["promotion_statistics_pass"] else
                              "exploratory; insufficient evidence to replace the live model")
+    if ablation:
+        describe_ablation(result)
+        result["doman_promotion_eligible"] = False
     for role in ("candidate", "baseline"):
         counts = Counter(m["rank"] for group in groups for m in group[role])
         result[role]["placement_counts"] = [counts[rank] for rank in range(1, 5)]
@@ -116,7 +124,7 @@ def markdown_report(result):
               "同模型对照检查通过。" if result["same_model_control"] else "探索性结果不构成更换线上模型的依据。",
               f"模式：{result['match_mode']}。FF14 规则尚未完全对齐；牌桌得失分不是 Rating 收益。模型未自动替换。", "",
               "## 权重身份", ""]
-    lines += [f"- {role}: `{result['models'][role]['checkpoint_sha256']}`" for role in ("candidate", "baseline", "opponent")]
+    lines += [f"- {role}: `{result['models'][role]['checkpoint_sha256']}`; observation={result['models'][role].get('observation_transform', NATIVE)}" for role in ("candidate", "baseline", "opponent")]
     lines += ["", "## 规则边界", ""] + [f"- {difference}" for difference in result["rule_differences"]]
     return "\n".join(lines) + "\n"
 
@@ -136,9 +144,15 @@ def main():
     parser.add_argument("--device", help="Default: configured device; no online configuration is modified")
     parser.add_argument("--match-mode", choices=REQUESTED_MODES, default="libriichi-hanchan")
     parser.add_argument("--doman-engine", type=Path, help="Isolated build directory; required for Doman modes")
+    parser.add_argument("--candidate-observation", choices=MODES, default=NATIVE,
+                        help="Offline progress ablation; same candidate/baseline weights, doman-quick only")
     args = parser.parse_args()
     try:
         rules = rule_profile(args.match_mode, allow_experimental=True)
+        if args.candidate_observation != NATIVE and args.match_mode != "doman-quick":
+            raise ValueError("Progress ablation requires doman-quick")
+        if args.candidate_observation != NATIVE:
+            describe_ablation(rules)
         seeds = seeds_for(args.split, args.offset, args.groups)
         if not 1 <= args.batch_groups <= 256:
             raise ValueError("batch-groups must be between 1 and 256")
@@ -171,9 +185,10 @@ def main():
     paths["opponent"] = args.opponent or paths["baseline"]
     engines = {role: create_engine(checkpoint_path=path, name=role, device_name=args.device, enable_amp=False)
                for role, path in paths.items()}
+    apply_candidate_transform(engines, args.candidate_observation, args.match_mode)
     identities = {role: engine.model_identity.copy() for role, engine in engines.items()}
     engine_commit = subprocess.check_output(["git", "-C", str(mortal_dir), "rev-parse", "HEAD"], text=True).strip()
-    manifest = dict(schema_version=1, status="running", comparison="mortal-checkpoints", rules=rules,
+    manifest = dict(schema_version=1, status="running", comparison="mortal-checkpoints" if args.candidate_observation == NATIVE else "mortal-observation-ablation", rules=rules,
                     native_build=native_build, models=identities, model_paths={role: str(path.resolve()) for role, path in paths.items()},
                     engine_commit=engine_commit, source_hashes={name: hashlib.sha256((mortal_dir/name).read_bytes()).hexdigest()
                         for name in ("engine.py", "model.py", "config.toml")},
@@ -220,7 +235,8 @@ def main():
         result = paired_report(groups, args.split, identities, args.match_mode)
         write_json(output/"report.json", result)
         (output/"report.md").write_text(markdown_report(result), encoding="utf-8")
-        manifest.update(status="complete", elapsed_seconds=time.monotonic()-started)
+        manifest.update(status="complete", elapsed_seconds=time.monotonic()-started,
+                        candidate_adapted_observations=getattr(engines["candidate"], "adapted_observations", 0))
         write_json(output/"manifest.json", manifest)
         print(json.dumps({key: result[key] for key in ("groups", "matches", "rank_delta", "rank_delta_95_ci", "fourth_delta", "fourth_delta_95_ci", "conclusion")}), flush=True)
     except BaseException as error:
