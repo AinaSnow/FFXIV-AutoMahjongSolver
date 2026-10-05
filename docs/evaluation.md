@@ -157,3 +157,30 @@ python "$REPO/tools/evaluation/compare_models.py" \
 首批东风验证已完成：20 组、160 场模型比较，另有 160 场同模型对照。见 [结果与验收记录](reviews/20260925-doman-quick-dev20.md)。
 
 扩大验证已完成：另用 100 个新开发种子组、800 场东风对照。候选前二率 49.75%，基线 50%，平均名次 2.495 对 2.500，未证明换权重能提高表现。继续保留现有模型，见 [100 组完整报告](reviews/20260925-doman-quick-dev100.md)。
+
+
+## 东风进度特征消融（仅离线）
+
+`--candidate-observation east-progress-v1` 只支持 `doman-quick`、非 oracle 的 v4 引擎及相同候选/基线权重。默认仍为 `native`。仅候选在模型推理前复制观测，把第 27 行的进度从 `(局号-1)/7` 改为 `(局号+3)/7`；东一到东四依次为 4/7、5/7、6/7、1。真实场风、自风、局号、手牌、计分状态、其他特征、合法动作和 MJAI 事件保持原值。基线与三名对手保留原始观测。
+
+这是一种未经训练的特征组合，不等于让旧模型完整理解东风规则，也不等于东风专用权重。先检验旧模型能否利用独立的进度通道；不使用“把东场改成南场”的做法。任何未知布局、非东场、重复适配、隐藏观测或错误架构均拒绝运行。
+
+在与 Mortal 相同的 WSL Python 中先验证原生布局，再跑独立开发对照：
+
+```sh
+REPO=/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver
+python "$REPO/tools/evaluation/check_progress_layout.py" --doman-engine "$REPO/artifacts/doman-engine-v1"
+python "$REPO/tools/evaluation/compare_models.py" \
+  --mortal-dir "$REPO/.loacl/Mortal/mortal" \
+  --candidate patch/model_v4_20240308_best_min.pth \
+  --candidate-observation east-progress-v1 \
+  --match-mode doman-quick --doman-engine "$REPO/artifacts/doman-engine-v1" \
+  --groups 20 --batch-groups 20 --offset 3000 --device cuda:0 \
+  --output "$REPO/artifacts/evaluation/east-progress-dev20-20261005"
+```
+
+布局检查覆盖四局、四座位及普通/杠选择观测共 32 个案例。普通 Python 单元测试不依赖 torch/numpy；原生布局命令需要 numpy 和已验证的隔离引擎。
+
+报告将权重与观测变换分别标识，清单记录适配器文件 SHA-256 及实际适配观测数量。同一权重而特征不同不能标记为“同模型控制组”；原始 native 对原始 native 的控制检查仍要求所有配对牌谱和结果一致。同模型控制应与实验使用相同批大小，输出到另一个新目录。开发、验收种子继续分离；实战配置不随统计结果自动更新。
+
+本轮 dev20 已完成，未证明改善，保持仅离线：见 [2026-10-05 实验报告](reviews/20261005-east-progress-ablation.md)。
