@@ -135,6 +135,12 @@ public sealed class ContinuousCollectionLoop : IDisposable
         completed && present && variant == "Emj" && snap is { AddonStateCode: 27 }
         && snap.Hand.Count == 0 && UiHandBoundaryTracker.ScoresKnown(snap.Scores);
 
+    // DutyCompleted is authoritative; the final score panel can disappear in < 2 s.
+    // Re-evaluate this gate at dispatch, including transition and native leave permission.
+    internal static bool CanLeaveCompletedMatch(bool completed, bool targetDuty, bool present,
+        string? variant, bool transitioning, bool nativeCanLeave) =>
+        completed && targetDuty && present && variant == "Emj" && !transitioning && nativeCanLeave;
+
     private unsafe CollectionObservation Observe(Configuration cfg)
     {
         bool loggedIn = Plugin.ClientState.IsLoggedIn && Plugin.PlayerState.IsLoaded;
@@ -182,7 +188,10 @@ public sealed class ContinuousCollectionLoop : IDisposable
             InTargetDuty = currentDuty == DutyId && Plugin.ClientState.TerritoryType == TerritoryId,
             InOtherDuty = currentDuty != 0 && currentDuty != DutyId,
             AtTable = present, MatchCompleted = completed, FinalResult = final,
-            CanLeave = final && currentDuty == DutyId && EventFramework.CanLeaveCurrentContent(),
+            CanLeave = CanLeaveCompletedMatch(completed,
+                currentDuty == DutyId && Plugin.ClientState.TerritoryType == TerritoryId,
+                present, plugin.AddonReader.ProtocolVariant, transitioning,
+                completed && !transitioning && currentDuty == DutyId && EventFramework.CanLeaveCurrentContent()),
             QueueBlockReason = block,
             FatalReason = !dutyVerified || plugin.NetworkCapture.GameVersion != SupportedBuild ? "Unverified client build / duty; collection stopped" :
                 storageBlock is not null && storageCheck is null && storageBlock != "Checking capture storage" ? storageBlock :
@@ -209,7 +218,7 @@ public sealed class ContinuousCollectionLoop : IDisposable
                 if (confirm != null && !ClickRegisteredButton(&confirm->AtkUnitBase, confirm->CommenceButton))
                     log.Warning("[Collection] Commence has no supported registered button event; waiting for manual confirmation");
                 break;
-            case CollectionAction.Leave when s.AutomationAllowed && s.InTargetDuty && s.AtTable && s.FinalResult && s.CanLeave:
+            case CollectionAction.Leave when s.AutomationAllowed && s.InTargetDuty && s.AtTable && s.MatchCompleted && s.CanLeave:
                 EventFramework.LeaveCurrentContent(false);
                 break;
             case CollectionAction.CancelQueue when s.OwnQueue && (s.QueueState != CollectionQueueState.Ready || s.OwnPop) && s.QueueState is CollectionQueueState.Pending or CollectionQueueState.Queued or CollectionQueueState.Ready:
