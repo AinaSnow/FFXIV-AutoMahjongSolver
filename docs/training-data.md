@@ -80,3 +80,10 @@ python tools/training_dataset.py --corpus $corpus --import-archives $archives
 ## 模型身份标记的作用范围（2026-09-24 修复）
 
 归档关闭时 Mortal 可能已经隔离或停止，此时 manifest 用 `mortal_model_at_close_unknown` 描述关闭时状态。该标记只进入比赛报告，不传播为每一条动作的模型缺失；每条 Mortal 推荐使用当时决策中的模型身份。旧 manifest 的 `mortal_model_unknown` 在读取时按关闭时状态解释，原文件不改写。实际缺少模型身份的 Mortal 决策仍得到样本级 `mortal_model_unknown`，不会拿其他时刻的模型身份补齐。
+
+
+## 离线东风模拟素材（2026-10-05）
+
+现已增加与实机留存分开的东风自对战生成、四玩家可见输入导出和独立验收。运行方法与 schema 2 格式见 [评测说明](evaluation.md#东风自对战与可见输入导出2026-10-05)，实测见 [自对战验收](reviews/20261005-doman-selfplay.md)。
+
+这批模拟数据有可重建的结果标签；不会改变上文实机素材的 training_eligible=false，也不把模拟杠事件视作游戏网络包验证。导出尚未连接正式微调训练器，权重不变。

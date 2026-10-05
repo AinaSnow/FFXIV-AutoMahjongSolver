@@ -57,6 +57,11 @@ jobs:
           done
       - name: Offline packet replay command
         run: dotnet build tools/Mahjong.PacketReplay/Mahjong.PacketReplay.csproj -c Release -p:RestoreLockedMode=true --verbosity minimal
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Install pinned dataset validation dependency
+        run: python -m pip install -r tools/evaluation/requirements-validation.txt
       - name: Python bridge and evaluation tests
         run: python3 -m unittest discover -s tools/tests -v
       - uses: actions/setup-node@v4

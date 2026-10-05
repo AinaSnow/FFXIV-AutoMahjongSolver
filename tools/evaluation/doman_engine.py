@@ -6,7 +6,9 @@ from pathlib import Path
 
 BASE_COMMIT = "0cff2b52982be5b1163aa9a62fb01f03ce91e0d2"
 REVISION = 1
+DATASET_REVISION = 1
 PATCH = Path(__file__).with_name("patches") / "libriichi-doman.patch"
+DATASET_PATCH = PATCH.with_name("libriichi-doman-dataset.patch")
 
 
 def sha256(path):
@@ -19,21 +21,37 @@ def verify_build(directory):
     library = directory / "libriichi_doman.so"
     expected = dict(status="validated", base_commit=BASE_COMMIT, rules_revision=REVISION,
                     patch_sha256=sha256(PATCH), library_sha256=sha256(library))
+    if "dataset_revision" in manifest:
+        expected.update(dataset_revision=DATASET_REVISION, dataset_patch_sha256=sha256(DATASET_PATCH))
     if any(manifest.get(key) != value for key, value in expected.items()):
         raise ValueError("Doman build is stale, untested or altered; rebuild it before evaluation")
     return library, manifest
 
 
-def load_doman(directory):
+def load_doman_module(directory, *, require_dataset=False):
     if directory is None:
         raise ValueError("Doman simulation requires --doman-engine; build it with build_doman_engine.py")
     library, manifest = verify_build(directory)
+    if require_dataset and manifest.get("dataset_revision") != DATASET_REVISION:
+        raise ValueError("Doman self-play requires a rebuilt engine with the verified dataset adapter")
     spec = importlib.util.spec_from_file_location("libriichi_doman", library)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     if module.DOMAN_RULES_REVISION != REVISION or module.DOMAN_BASE_COMMIT != BASE_COMMIT:
         raise ValueError("Doman native capabilities do not match the declared build")
+    if "dataset_revision" in manifest and getattr(module, "DOMAN_DATASET_REVISION", None) != DATASET_REVISION:
+        raise ValueError("Doman dataset capability does not match the declared build")
+    return module, manifest
+
+
+def load_doman(directory):
+    module, manifest = load_doman_module(directory)
     return module.arena.OneVsThree, module.dataset.Grp, manifest
+
+
+def load_doman_dataset(directory):
+    module, manifest = load_doman_module(directory, require_dataset=True)
+    return module.arena.OneVsThree, module.dataset.GameplayLoader, module.dataset.Grp, manifest
 
 
 def validate_match_events(events, mode):
