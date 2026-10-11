@@ -46,6 +46,8 @@ public sealed class MemoryDumpRecorder : IDisposable
     private readonly SeatPoolRegistry seatPools;
     private readonly ErrorSink errors;
     private readonly string memdumpsDir;
+    private readonly Func<bool> enabled;
+    private readonly Func<(int Days, long Bytes)> retention;
     private readonly HashSet<string> seenHashes = new();
     private readonly BackgroundIoWorker io = new();
     public Task FlushAsync() => io.FlushAsync();
@@ -60,15 +62,21 @@ public sealed class MemoryDumpRecorder : IDisposable
         AddonEmjReader reader,
         SeatPoolRegistry seatPools,
         ErrorSink errors,
-        string pluginConfigDirectory)
+        string pluginConfigDirectory,
+        Func<bool> enabled,
+        Func<(int Days, long Bytes)> retention)
     {
         ArgumentNullException.ThrowIfNull(reader);
         ArgumentNullException.ThrowIfNull(seatPools);
         ArgumentNullException.ThrowIfNull(errors);
         ArgumentException.ThrowIfNullOrEmpty(pluginConfigDirectory);
+        ArgumentNullException.ThrowIfNull(enabled);
+        ArgumentNullException.ThrowIfNull(retention);
         this.reader = reader;
         this.seatPools = seatPools;
         this.errors = errors;
+        this.enabled = enabled;
+        this.retention = retention;
         memdumpsDir = Path.Combine(pluginConfigDirectory, "memdumps");
         try
         { Directory.CreateDirectory(memdumpsDir); }
@@ -80,7 +88,7 @@ public sealed class MemoryDumpRecorder : IDisposable
     /// <summary>"state-change" is gated on AtkValuesCount; "input-pre" / "input-post" bypass the gate.</summary>
     public unsafe void Record(string reason)
     {
-        if (disposed)
+        if (disposed || !enabled())
             return;
 
         try
@@ -296,6 +304,15 @@ public sealed class MemoryDumpRecorder : IDisposable
         var fn = $"memdumps-{DateTime.UtcNow:yyyyMMdd-HHmmss-fff}.ndjson";
         currentPath = Path.Combine(memdumpsDir, fn);
         currentBytes = 0;
+        try
+        {
+            var (days, bytes) = retention();
+            DiagnosticRetention.Apply(memdumpsDir, "memdumps-*.ndjson*", days, bytes);
+        }
+        catch (Exception ex)
+        {
+            errors.RecordException("MemoryDumpRecorder.Retention", ex);
+        }
     }
 
     private static string NowIso() =>

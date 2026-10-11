@@ -209,7 +209,20 @@ public sealed class Plugin : IDalamudPlugin
             usesExternalRecommendations: () => Configuration.MortalEnabled);
 
         MemoryDumpRecorder = new MemoryDumpRecorder(
-            AddonReader, SeatPoolRegistry, ErrorSink, configDir);
+            AddonReader, SeatPoolRegistry, ErrorSink, configDir,
+            enabled: () => Configuration.MemoryDumpsEnabled,
+            retention: () => (Configuration.DiagnosticRetentionDays, Configuration.DiagnosticMaxBytes));
+
+        // Expire loose diagnostics off the framework thread; game logs, packets and archives are not touched.
+        var diagnosticLimits = (Configuration.DiagnosticRetentionDays, Configuration.DiagnosticMaxBytes);
+        _ = System.Threading.Tasks.Task.Run(() =>
+        {
+            foreach (var (folder, pattern) in new[] { ("memdumps", "memdumps-*.ndjson*"), ("inputs", "inputs-*.ndjson"), ("discards", "discards-*.ndjson") })
+            {
+                try { DiagnosticRetention.Apply(Path.Combine(configDir, folder), pattern, diagnosticLimits.Item1, diagnosticLimits.Item2); }
+                catch (Exception ex) { ErrorSink.RecordException("DiagnosticRetention", ex); }
+            }
+        });
 
         Aggregator.Changed += _ => MemoryDumpRecorder.Record("state-change");
 

@@ -74,6 +74,13 @@ public sealed record Configuration : IPluginConfiguration
 
     public bool EnableGameLogging { get; init; } = true;
 
+    /// <summary>Raw addon/agent memory snapshots for layout re-discovery after a game patch. ~1 MiB per few seconds; off by default.</summary>
+    public bool MemoryDumpsEnabled { get; init; } = false;
+
+    /// <summary>Expiry for loose diagnostic folders (memdumps, inputs, discards); per-folder cap. Game logs, packets and archives are unaffected.</summary>
+    public int DiagnosticRetentionDays { get; init; } = 14;
+    public long DiagnosticMaxBytes { get; init; } = 256L << 20;
+
     /// <summary>Legacy identifier retained so existing v2 configuration files round-trip. It is never transmitted.</summary>
     public Guid InstallId { get; init; } = Guid.Empty;
 }
