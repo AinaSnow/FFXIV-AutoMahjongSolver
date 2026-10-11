@@ -215,6 +215,23 @@ public sealed class SettingsWindow : Window, IDisposable
             if (plugin.DebugPackets.CurrentPath is {} capturePath) ImGui.TextWrapped(capturePath);
         }
 
+        using (Theme.BeginCard("settings-memdumps"))
+        {
+            Theme.SectionHeader("Memory snapshots");
+            bool dumps = cfg.MemoryDumpsEnabled;
+            if (ImGui.Checkbox("Record mahjong window memory snapshots", ref dumps))
+                plugin.ConfigService.Update(c => c with { MemoryDumpsEnabled = dumps });
+            ImGui.TextWrapped("Only needed to re-locate memory offsets after a game patch breaks hand reading. Writes about 1 MiB every few seconds while seated.");
+            int days = cfg.DiagnosticRetentionDays;
+            if (ImGui.InputInt("Diagnostics retention (days)", ref days))
+                plugin.ConfigService.Update(c => c with { DiagnosticRetentionDays = Math.Clamp(days, 1, 3650) });
+            int mib = (int)(cfg.DiagnosticMaxBytes / (1L << 20));
+            if (ImGui.InputInt("Diagnostics limit per folder (MiB)", ref mib))
+                plugin.ConfigService.Update(c => c with { DiagnosticMaxBytes = (long)Math.Clamp(mib, 16, 1048576) << 20 });
+            Theme.Subtle("Applies to memdumps, inputs and discards. Game logs, packet captures, match archives and training data are not affected.");
+            if (ImGui.SmallButton("Copy memory snapshot folder")) ImGui.SetClipboardText(plugin.MemoryDumpRecorder.MemdumpsDir);
+        }
+
         using (Theme.BeginCard("settings-appearance"))
         {
             Theme.SectionHeader("Appearance");
