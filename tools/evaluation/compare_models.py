@@ -11,7 +11,7 @@ import sys
 import time
 
 from progress_observation import MODES, NATIVE, apply_candidate_transform, describe_ablation
-from arena import report
+from arena import report, paired_interval
 from doman_engine import load_doman, validate_match_events
 from rule_profile import rule_profile, REQUESTED_MODES
 from self_play import canonical_identity, inspect_log, seeds_for, SEED_KEY, write_json
@@ -73,7 +73,7 @@ def read_batch_results(directory, seed_start, seed_count, role, grp, rankings, m
     return matches
 
 
-def paired_report(groups, split, identities, match_mode="libriichi-hanchan"):
+def paired_report(groups, split, identities, match_mode="libriichi-hanchan", stochastic_opponents=False):
     for group in groups:
         for role in ("candidate", "baseline"):
             if len(group[role]) != 4 or sorted(m["seat"] for m in group[role]) != [0, 1, 2, 3]:
@@ -83,7 +83,7 @@ def paired_report(groups, split, identities, match_mode="libriichi-hanchan"):
     same_model = (identities["candidate"]["checkpoint_sha256"] == identities["baseline"]["checkpoint_sha256"]
                   and transforms["candidate"] == transforms["baseline"]
                   and identities["candidate"].get("observation_transform_sha256") == identities["baseline"].get("observation_transform_sha256"))
-    if same_model:
+    if same_model and not stochastic_opponents:
         for group in groups:
             left = {m["seat"]: m for m in group["candidate"]}
             right = {m["seat"]: m for m in group["baseline"]}
@@ -91,6 +91,10 @@ def paired_report(groups, split, identities, match_mode="libriichi-hanchan"):
             if any(left[seat][field] != right[seat][field] for seat in range(4) for field in fields):
                 raise ValueError("Identical-checkpoint control produced different paired outcomes")
     result = report(groups, split, "mortal", match_mode)
+    top_two_delta = [sum(m["rank"] <= 2 for m in group["candidate"])/4
+                     - sum(m["rank"] <= 2 for m in group["baseline"])/4 for group in groups]
+    result.update(top_two_delta=sum(top_two_delta)/len(top_two_delta),
+                  top_two_delta_95_ci=paired_interval(top_two_delta))
     result.update(comparison="mortal-observation-ablation" if ablation else "mortal-checkpoints", same_model_control=same_model,
                   control_passed=True if same_model else None, models=identities,
                   live_weights_modified=False, ffxiv_rating_gain=None,
@@ -120,6 +124,7 @@ def markdown_report(result):
         display = ["未知" if value is None else f"{value:.1%}" if percent else f"{value:.3f}" for value in values]
         lines.append(f"| {label} | {display[0]} | {display[1]} |")
     lines += ["", f"平均名次差（候选−基线，负数更好）：{result['rank_delta']:.4f}；95% 区间：{result['rank_delta_95_ci']}。",
+              f"前二率差：{result['top_two_delta']:.4f}；95% 区间：{result['top_two_delta_95_ci']}。",
               f"四位率差：{result['fourth_delta']:.4f}；95% 区间：{result['fourth_delta_95_ci']}。", "",
               "同模型对照检查通过。" if result["same_model_control"] else "探索性结果不构成更换线上模型的依据。",
               f"模式：{result['match_mode']}。FF14 规则尚未完全对齐；牌桌得失分不是 Rating 收益。模型未自动替换。", "",
@@ -144,6 +149,9 @@ def main():
     parser.add_argument("--device", help="Default: configured device; no online configuration is modified")
     parser.add_argument("--match-mode", choices=REQUESTED_MODES, default="libriichi-hanchan")
     parser.add_argument("--doman-engine", type=Path, help="Isolated build directory; required for Doman modes")
+    parser.add_argument("--opponent-epsilon", type=float, default=0.0,
+                        help="Boltzmann exploration probability for the three opponents (FF14-like pool); candidate/baseline stay greedy")
+    parser.add_argument("--opponent-temp", type=float, default=1.0, help="Boltzmann temperature for opponent exploration")
     parser.add_argument("--candidate-observation", choices=MODES, default=NATIVE,
                         help="Offline progress ablation; same candidate/baseline weights, doman-quick only")
     args = parser.parse_args()
@@ -186,6 +194,11 @@ def main():
     engines = {role: create_engine(checkpoint_path=path, name=role, device_name=args.device, enable_amp=False)
                for role, path in paths.items()}
     apply_candidate_transform(engines, args.candidate_observation, args.match_mode)
+    if not 0 <= args.opponent_epsilon <= 1 or args.opponent_temp <= 0:
+        parser.error("opponent-epsilon must be in [0, 1] and opponent-temp positive")
+    engines["opponent"].boltzmann_epsilon = args.opponent_epsilon
+    engines["opponent"].boltzmann_temp = args.opponent_temp
+    engines["opponent"].top_p = 1
     identities = {role: engine.model_identity.copy() for role, engine in engines.items()}
     engine_commit = subprocess.check_output(["git", "-C", str(mortal_dir), "rev-parse", "HEAD"], text=True).strip()
     manifest = dict(schema_version=1, status="running", comparison="mortal-checkpoints" if args.candidate_observation == NATIVE else "mortal-observation-ablation", rules=rules,
@@ -195,6 +208,7 @@ def main():
                     evaluator_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                     torch_version=torch.__version__, devices={role: str(engine.device) for role, engine in engines.items()},
                     threads=args.threads, inference=dict(oracle=False, epsilon=0, stochastic_latent=False,
+                        opponent_epsilon=args.opponent_epsilon, opponent_temp=args.opponent_temp,
                         amp=False, quick_eval=True, rule_based_agari_guard=True, cudnn_benchmark=False, cudnn_deterministic=True),
                     split=args.split, seed_start=seeds.start, seed_end_exclusive=seeds.stop, seed_key=SEED_KEY,
                     requested_groups=args.groups, batch_groups=args.batch_groups, completed_groups=0, live_weights_modified=False,
@@ -224,7 +238,7 @@ def main():
                 complete_groups = [dict(seed=seed, key=SEED_KEY, candidate=batch["candidate"][seed], baseline=batch["baseline"][seed])
                                    for seed in range(seed_start, seed_start+seed_count)]
                 # Validate every pair before publishing the batch. Keep seeds as the statistical unit.
-                paired_report(complete_groups, args.split, identities, args.match_mode)
+                paired_report(complete_groups, args.split, identities, args.match_mode, args.opponent_epsilon > 0)
                 for group in complete_groups:
                     sink.write(json.dumps(group)+"\n")
                 sink.flush()
@@ -232,7 +246,7 @@ def main():
                 manifest.update(completed_groups=len(groups), elapsed_seconds=time.monotonic()-started)
                 write_json(output/"manifest.json", manifest)
                 print(f"completed paired seed groups {len(groups)}/{args.groups}", flush=True)
-        result = paired_report(groups, args.split, identities, args.match_mode)
+        result = paired_report(groups, args.split, identities, args.match_mode, args.opponent_epsilon > 0)
         write_json(output/"report.json", result)
         (output/"report.md").write_text(markdown_report(result), encoding="utf-8")
         manifest.update(status="complete", elapsed_seconds=time.monotonic()-started,

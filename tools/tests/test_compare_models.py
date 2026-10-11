@@ -81,6 +81,16 @@ class ModelComparisonTests(unittest.TestCase):
                         hands=8, wins=2, deal_ins=1, gameplay_sha256=f"game-{seat}") for seat in range(4)]
         return dict(candidate=copy.deepcopy(matches), baseline=copy.deepcopy(matches))
 
+    def test_top_two_difference_is_paired_by_seed_not_by_seat(self):
+        models = {role: dict(checkpoint_sha256=role) for role in ("candidate", "baseline", "opponent")}
+        groups = [self.group(), self.group()]
+        for match, rank in zip(groups[0]["candidate"], [1, 2, 2, 4]):
+            match["rank"] = rank
+        result = paired_report(groups, "development", models)
+        self.assertEqual(.125, result["top_two_delta"])
+        self.assertEqual([0., .25], result["top_two_delta_95_ci"])
+        self.assertFalse(result["promotion_statistics_pass"])
+
     def test_same_model_control_detects_divergence_and_incomplete_pairs(self):
         models = {role: dict(checkpoint_sha256="same") for role in ("candidate", "baseline", "opponent")}
         group = self.group()
