@@ -31,6 +31,9 @@ public sealed class LiveMortalBridge : IDisposable
     private PublicStateReducer trialState = new();
     private long admissionGeneration = -1;
     internal Func<IMortalProcessClient>? ClientFactory { get; set; }
+
+    private string ObservationMode() =>
+        configService.Current.MortalEastProgress ? MortalProcessClient.EastProgressObservation : MortalProcessClient.NativeObservation;
     private Action<string>? clientReactionHandler;
     private Action<int?>? clientExitHandler;
     private IMortalProcessClient? client;
@@ -89,7 +92,7 @@ public sealed class LiveMortalBridge : IDisposable
         clock = new MonotonicClock(timeProvider);
         this.runtimeAllowed = runtimeAllowed ?? (() => true);
         this.tablePresent = tablePresent ?? (() => capture.ProtocolAdmitted);
-        warmup = new MortalProcessWarmup(() => ClientFactory?.Invoke() ?? new MortalProcessClient(log, runnerDirectory), clock);
+        warmup = new MortalProcessWarmup(() => ClientFactory?.Invoke() ?? new MortalProcessClient(log, runnerDirectory, observationMode: ObservationMode), clock);
         this.capture = capture;
         this.framework = framework;
         this.configService = configService;
@@ -719,7 +722,7 @@ public sealed class LiveMortalBridge : IDisposable
         try
         {
             var prepared = warmup.Take(settings);
-            var next = prepared ?? ClientFactory?.Invoke() ?? new MortalProcessClient(log, runnerDirectory);
+            var next = prepared ?? ClientFactory?.Invoke() ?? new MortalProcessClient(log, runnerDirectory, observationMode: ObservationMode);
             client = next; // Also makes synchronous Start failure cleanup own this instance.
             clientReactionHandler = json => { if (ReferenceEquals(client, next)) OnReactionReceived(json); };
             clientExitHandler = code => { if (ReferenceEquals(client, next)) OnProcessExited(code); };

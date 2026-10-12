@@ -163,6 +163,11 @@ public sealed class SettingsWindow : Window, IDisposable
             if (ImGui.Checkbox("Use Mortal for live decisions", ref enabled))
                 plugin.ConfigService.Update(c => c with { MortalEnabled = enabled });
 
+            bool eastProgress = cfg.MortalEastProgress;
+            if (ImGui.Checkbox("East-only match mode (East 4 = last hand)", ref eastProgress))
+                plugin.ConfigService.Update(c => c with { MortalEastProgress = eastProgress });
+            Theme.Subtle("Turn on when queuing East-only matches, off for full matches. Offline acceptance: average rank -0.032, 4th place -2.1 pts vs the unmodified model.");
+
             bool trial = cfg.MortalLimitedTrial;
             if (ImGui.Checkbox("Mortal limited trial (2026.09.15 / Emj)", ref trial))
                 plugin.ConfigService.Update(c => c with { MortalLimitedTrial = trial });
