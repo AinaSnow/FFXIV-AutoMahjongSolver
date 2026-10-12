@@ -1,0 +1,34 @@
+{
+  "experiment": "doman-advantage-D-20261005",
+  "mortal_dir": "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/.loacl/Mortal/mortal",
+  "doman_engine": "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/artifacts/doman-engine-v2-dataset",
+  "training_run": "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/artifacts/finetune/doman-heads-r1-20261005",
+  "credit_run": "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/artifacts/finetune/doman-credit-C-r2-20261005",
+  "input_sha256": {
+    "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/artifacts/finetune/doman-heads-r1-20261005/features.pt": "7f866bda8b22c3f58a5fe00e8e9eea34522b2381984734d08ce897e7cb8cf2ec",
+    "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/artifacts/finetune/doman-heads-r1-20261005/matches.jsonl": "9b5e8b1801a13d4e04e3ddcbed32ac22b35a8211ba1fa20f7dc6a5bed3b18db6",
+    "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/artifacts/finetune/doman-heads-r1-20261005/experiment-config.json": "41d246c5da0831b68f6542102feeb28d9424850fecadb68541b85ecfa0beebda",
+    "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/artifacts/finetune/doman-credit-C-r2-20261005/cross-fitted-rewards.pt": "18dc0aa88f2cf3936fe0b12ea8e4450dcf2af569767d4499ef0c035ba07d4d39",
+    "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/artifacts/finetune/doman-credit-C-r2-20261005/cross-fit-seeds.json": "0b030c5c79a8a4e5d68216220c03ac737dd3a41387594736b194e988c8a482cd",
+    "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/artifacts/finetune/doman-credit-C-r2-20261005/candidate-C.pth": "e1ece368cd734daee5eb1f8d6def3f0a21f0c9642747b588cf3a6e7a338a2183"
+  },
+  "reward_temperature_floor": 0.05,
+  "raw_weight_lower": 0.25,
+  "raw_weight_upper": 4.0,
+  "policy_temperature": 0.5,
+  "kl_weight": 1.0,
+  "max_fit_seconds": 1800,
+  "total_gpu_hour_cap": 2,
+  "development": {
+    "offset": 8000,
+    "groups": 100,
+    "batch_groups": 20,
+    "roles": [
+      "D",
+      "C"
+    ],
+    "opponent": "original baseline"
+  },
+  "policy_gate": "D vs original: rank_delta <= -0.03, top_two_delta > 0, fourth_delta <= 0.01; D vs C: rank_delta < 0, top_two_delta >= 0, fourth_delta <= 0.01",
+  "acceptance": "Only after development passes: freeze candidate, then separately preregister fresh acceptance budget; no live replacement on development"
+}

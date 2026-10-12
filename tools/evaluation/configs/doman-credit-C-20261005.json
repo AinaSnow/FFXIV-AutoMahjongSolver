@@ -1,0 +1,28 @@
+{
+  "experiment": "doman-credit-C-20261005",
+  "mortal_dir": "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/.loacl/Mortal/mortal",
+  "doman_engine": "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/artifacts/doman-engine-v2-dataset",
+  "training_run": "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/artifacts/finetune/doman-heads-r1-20261005",
+  "calibration_directory": "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/artifacts/evaluation/doman-heads-B-dev100-20261005",
+  "rank_seed": 20261006,
+  "rank_steps": 1000,
+  "rank_batch_size": 64,
+  "gru_lr": 0.001,
+  "score_lr": 0.01,
+  "folds": 4,
+  "max_rank_fit_seconds": 900,
+  "total_gpu_hour_cap": 2,
+  "development": {
+    "offset": 7000,
+    "groups": 100,
+    "batch_groups": 20,
+    "roles": [
+      "C",
+      "B"
+    ],
+    "opponent": "original baseline"
+  },
+  "policy_gate": "C vs original: rank_delta <= -0.03, top_two_delta > 0, fourth_delta <= 0.01; C vs B: rank_delta < 0, top_two_delta >= 0, fourth_delta <= 0.01",
+  "calibration_gate": "Select lower held-out permutation NLL from final GRU and fitted score model; must beat fixed score model NLL by >=1%, utility MSE and top-two Brier no worse",
+  "acceptance": "No live replacement on development; freeze a qualifying candidate before separately budgeting 1000 fresh acceptance groups"
+}

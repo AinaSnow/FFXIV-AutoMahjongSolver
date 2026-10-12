@@ -1,0 +1,66 @@
+{
+  "experiment": "doman-tail-r1-20261006",
+  "mortal_dir": "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/.loacl/Mortal/mortal",
+  "doman_engine": "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/artifacts/doman-engine-v2-dataset",
+  "baseline": "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/.loacl/Mortal/mortal/patch/model_v4_20240308_best_min.pth",
+  "baseline_sha256": "0a88ddad649804d085491b5397d895f596b0e55f30632c549ea145bb44786563",
+  "opponents": [
+    "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/.loacl/Mortal/mortal/patch/model_v4_20240308_best_min.pth",
+    "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/.loacl/Mortal/mortal/patch/mortal_298k.pth"
+  ],
+  "pilot_groups": 4,
+  "pilot_offset": 8000,
+  "pilot_steps": 20,
+  "train_groups": 256,
+  "train_offset": 10000,
+  "batch_groups": 16,
+  "epsilon": 0.05,
+  "temperature": 0.5,
+  "encode_batch_size": 128,
+  "training_seed": 20261006,
+  "steps": 1200,
+  "training_batch_size": 512,
+  "learning_rate": 1e-05,
+  "weight_decay": 0.01,
+  "max_grad_norm": 5.0,
+  "max_data_seconds": 2400,
+  "max_fit_seconds": 540,
+  "development": {
+    "offset": 10000,
+    "groups": 200,
+    "batch_groups": 20,
+    "roles": [
+      "H",
+      "T"
+    ],
+    "opponent": "original baseline",
+    "max_seconds": 3000
+  },
+  "selection": "T vs baseline: rank_delta <= -.03, top_two_delta > 0, fourth_delta <= .01; T vs H: rank_delta < 0, top_two_delta >= 0, fourth_delta <= .01; otherwise stop this experiment",
+  "acceptance": "If development gate passes: estimate and preregister independent 1000 groups, 8000 paired games; do not change live weights on development results",
+  "total_gpu_hour_cap": 2,
+  "cut_index": 53,
+  "train_blocks": [
+    53,
+    54
+  ],
+  "tail_learning_rate": 1e-06,
+  "max_decisions": 500000,
+  "rank_model": "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/artifacts/finetune/doman-credit-C-r2-20261005/rank-score-full.pth",
+  "pilot_output": "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/artifacts/finetune/doman-tail-pilot-20261006-r2",
+  "reward_temperature_floor": 0.05,
+  "raw_weight_lower": 0.25,
+  "raw_weight_upper": 4.0,
+  "policy_temperature": 0.5,
+  "kl_weight": 1.0,
+  "input_sha256": {
+    "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/.loacl/Mortal/mortal/patch/model_v4_20240308_best_min.pth": "0a88ddad649804d085491b5397d895f596b0e55f30632c549ea145bb44786563",
+    "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/.loacl/Mortal/mortal/patch/mortal_298k.pth": "bfb3a6c072aa0bfd4171a9cdc77cb6c02ae42cde920843f9e5784394f23447d8",
+    "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/artifacts/finetune/doman-credit-C-r2-20261005/rank-score-full.pth": "80eedfe05b8f473bf9aeeda18a40c04a007da3f3f0b9fb4c9e283d9984d687c3",
+    "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/tools/evaluation/finetune_heads.py": "1a05b285b50ec72bccaf03626095db6fb21cd4347fd46c654da29cb6c3bf4a58",
+    "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/tools/evaluation/finetune_advantage.py": "0abc1535c28fc47141c16709920cf2191ee53c67632fc76175bdb1d12f7ec6e4",
+    "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/tools/evaluation/finetune_credit.py": "1671ccedf93ec8645fb11605c4d65133b8b866b807d042789c4a18517a465c9c",
+    "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/tools/evaluation/compare_models.py": "43fc4b040ce43a012100f135258db2c21d520b658f61ca63a0859b40a404593a",
+    "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/.loacl/Mortal/mortal/model.py": "217e2d3dc20631c769a57ea3f09ca4fac232430fc28f76b21d5f37cec7bf84f2"
+  }
+}
