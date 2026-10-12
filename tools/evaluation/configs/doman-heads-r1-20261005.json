@@ -1,0 +1,39 @@
+{
+  "experiment": "doman-heads-r1-20261005",
+  "mortal_dir": "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/.loacl/Mortal/mortal",
+  "doman_engine": "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/artifacts/doman-engine-v2-dataset",
+  "baseline": "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/.loacl/Mortal/mortal/patch/model_v4_20240308_best_min.pth",
+  "baseline_sha256": "0a88ddad649804d085491b5397d895f596b0e55f30632c549ea145bb44786563",
+  "opponents": [
+    "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/.loacl/Mortal/mortal/patch/model_v4_20240308_best_min.pth",
+    "/mnt/e/SapphireServer/FFXIV-AutoMahjongSolver/.loacl/Mortal/mortal/patch/mortal_298k.pth"
+  ],
+  "pilot_groups": 8,
+  "pilot_offset": 5000,
+  "pilot_steps": 100,
+  "train_groups": 128,
+  "train_offset": 6000,
+  "batch_groups": 16,
+  "epsilon": 0.05,
+  "temperature": 0.5,
+  "encode_batch_size": 128,
+  "training_seed": 20261005,
+  "steps": 1200,
+  "training_batch_size": 512,
+  "learning_rate": 1e-05,
+  "weight_decay": 0.01,
+  "cql_weight": 0.1,
+  "max_grad_norm": 5.0,
+  "max_data_seconds": 3600,
+  "max_fit_seconds": 1800,
+  "development": {
+    "offset": 6000,
+    "groups": 100,
+    "batch_groups": 20,
+    "opponent": "baseline",
+    "checkpoints": "final only; one per A/B"
+  },
+  "selection": "Among A/B choose lowest average rank only if rank_delta <= -0.03, top_two_delta > 0 and fourth_delta <= 0.01; otherwise stop this round",
+  "acceptance": "If development gate passes: estimate and preregister independent 1000 groups, 8000 paired games; do not change live weights on development results",
+  "total_gpu_hour_cap": 2
+}
