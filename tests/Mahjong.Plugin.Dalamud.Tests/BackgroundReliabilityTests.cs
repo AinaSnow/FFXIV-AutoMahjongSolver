@@ -238,6 +238,29 @@ public class BackgroundReliabilityTests
         }
         public override Task FlushAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     }
+    [Fact]
+    public async Task East_progress_mode_is_sent_per_request_and_native_keeps_the_original_envelope()
+    {
+        var fake = new FakeProcess();
+        string mode = MortalProcessClient.NativeObservation;
+        using var client = new MortalProcessClient(new StubPluginLog(), processFactory: _ => fake, observationMode: () => mode);
+        client.Start(new("test","test","python"));
+        client.Send(new MjaiReach(0));
+        using (var native = JsonDocument.Parse(await fake.Writes.Reader.ReadAsync()))
+            Assert.False(native.RootElement.TryGetProperty("observation", out _));
+        mode = MortalProcessClient.EastProgressObservation;
+        client.Send(new MjaiReach(0));
+        using var east = JsonDocument.Parse(await fake.Writes.Reader.ReadAsync());
+        Assert.Equal("east-progress-v1", east.RootElement.GetProperty("observation").GetString());
+        Assert.Equal(2, east.RootElement.GetProperty("sequence").GetInt64());
+    }
+
+    [Fact]
+    public void East_progress_switch_is_off_by_default()
+    {
+        Assert.False(new Configuration().MortalEastProgress);
+    }
+
     private sealed class FakeProcess : IManagedJsonProcess
     {
         public Channel<string> Writes { get; } = Channel.CreateUnbounded<string>();

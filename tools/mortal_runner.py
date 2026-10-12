@@ -65,17 +65,73 @@ def create_engine(*, checkpoint_path=None, name="mortal", device_name=None, enab
     return engine
 
 
+NATIVE = "native"
+EAST_PROGRESS = "east-progress-v1"
+OBSERVATION_MODES = (NATIVE, EAST_PROGRESS)
+PROGRESS_ROW = 27
+
+
+def east_progress_or_none(obs):
+    """Same remap as tools/evaluation/progress_observation.adapt_east_progress (accepted
+    2026-10-12, 1500 groups), but returns None instead of raising when the observation is
+    not a real East-round v4 layout, so South/West extensions keep the native input."""
+    if tuple(obs.shape) != (1012, 34):
+        return None
+    if any(float(value) != (1.0 if col == 27 else 0.0) for col, value in enumerate(obs[25])):
+        return None
+    active = []
+    for kyoku in range(4):
+        row = obs[19 + kyoku]
+        if all(float(value) == 1.0 for value in row):
+            active.append(kyoku)
+        elif any(float(value) != 0.0 for value in row):
+            return None
+    if len(active) != 1:
+        return None
+    kyoku = active[0]
+    if not all(abs(float(value) - kyoku / 7) <= 1e-6 for value in obs[PROGRESS_ROW]):
+        return None
+    result = obs.copy()
+    result[PROGRESS_ROW][:] = [(kyoku + 4) / 7] * 34
+    return result
+
+
+class LiveObservationEngine:
+    """Per-request observation mode for East-only matches; native passes inputs through untouched."""
+    def __init__(self, engine):
+        self.engine = engine
+        self.mode = NATIVE
+        self.adapted = self.passthrough = 0
+
+    def __getattr__(self, name):
+        return getattr(self.engine, name)
+
+    def react_batch(self, obs, masks, invisible_obs):
+        if self.mode == EAST_PROGRESS and invisible_obs is None:
+            remapped = []
+            for sample in obs:
+                adapted = east_progress_or_none(sample)
+                if adapted is None:
+                    self.passthrough += 1
+                    remapped.append(sample)
+                else:
+                    self.adapted += 1
+                    remapped.append(adapted)
+            obs = remapped
+        return self.engine.react_batch(obs, masks, invisible_obs)
+
+
 def create_bot(startup_timings=None):
-    engine = create_engine(startup_timings=startup_timings)
+    engine = LiveObservationEngine(create_engine(startup_timings=startup_timings))
     started = time.perf_counter()
     from libriichi.mjai import Bot
     bot = Bot(engine, 0)
     if startup_timings is not None:
         startup_timings["bot_setup_ms"] = (time.perf_counter() - started) * 1000
-    return bot
+    return bot, engine
 
 
-def serve(bot, source, sink, model_identity=None):
+def serve(bot, source, sink, model_identity=None, engine=None):
     last_sequence = 0
     session = None
     for line in source:
@@ -89,6 +145,15 @@ def serve(bot, source, sink, model_identity=None):
             last_sequence = request["sequence"]
             if last_sequence == 1 and model_identity is not None:
                 response["model"] = model_identity
+            mode = request.get("observation", NATIVE)
+            if mode not in OBSERVATION_MODES:
+                raise ValueError(f"unsupported observation mode {mode!r}")
+            if engine is not None:
+                engine.mode = mode
+            elif mode != NATIVE:
+                raise ValueError("observation mode requires a live observation engine")
+            if mode != NATIVE:
+                response["observation"] = mode
             reaction = bot.react(json.dumps(request["event"], separators=(",", ":")))
             response["reaction"] = json.loads(reaction) if reaction and request["event"].get("can_act", True) else None
         except Exception as exc:
@@ -104,10 +169,10 @@ if __name__ == "__main__":
     started = time.perf_counter()
     ready = False
     try:
-        bot = create_bot(startup_timings=timings)
+        bot, live_engine = create_bot(startup_timings=timings)
         ready = True
     finally:
         # stderr only: stdout remains the correlated MJAI response stream.
         print(json.dumps(dict(type="mortal_startup", ready=ready, stages_ms=timings,
                               total_ms=(time.perf_counter() - started) * 1000)), file=sys.stderr, flush=True)
-    serve(bot, sys.stdin, sys.stdout, _model_identity)
+    serve(bot, sys.stdin, sys.stdout, _model_identity, live_engine)

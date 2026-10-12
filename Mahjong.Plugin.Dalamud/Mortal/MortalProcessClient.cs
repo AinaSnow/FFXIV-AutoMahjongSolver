@@ -56,15 +56,19 @@ internal sealed class MortalProcessClient : IMortalProcessClient
     private string? modelIdentityJson;
     public string? ModelIdentityJson => Volatile.Read(ref modelIdentityJson);
     private readonly Func<MortalProcessSettings, IManagedJsonProcess> processFactory;
+    private readonly Func<string> observationMode;
+    internal const string NativeObservation = "native";
+    internal const string EastProgressObservation = "east-progress-v1";
     internal Task Completion => worker ?? Task.CompletedTask;
     public event Action<string>? ReactionReceived;
     public event Action<int?>? Exited;
     public bool IsRunning => running && !disposed;
     public bool IsReady => IsRunning && ready;
-    public MortalProcessClient(IPluginLog log, string? runnerDirectory = null, Func<MortalProcessSettings, IManagedJsonProcess>? processFactory = null)
+    public MortalProcessClient(IPluginLog log, string? runnerDirectory = null, Func<MortalProcessSettings, IManagedJsonProcess>? processFactory = null, Func<string>? observationMode = null)
     {
         this.log = log; this.runnerDirectory = runnerDirectory ?? AppContext.BaseDirectory;
         this.processFactory = processFactory ?? (settings => new ManagedJsonProcess(CreateStartInfo(settings)));
+        this.observationMode = observationMode ?? (() => NativeObservation);
     }
 
     public void Start(MortalProcessSettings settings)
@@ -114,7 +118,11 @@ internal sealed class MortalProcessClient : IMortalProcessClient
             && actor is > 0 and < 4 && actor == previousActor;
         previousType = replay ? null : type;
         previousActor = replay ? null : actor;
-        var line = JsonSerializer.Serialize(new { session, hand = Interlocked.Read(ref hand), sequence = seq, @event = evt });
+        // Native requests keep the original envelope; only a non-native mode adds the field.
+        string mode = observationMode();
+        var line = mode == NativeObservation
+            ? JsonSerializer.Serialize(new { session, hand = Interlocked.Read(ref hand), sequence = seq, @event = evt })
+            : JsonSerializer.Serialize(new { session, hand = Interlocked.Read(ref hand), sequence = seq, @event = evt, observation = mode });
         if (!input.Writer.TryWrite(line))
         {
             Dispose();

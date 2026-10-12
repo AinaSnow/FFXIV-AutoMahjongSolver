@@ -53,6 +53,9 @@ public sealed record Configuration : IPluginConfiguration
     /// <summary>Opt-in only: admit explicitly scoped protocol evidence, with per-hand guards.</summary>
     public bool MortalLimitedTrial { get; init; } = false;
 
+    /// <summary>East-only matches: tell the hanchan-trained model that East 4 is the last hand (accepted 2026-10-12, 1500 groups). Wrong for full matches.</summary>
+    public bool MortalEastProgress { get; init; } = false;
+
     public string MortalWslDistribution { get; init; } = "";
 
     public string MortalWorkingDirectory { get; init; } = "";
