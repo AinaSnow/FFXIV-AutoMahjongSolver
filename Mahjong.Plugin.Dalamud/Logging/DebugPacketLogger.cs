@@ -14,6 +14,8 @@ public sealed class DebugPacketLogger : IDisposable
     private string? warnedPath, warnedHookError;
     private readonly Func<bool> enabled, present;
     private readonly Func<MatchArchiveEnvironment> environment;
+    private readonly Func<int[]?>? tableScores;
+    private bool learningTableSeen;
     private DebugPacketSession? acknowledgedCollectionFailure;
     // An explicit restart can retry after an old file failure; active recordings are never excused.
     public void AcknowledgeCollectionFailure()
@@ -36,9 +38,11 @@ public sealed class DebugPacketLogger : IDisposable
     private bool disposed, recordingEnabled, tablePresent, closingUntilAbsent;
 
     public DebugPacketLogger(string pluginDirectory, MahjongNetworkCapture network, IFramework framework, string configDirectory,
-        Func<bool> enabled, Func<bool> present, Func<MatchArchiveEnvironment> environment, IPluginLog? log = null)
+        Func<bool> enabled, Func<bool> present, Func<MatchArchiveEnvironment> environment, IPluginLog? log = null,
+        Func<int[]?>? tableScores = null)
     {
         this.log = log;
+        this.tableScores = tableScores;
         this.network = network;
         this.framework=framework; this.enabled=enabled; this.present=present; this.environment=environment;
         recorder = new AutoPacketRecorder(configDirectory);
@@ -53,12 +57,27 @@ public sealed class DebugPacketLogger : IDisposable
         if (disposed) return;
         bool active = enabled();
         network.RefreshProfile();
-        source.SetEnabled(active || network.HasAdmittedBuild);
+        bool learning = network.LearningWanted;
+        source.SetEnabled(active || network.HasAdmittedBuild || learning);
         network.TransportReady = source.IsEnabled;
         network.TransportStatus = source.Status;
         // Arm pre-roll while connecting so the first received packet is retained.
         bool captureEnabled = active && !source.Status.StartsWith("Deucalion unavailable",StringComparison.Ordinal);
         bool visible = present();
+        if (learning)
+        {
+            if (visible)
+            {
+                if (!learningTableSeen) network.BeginLearningSession(DateTimeOffset.UtcNow);
+                learningTableSeen = true;
+                network.ObserveTableScores(tableScores?.Invoke());
+            }
+            else if (learningTableSeen)
+            {
+                learningTableSeen = false;
+                network.FinishLearningSession();
+            }
+        }
         if (!visible) closingUntilAbsent = false;
         if (closingUntilAbsent) visible = false;
         if (captureEnabled != recordingEnabled || visible != tablePresent)

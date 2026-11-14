@@ -17,7 +17,6 @@ namespace Mahjong.Plugin.Dalamud.Actions;
 public sealed class ContinuousCollectionLoop : IDisposable
 {
     internal const uint DutyId = 766, TerritoryId = 831, ContentId = 61005;
-    private const string SupportedBuild = "2026.09.15.0000.0000";
     private readonly Plugin plugin;
     private readonly IFramework framework;
     private readonly IPluginLog log;
@@ -60,7 +59,8 @@ public sealed class ContinuousCollectionLoop : IDisposable
         var cfg = plugin.Configuration;
         if (!cfg.TosAccepted || !cfg.AutoPlayConfirmed) return "Enable Auto-play in the main window first.";
         if (!Plugin.ClientState.IsLoggedIn || !Plugin.PlayerState.IsLoaded) return "Log in before starting collection.";
-        if (!dutyVerified || plugin.NetworkCapture.GameVersion != SupportedBuild) return "This client build's matchmaking has not been verified.";
+        if (!dutyVerified || !plugin.NetworkCapture.HasProfileForVersion) return !dutyVerified ? "This client build's matchmaking has not been verified."
+            : "No protocol profile for this client build yet. Play one match by hand with Mortal enabled so it can be learned.";
         controller.Restart();
         plugin.DebugPackets.AcknowledgeCollectionFailure();
         plugin.TrainingCorpus.Retry();
@@ -146,8 +146,8 @@ public sealed class ContinuousCollectionLoop : IDisposable
         bool loggedIn = Plugin.ClientState.IsLoggedIn && Plugin.PlayerState.IsLoaded;
         if (!loggedIn) return new();
         bool sameCharacter = cfg.CollectionCharacterId != 0 && cfg.CollectionCharacterId == Plugin.PlayerState.ContentId;
-        if (!sameCharacter || !dutyVerified || plugin.NetworkCapture.GameVersion != SupportedBuild)
-            return new() { LoggedIn = true, SameCharacter = sameCharacter, FatalReason = "Unverified client build / duty; collection stopped" };
+        if (!sameCharacter || !dutyVerified || !plugin.NetworkCapture.HasProfileForVersion)
+            return new() { LoggedIn = true, SameCharacter = sameCharacter, FatalReason = "Unverified duty or no protocol profile for this build; collection stopped" };
         var finder = ContentsFinder.Instance();
         if (finder == null) return new() { LoggedIn = true, SameCharacter = true, FatalReason = "Matchmaking unavailable" };
         var queue = &finder->QueueInfo;
@@ -193,7 +193,7 @@ public sealed class ContinuousCollectionLoop : IDisposable
                 present, plugin.AddonReader.ProtocolVariant, transitioning,
                 completed && !transitioning && currentDuty == DutyId && EventFramework.CanLeaveCurrentContent()),
             QueueBlockReason = block,
-            FatalReason = !dutyVerified || plugin.NetworkCapture.GameVersion != SupportedBuild ? "Unverified client build / duty; collection stopped" :
+            FatalReason = !dutyVerified || !plugin.NetworkCapture.HasProfileForVersion ? "Unverified duty or no protocol profile for this build; collection stopped" :
                 storageBlock is not null && storageCheck is null && storageBlock != "Checking capture storage" ? storageBlock :
                 !cfg.DebugAutoPacketLogging || !cfg.EnableGameLogging ? "Recording disabled; collection stopped" : plugin.DebugPackets.CollectionError ?? (cfg.RetainTrainingData ? plugin.TrainingCorpus.LastError : null),
         };
