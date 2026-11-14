@@ -34,6 +34,7 @@ public sealed class MainWindow : Window, IDisposable
     public override void Draw()
     {
         var cfg = plugin.Configuration;
+        WindowName = Loc.T("Doman Mahjong Solver", "多玛麻将助手") + "###domanmahjong-main";
 
         using var _s = Theme.PushWindowStyle();
 
@@ -57,27 +58,29 @@ public sealed class MainWindow : Window, IDisposable
         using (Theme.BeginCard("tos"))
         {
             ImGui.PushStyleColor(ImGuiCol.Text, Theme.Header);
-            ImGui.TextUnformatted("Welcome to Doman Mahjong Solver");
+            ImGui.TextUnformatted(Loc.T("Welcome to Doman Mahjong Solver", "欢迎使用多玛麻将助手"));
             ImGui.PopStyleColor();
             ImGui.Dummy(new Vector2(0, 6));
 
             ImGui.PushStyleColor(ImGuiCol.Text, Theme.Body);
-            ImGui.TextWrapped(
+            ImGui.TextWrapped(Loc.T(
                 "This plugin can play Doman Mahjong for you by reading the game and clicking " +
-                "on your behalf. Before turning that on, please read:");
+                "on your behalf. Before turning that on, please read:",
+                "本插件可以读取游戏画面并代你点击，替你打多玛麻将。开启之前请先阅读："));
             ImGui.PopStyleColor();
             ImGui.Dummy(new Vector2(0, 4));
 
             ImGui.PushStyleColor(ImGuiCol.Text, Theme.Warn);
-            ImGui.BulletText("Third-party automation is against the FFXIV Terms of Service.");
-            ImGui.BulletText("Use at your own risk — your account may be sanctioned.");
+            ImGui.BulletText(Loc.T("Third-party automation is against the FFXIV Terms of Service.", "第三方自动化违反 FF14 的服务条款。"));
+            ImGui.BulletText(Loc.T("Use at your own risk — your account may be sanctioned.", "使用风险自负，账号可能会受到处罚。"));
             ImGui.PopStyleColor();
             ImGui.PushStyleColor(ImGuiCol.Text, Theme.Muted);
-            ImGui.BulletText("\"Hints\" mode only shows advice — never clicks for you.");
-            ImGui.TextWrapped(
+            ImGui.BulletText(Loc.T("\"Hints\" mode only shows advice — never clicks for you.", "“提示”模式只显示建议，不会替你点击。"));
+            ImGui.TextWrapped(Loc.T(
                 "  • Gameplay logs, Mahjong packets, errors, and memory diagnostics " +
                 "stay on this computer. Completed matches are grouped into local " +
-                "archives for later review; this build does not upload them.");
+                "archives for later review; this build does not upload them.",
+                "  • 对局日志、麻将数据包、错误和内存诊断都只保存在本机。已完成的对局会整理成本地归档，方便以后回顾；本版本不会上传。"));
             ImGui.PopStyleColor();
 
             ImGui.Dummy(new Vector2(0, 10));
@@ -87,7 +90,7 @@ public sealed class MainWindow : Window, IDisposable
             ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(Theme.Accent.X * 0.85f, Theme.Accent.Y * 0.85f, Theme.Accent.Z * 0.85f, 1f));
             ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.05f, 0.10f, 0.08f, 1f));
             float btnW = ImGui.GetContentRegionAvail().X;
-            if (ImGui.Button("I understand — continue", new Vector2(btnW, 36)))
+            if (ImGui.Button(Loc.T("I understand — continue", "我已了解，继续") + "##tos-accept", new Vector2(btnW, 36)))
                 plugin.ConfigService.Update(c => c with { TosAccepted = true });
             ImGui.PopStyleColor(4);
         }
@@ -100,7 +103,7 @@ public sealed class MainWindow : Window, IDisposable
             // Header row: "Mode" label + right-aligned icon actions.
             ImGui.AlignTextToFramePadding();
             ImGui.PushStyleColor(ImGuiCol.Text, Theme.Header);
-            ImGui.TextUnformatted("Mode");
+            ImGui.TextUnformatted(Loc.T("Mode", "模式"));
             ImGui.PopStyleColor();
 
             DrawHeaderIcons(cfg);
@@ -117,13 +120,13 @@ public sealed class MainWindow : Window, IDisposable
             float w = (avail - gap * 2) / 3f;
             var size = new Vector2(w, 50);
 
-            if (ModePill("Off", "Do nothing", Theme.Muted, current == 0, size))
+            if (ModePill("off", Loc.T("Off", "关闭"), Loc.T("Do nothing", "不做任何事"), Theme.Muted, current == 0, size))
                 RequestMode(0, cfg);
             ImGui.SameLine(0, gap);
-            if (ModePill("Hints", "Highlight best move", Theme.Warn, current == 1, size))
+            if (ModePill("hints", Loc.T("Hints", "提示"), Loc.T("Highlight best move", "高亮最佳打法"), Theme.Warn, current == 1, size))
                 RequestMode(1, cfg);
             ImGui.SameLine(0, gap);
-            if (ModePill("Auto-play", "Click for you", Theme.Accent, current == 2, size))
+            if (ModePill("auto", Loc.T("Auto-play", "自动打牌"), Loc.T("Click for you", "替你点击"), Theme.Accent, current == 2, size))
                 RequestMode(2, cfg);
         }
     }
@@ -161,9 +164,9 @@ public sealed class MainWindow : Window, IDisposable
 
         switch (hovered)
         {
-            case 0: ImGui.SetTooltip("Developer console"); break;
-            case 1: ImGui.SetTooltip("About"); break;
-            case 2: ImGui.SetTooltip("Settings"); break;
+            case 0: ImGui.SetTooltip(Loc.T("Developer console", "开发者控制台")); break;
+            case 1: ImGui.SetTooltip(Loc.T("About", "关于")); break;
+            case 2: ImGui.SetTooltip(Loc.T("Settings", "设置")); break;
         }
 
         if (bugClicked) plugin.ToggleDebugOverlay();
@@ -171,13 +174,13 @@ public sealed class MainWindow : Window, IDisposable
         if (gearClicked) plugin.ToggleSettingsWindow();
     }
 
-    private static bool ModePill(string title, string sub, Vector4 tint, bool selected, Vector2 size)
+    private static bool ModePill(string id, string title, string sub, Vector4 tint, bool selected, Vector2 size)
     {
         var dl = ImGui.GetWindowDrawList();
         var min = ImGui.GetCursorScreenPos();
         var max = min + size;
 
-        bool clicked = ImGui.InvisibleButton($"##mode-{title}", size);
+        bool clicked = ImGui.InvisibleButton($"##mode-{id}", size);
         bool hovered = ImGui.IsItemHovered();
 
         Vector4 bg = selected ? Theme.Fade(tint, 0.30f)
@@ -222,7 +225,7 @@ public sealed class MainWindow : Window, IDisposable
 
     private void DrawAutoPlayConfirmModal(Configuration cfg)
     {
-        const string id = "Enable Auto-play?##autoplay-confirm";
+        string id = Loc.T("Enable Auto-play?", "启用自动打牌？") + "###autoplay-confirm";
         if (autoPlayConfirmPending)
         {
             ImGui.OpenPopup(id);
@@ -235,28 +238,29 @@ public sealed class MainWindow : Window, IDisposable
             return;
 
         ImGui.PushStyleColor(ImGuiCol.Text, Theme.Warn);
-        ImGui.TextWrapped("Auto-play will click for you with humanized timing.");
+        ImGui.TextWrapped(Loc.T("Auto-play will click for you with humanized timing.", "自动打牌会以拟人化的节奏替你点击。"));
         ImGui.PopStyleColor();
 
         ImGui.Dummy(new Vector2(0, 4));
         ImGui.PushStyleColor(ImGuiCol.Text, Theme.Body);
         ImGui.PushTextWrapPos(360);
-        ImGui.TextUnformatted(
+        ImGui.TextUnformatted(Loc.T(
             "Switch Mode to Off or Hints any time to stop. Third-party automation is " +
-            "against the FFXIV Terms of Service — use at your own risk.");
+            "against the FFXIV Terms of Service — use at your own risk.",
+            "随时把模式切到“关闭”或“提示”即可停止。第三方自动化违反 FF14 服务条款，使用风险自负。"));
         ImGui.PopTextWrapPos();
         ImGui.PopStyleColor();
 
         ImGui.Dummy(new Vector2(0, 10));
 
-        if (ImGui.Button("Enable Auto-play", new Vector2(160, 28)))
+        if (ImGui.Button(Loc.T("Enable Auto-play", "启用自动打牌") + "##autoplay-enable", new Vector2(160, 28)))
         {
             plugin.ConfigService.Update(c => c with { AutoPlayConfirmed = true });
             ApplyMode(2);
             ImGui.CloseCurrentPopup();
         }
         ImGui.SameLine();
-        if (ImGui.Button("Cancel", new Vector2(100, 28)))
+        if (ImGui.Button(Loc.T("Cancel", "取消") + "##autoplay-cancel", new Vector2(100, 28)))
             ImGui.CloseCurrentPopup();
 
         ImGui.EndPopup();
@@ -266,18 +270,18 @@ public sealed class MainWindow : Window, IDisposable
     {
         using (Theme.BeginCard("collection"))
         {
-            Theme.SectionHeader("Continuous collection · Player East-only");
+            Theme.SectionHeader(Loc.T("Continuous collection · Player East-only", "连续采集 · 玩家东风战"));
             bool enabled = cfg.ContinuousCollection;
             if (!cfg.AutoPlayConfirmed) ImGui.BeginDisabled();
-            if (ImGui.Checkbox("Auto-queue, commence and repeat until stopped", ref enabled))
+            if (ImGui.Checkbox(Loc.T("Auto-queue, commence and repeat until stopped", "自动排队、开局并循环，直到手动停止") + "##collection", ref enabled))
             {
-                if (enabled) Plugin.ChatGui.Print("[MjAuto] " + plugin.Collection.Start());
+                if (enabled) Plugin.ChatGui.Print("[MjAuto] " + Loc.Status(plugin.Collection.Start()));
                 else plugin.Collection.Stop();
             }
             if (!cfg.AutoPlayConfirmed) ImGui.EndDisabled();
-            ImGui.TextWrapped(plugin.Collection.Status);
-            Theme.Subtle($"Completed this load: {plugin.Collection.CompletedMatches}. No time limit; resumes after reload.");
-            Theme.Subtle("Stop withdraws the queue or finishes the current match. Off stops all play.");
+            ImGui.TextWrapped(Loc.Status(plugin.Collection.Status));
+            Theme.Subtle(Loc.T($"Completed this load: {plugin.Collection.CompletedMatches}. No time limit; resumes after reload.", $"本次加载已完成：{plugin.Collection.CompletedMatches} 场。没有时间限制，重载后会继续。"));
+            Theme.Subtle(Loc.T("Stop withdraws the queue or finishes the current match. Off stops all play.", "停止会撤销排队，或打完当前这一场。切到“关闭”会停止一切操作。"));
         }
     }
 
@@ -285,7 +289,7 @@ public sealed class MainWindow : Window, IDisposable
     {
         using (Theme.BeginCard("live"))
         {
-            Theme.SectionHeader("Live game");
+            Theme.SectionHeader(Loc.T("Live game", "当前对局"));
 
             var snap = plugin.Aggregator.Latest;
             if (snap is null)
@@ -318,34 +322,34 @@ public sealed class MainWindow : Window, IDisposable
     {
         var cfg = plugin.Configuration;
         ImGui.PushStyleColor(ImGuiCol.Text, Theme.Body);
-        ImGui.TextWrapped("Waiting for a Doman Mahjong table.");
+        ImGui.TextWrapped(Loc.T("Waiting for a Doman Mahjong table.", "等待进入多玛麻将桌。"));
         ImGui.PopStyleColor();
         ImGui.Dummy(new Vector2(0, 4));
 
         ImGui.PushStyleColor(ImGuiCol.Text, Theme.Muted);
-        ImGui.TextWrapped("When a match starts, the plugin will:");
+        ImGui.TextWrapped(Loc.T("When a match starts, the plugin will:", "对局开始后，插件会："));
         ImGui.PopStyleColor();
         ImGui.Dummy(new Vector2(0, 2));
 
         ImGui.PushStyleColor(ImGuiCol.Text, Theme.Warn);
-        ImGui.BulletText("Hints — outline the best discard in the mahjong window.");
+        ImGui.BulletText(Loc.T("Hints — outline the best discard in the mahjong window.", "提示：在麻将窗口中框出最佳打牌。"));
         ImGui.PopStyleColor();
         ImGui.PushStyleColor(ImGuiCol.Text, Theme.Accent);
-        ImGui.BulletText("Auto-play — click the best discard for you with humanized timing.");
+        ImGui.BulletText(Loc.T("Auto-play — click the best discard for you with humanized timing.", "自动打牌：以拟人化的节奏替你打出最佳的牌。"));
         ImGui.PopStyleColor();
 
         ImGui.Dummy(new Vector2(0, 4));
         string modeHint = !cfg.AutomationArmed
-            ? "Mode is currently Off. Pick Hints or Auto-play above to arm the plugin."
+            ? Loc.T("Mode is currently Off. Pick Hints or Auto-play above to arm the plugin.", "当前模式为“关闭”。在上方选择“提示”或“自动打牌”来启用插件。")
             : cfg.SuggestionOnly
-                ? "Hints mode is active — open a match and watch for the outline."
-                : "Auto-play is active — open a match and the plugin will take over.";
+                ? Loc.T("Hints mode is active — open a match and watch for the outline.", "提示模式已启用，开局后留意牌上的高亮框。")
+                : Loc.T("Auto-play is active — open a match and the plugin will take over.", "自动打牌已启用，开局后插件会接管。");
         Theme.Subtle(modeHint);
     }
 
     private void DrawSeatRow(StateSnapshot snap)
     {
-        string[] labels = { "You", "Right", "Across", "Left" };
+        string[] labels = { Loc.T("You", "自家"), Loc.T("Right", "下家"), Loc.T("Across", "对家"), Loc.T("Left", "上家") };
         float avail = ImGui.GetContentRegionAvail().X;
         float gap = 6f;
         float pillW = (avail - gap * 3) / 4f;
@@ -383,7 +387,7 @@ public sealed class MainWindow : Window, IDisposable
 
     private static void DrawHandRow(StateSnapshot snap, int highlightSlot)
     {
-        Theme.Caption($"Hand · {snap.Hand.Count} tiles");
+        Theme.Caption(Loc.T($"Hand · {snap.Hand.Count} tiles", $"手牌 · {snap.Hand.Count} 张"));
         ImGui.Dummy(new Vector2(0, 3));
         Theme.DrawHand(snap.Hand, highlightSlot);
     }
@@ -397,19 +401,19 @@ public sealed class MainWindow : Window, IDisposable
     {
         var cfg = plugin.Configuration;
 
-        Theme.Caption("Best move");
+        Theme.Caption(Loc.T("Best move", "最佳打法"));
         ImGui.Dummy(new Vector2(0, 3));
 
         if (!snap.Legal.Can(ActionFlags.Discard))
         {
-            Theme.Subtle($"Waiting for your turn ({snap.Hand.Count} tiles in hand).");
+            Theme.Subtle(Loc.T($"Waiting for your turn ({snap.Hand.Count} tiles in hand).", $"等待轮到你（手牌 {snap.Hand.Count} 张）。"));
             return;
         }
 
         if (scorerError != null)
         {
             ImGui.PushStyleColor(ImGuiCol.Text, Theme.Danger);
-            ImGui.TextWrapped($"scorer error: {scorerError}");
+            ImGui.TextWrapped($"{Loc.T("scorer error", "评分出错")}: {scorerError}");
             ImGui.PopStyleColor();
             return;
         }
@@ -417,7 +421,7 @@ public sealed class MainWindow : Window, IDisposable
         if (choice is null)
         {
             if (usesMortal)
-                Theme.Subtle("Waiting for Mortal's decision.");
+                Theme.Subtle(Loc.T("Waiting for Mortal's decision.", "等待 Mortal 的决策。"));
             return;
         }
 
@@ -450,7 +454,7 @@ public sealed class MainWindow : Window, IDisposable
             ImGui.SetCursorPosY(startY + bigH + 4);
 
         string why = !string.IsNullOrWhiteSpace(choice.Reasoning) ? choice.Reasoning
-            : usesMortal ? "Selected by Mortal." : ExplainChoice(choice, scored ?? []);
+            : usesMortal ? Loc.T("Selected by Mortal.", "由 Mortal 选择。") : ExplainChoice(choice, scored ?? []);
         if (!string.IsNullOrEmpty(why))
         {
             ImGui.PushStyleColor(ImGuiCol.Text, Theme.Body);
@@ -460,16 +464,17 @@ public sealed class MainWindow : Window, IDisposable
 
         if (cfg.ShowInGameHighlight && cfg.SuggestionOnly)
         {
-            Theme.Subtle("The tile is outlined in the mahjong window.");
+            Theme.Subtle(Loc.T("The tile is outlined in the mahjong window.", "这张牌已在麻将窗口中框出。"));
         }
 
-        if (cfg.ShowSuggestionDetails && usesMortal) Theme.Subtle("Mortal did not provide candidate scores.");
+        if (cfg.ShowSuggestionDetails && usesMortal) Theme.Subtle(Loc.T("Mortal did not provide candidate scores.", "Mortal 没有提供候选打牌的评分。"));
         if (cfg.ShowSuggestionDetails && scored is not null)
         {
             ImGui.Dummy(new Vector2(0, 6));
-            Theme.Subtle(
+            Theme.Subtle(Loc.T(
                 "shanten = turns away from ready.  ukeire = tiles that complete your wait — " +
-                "counted as distinct kinds and total copies remaining in the live wall.");
+                "counted as distinct kinds and total copies remaining in the live wall.",
+                "向听 = 离听牌还差几步。进张 = 能推进手牌的牌，分别按种类数和牌山中剩余的总张数计算。"));
             ImGui.Dummy(new Vector2(0, 4));
             int show = Math.Min(3, scored.Length);
             for (int i = 0; i < show; i++)
@@ -480,7 +485,7 @@ public sealed class MainWindow : Window, IDisposable
         {
             ImGui.Dummy(new Vector2(0, 6));
             ImGui.PushStyleColor(ImGuiCol.Text, Theme.Muted);
-            ImGui.TextWrapped($"Last action: {plugin.AutoPlay.LastActionDescription}");
+            ImGui.TextWrapped($"{Loc.T("Last action", "上一步操作")}: {plugin.AutoPlay.LastActionDescription}");
             ImGui.PopStyleColor();
         }
     }
@@ -505,7 +510,7 @@ public sealed class MainWindow : Window, IDisposable
         ImGui.SameLine(0, 10);
         ImGui.SetCursorPosY(textY);
         ImGui.PushStyleColor(ImGuiCol.Text, Theme.Body);
-        ImGui.TextUnformatted($"shanten {s.ShantenAfter}    ukeire {s.UkeireKinds} kinds · {s.UkeireWeighted} tiles");
+        ImGui.TextUnformatted(Loc.T($"shanten {s.ShantenAfter}    ukeire {s.UkeireKinds} kinds · {s.UkeireWeighted} tiles", $"向听 {s.ShantenAfter}    进张 {s.UkeireKinds} 种 · {s.UkeireWeighted} 张"));
         ImGui.PopStyleColor();
 
         ImGui.SetCursorPosY(rowStart + tileH + 3);
@@ -513,15 +518,15 @@ public sealed class MainWindow : Window, IDisposable
 
     private static string FriendlyActionVerb(ActionKind kind) => kind switch
     {
-        ActionKind.Discard => "Discard",
-        ActionKind.Riichi => "Riichi on",
-        ActionKind.Tsumo => "Win (tsumo)",
-        ActionKind.Ron => "Win (ron)",
-        ActionKind.Pon => "Pon",
-        ActionKind.Chi => "Chi",
-        ActionKind.AnKan => "Kan",
-        ActionKind.MinKan => "Kan",
-        ActionKind.ShouMinKan => "Kan",
+        ActionKind.Discard => Loc.T("Discard", "打出"),
+        ActionKind.Riichi => Loc.T("Riichi on", "立直并打出"),
+        ActionKind.Tsumo => Loc.T("Win (tsumo)", "和牌（自摸）"),
+        ActionKind.Ron => Loc.T("Win (ron)", "和牌（荣和）"),
+        ActionKind.Pon => Loc.T("Pon", "碰"),
+        ActionKind.Chi => Loc.T("Chi", "吃"),
+        ActionKind.AnKan => Loc.T("Kan", "杠"),
+        ActionKind.MinKan => Loc.T("Kan", "杠"),
+        ActionKind.ShouMinKan => Loc.T("Kan", "杠"),
         _ => kind.ToString(),
     };
 
@@ -533,15 +538,15 @@ public sealed class MainWindow : Window, IDisposable
         {
             case ActionKind.Tsumo:
             case ActionKind.Ron:
-                return "Winning hand — close it out.";
+                return Loc.T("Winning hand — close it out.", "已经和牌，直接收下。");
             case ActionKind.Riichi:
-                return "One tile from winning — declare riichi.";
+                return Loc.T("One tile from winning — declare riichi.", "已听牌，宣告立直。");
             case ActionKind.Pon:
             case ActionKind.Chi:
             case ActionKind.AnKan:
             case ActionKind.MinKan:
             case ActionKind.ShouMinKan:
-                return "Calling completes a set faster than drawing for it.";
+                return Loc.T("Calling completes a set faster than drawing for it.", "鸣牌比自己摸更快凑成一组。");
         }
 
         if (scored.Length == 0) return "";
@@ -550,11 +555,11 @@ public sealed class MainWindow : Window, IDisposable
         string tileNoun = top.UkeireWeighted == 1 ? "tile" : "tiles";
 
         if (top.ShantenAfter < 0)
-            return "Discarding this still leaves a winning hand.";
+            return Loc.T("Discarding this still leaves a winning hand.", "打出这张后仍然是和牌型。");
         if (top.ShantenAfter == 0)
-            return $"Keeps you ready — {top.UkeireKinds} {kindNoun} ({top.UkeireWeighted} {tileNoun} live) complete the hand.";
+            return Loc.T($"Keeps you ready — {top.UkeireKinds} {kindNoun} ({top.UkeireWeighted} {tileNoun} live) complete the hand.", $"保持听牌：共 {top.UkeireKinds} 种牌（剩余 {top.UkeireWeighted} 张）可以和牌。");
         if (top.ShantenAfter == 1)
-            return $"One step from ready, with {top.UkeireKinds} useful {kindNoun} to draw.";
-        return $"{top.ShantenAfter} steps from ready — keeps the most useful draws available.";
+            return Loc.T($"One step from ready, with {top.UkeireKinds} useful {kindNoun} to draw.", $"一向听，有 {top.UkeireKinds} 种有效进张。");
+        return Loc.T($"{top.ShantenAfter} steps from ready — keeps the most useful draws available.", $"{top.ShantenAfter} 向听，保留最多的有效进张。");
     }
 }

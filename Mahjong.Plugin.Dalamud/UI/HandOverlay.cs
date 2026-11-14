@@ -305,7 +305,7 @@ public sealed class HandOverlay : IDisposable
         dl.AddRect(min, max, Pack(color, pulse * 0.9f), 6f, ImDrawFlags.None, 2f);
 
         // Big bouncing arrow with a label pill above the tile.
-        string label = isDrawnTile ? "TSUMOGIRI" : "DISCARD";
+        string label = isDrawnTile ? Loc.T("TSUMOGIRI", "摸切") : Loc.T("DISCARD", "手切");
         var textSize = ImGui.CalcTextSize(label);
 
         float cx = (min.X + max.X) * 0.5f;

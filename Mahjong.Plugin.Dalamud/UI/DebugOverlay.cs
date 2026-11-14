@@ -51,6 +51,7 @@ public sealed class DebugOverlay : Window, IDisposable
 
     public override void Draw()
     {
+        WindowName = Loc.T("Doman Mahjong · Developer", "多玛麻将 · 开发者") + "###domanmahjong-debug";
         using var _s = Theme.PushWindowStyle();
 
         DrawHeaderCard();
@@ -58,12 +59,12 @@ public sealed class DebugOverlay : Window, IDisposable
 
         if (ImGui.BeginTabBar("##debug-tabs"))
         {
-            DrawTab("Status", statusTab.Draw);
-            DrawTab("Addon", addonTab.Draw);
-            DrawTab("Actions", actionsTab.Draw);
-            DrawTab("Bug report", bugReportTab.Draw);
-            DrawTab("Reverse Engineering", reProbesTab.Draw);
-            DrawTab("Diagnostics", diagnosticsTab.Draw);
+            DrawTab(Loc.T("Status", "状态") + "###tab-status", statusTab.Draw);
+            DrawTab(Loc.T("Addon", "界面插件") + "###tab-addon", addonTab.Draw);
+            DrawTab(Loc.T("Actions", "操作") + "###tab-actions", actionsTab.Draw);
+            DrawTab(Loc.T("Bug report", "问题报告") + "###tab-bug", bugReportTab.Draw);
+            DrawTab(Loc.T("Reverse Engineering", "逆向分析") + "###tab-re", reProbesTab.Draw);
+            DrawTab(Loc.T("Diagnostics", "诊断") + "###tab-diag", diagnosticsTab.Draw);
             ImGui.EndTabBar();
         }
 
@@ -92,9 +93,9 @@ public sealed class DebugOverlay : Window, IDisposable
         using (Theme.BeginCard("debug-header"))
         {
             ImGui.PushStyleColor(ImGuiCol.Text, Theme.Warn);
-            ImGui.TextWrapped("Automation is disabled until the ToS notice is acknowledged in the main window.");
+            ImGui.TextWrapped(Loc.T("Automation is disabled until the ToS notice is acknowledged in the main window.", "在主窗口确认服务条款提示之前，自动化功能保持禁用。"));
             ImGui.PopStyleColor();
-            if (ImGui.Button("Acknowledge and enable"))
+            if (ImGui.Button(Loc.T("Acknowledge and enable", "确认并启用") + "##ack"))
                 plugin.ConfigService.Update(c => c with { TosAccepted = true });
         }
     }
