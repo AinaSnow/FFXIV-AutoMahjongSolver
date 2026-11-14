@@ -1,0 +1,17 @@
+{
+  "gameVersion": "2026.11.03.0000.0000",
+  "variant": "Emj",
+  "verified": false,
+  "evidence": "Opcode remap of the 2026.09.15 Emj profile for the 7.58 international build. Recovered by ProtocolDiscovery from a sealed 2026-11-14 capture (1170 packets, dropped 0, rejected 0, Deucalion 1.5.1): unique best of all same-length candidate combinations, 4 clean hands, 203 draws / 211 discards / 10 calls, no decoder failure; payload lengths and formats unchanged. Cross-checked against UI self-hand checkpoints in docs/reviews/20261114-758-protocol-remap.md. Inherits every unverified area of the 2026.09.15 profile.",
+  "packets": {
+    "0x020F": { "messageId": 636, "payloadLength": 48 },
+    "0x0370": { "messageId": 637, "payloadLength": 104 },
+    "0x0211": { "messageId": 638, "payloadLength": 24 },
+    "0x0382": { "messageId": 641, "payloadLength": 32 },
+    "0x01E1": { "messageId": 639, "payloadLength": 256 },
+    "0x0114": { "messageId": 640, "payloadLength": 504 },
+    "0x03E1": { "messageId": 643, "payloadLength": 264 }
+  },
+  "limitedTrialScope": "doman-east-self-kakan-v7",
+  "limitedTrialEvidence": "Same decoder and East-only v7 guard as the 2026.09.15 limited trial (see that profile's evidence); only the seven opcodes changed. docs/reviews/20261114-758-protocol-remap.md."
+}

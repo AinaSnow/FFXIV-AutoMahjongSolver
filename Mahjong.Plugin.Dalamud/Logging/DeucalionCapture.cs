@@ -7,7 +7,7 @@ namespace Mahjong.Plugin.Dalamud.Logging;
 /// <summary>One cancellable background subscriber. Native Deucalion owns its own unload lifecycle.</summary>
 internal sealed class DeucalionCapture : IDisposable
 {
-    internal const string LibrarySha256 = "326BE4DB261064EBB51B8C46D2940F55701D79887E2C65070AFF00DE4C8C65EF";
+    internal const string LibrarySha256 = "4AC5D10790BAA319027108CB1AECFA74C4F8D0423464A31642B186FE507CA9B8";
     private readonly Func<CancellationToken, Task<Stream>> connect;
     private readonly object gate = new();
     private CancellationTokenSource? cancellation;
