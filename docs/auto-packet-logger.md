@@ -37,6 +37,6 @@ node tools/audit-debug-packets.mjs "C:\path\to\capture.ndjson" 2026.09.15.0000.0
 
 ## 构建依赖
 
-先运行 `./tools/install-deucalion.ps1`，再执行正常构建。下载固定的官方 1.5.0 DLL 和对应 tag 源码 ZIP，校验值在脚本及 NOTICE 中；构建时只核验本地文件，不联网下载或加载库。CI 与发布使用同一步骤。最终包同时附带原 DLL、完整源码归档、GPL-3.0 许可证和来源说明，见 [NOTICE](deucalion-NOTICE.md)。
+先运行 `./tools/install-deucalion.ps1`，再执行正常构建。下载固定的官方 1.5.1 DLL 和对应 tag 源码 ZIP，校验值在脚本及 NOTICE 中；构建时只核验本地文件，不联网下载或加载库。CI 与发布使用同一步骤。最终包同时附带原 DLL、完整源码归档、GPL-3.0 许可证和来源说明，见 [NOTICE](deucalion-NOTICE.md)。
 
-协议依据：[官方 1.5.0 README](https://github.com/ff14wed/deucalion/blob/1.5.0/README.md)。旧 Hook、FireCallback 和短样本排查记录保留在 [9 月 23 日审查](reviews/20260923-international-match.md)及 [9 月 24 日审查](reviews/20260924-international-match.md)。FireCallback 仍是独立的操作观察 Hook，其初始化失败与管道录包不是同一个故障。
+协议依据：[官方 1.5.1 README](https://github.com/ff14wed/deucalion/blob/1.5.1/README.md)。旧 Hook、FireCallback 和短样本排查记录保留在 [9 月 23 日审查](reviews/20260923-international-match.md)及 [9 月 24 日审查](reviews/20260924-international-match.md)。FireCallback 仍是独立的操作观察 Hook，其初始化失败与管道录包不是同一个故障。
