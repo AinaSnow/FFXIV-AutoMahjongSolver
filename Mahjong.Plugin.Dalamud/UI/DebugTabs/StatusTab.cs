@@ -21,11 +21,11 @@ internal sealed class StatusTab
 
         using (Theme.BeginCard("status-loop"))
         {
-            Theme.SectionHeader("Auto-play loop");
-            Theme.Subtle("What the auto-play loop saw last tick. Updates live during a match.");
-            DevHelpers.KeyValueRow("State", plugin.AutoPlay.LastObservedState.ToString());
-            DevHelpers.KeyValueRow("Hand", plugin.AutoPlay.LastObservedHandCount.ToString());
-            DevHelpers.KeyValueRow("Last", plugin.AutoPlay.LastActionDescription);
+            Theme.SectionHeader(Loc.T("Auto-play loop", "自动打牌循环"));
+            Theme.Subtle(Loc.T("What the auto-play loop saw last tick. Updates live during a match.", "自动打牌循环上一帧看到的内容，对局中实时更新。"));
+            DevHelpers.KeyValueRow(Loc.T("State", "状态"), plugin.AutoPlay.LastObservedState.ToString());
+            DevHelpers.KeyValueRow(Loc.T("Hand", "手牌"), plugin.AutoPlay.LastObservedHandCount.ToString());
+            DevHelpers.KeyValueRow(Loc.T("Last", "上一步"), plugin.AutoPlay.LastActionDescription);
             ImGui.Dummy(new Vector2(0, 4));
             DrawAtkValuesRow();
         }
@@ -33,8 +33,8 @@ internal sealed class StatusTab
         ImGui.Dummy(new Vector2(0, 4));
         using (Theme.BeginCard("status-hooks"))
         {
-            Theme.SectionHeader("Hooks & local data");
-            Theme.Subtle("Health of the discard-capture hook and local diagnostic counters.");
+            Theme.SectionHeader(Loc.T("Hooks & local data", "挂钩与本地数据"));
+            Theme.Subtle(Loc.T("Health of the discard-capture hook and local diagnostic counters.", "打牌捕获挂钩的健康状况和本地诊断计数。"));
             var capture = plugin.DiscardCapture;
             DevHelpers.KeyValueRow(
                 "DiscardCapture",
@@ -53,7 +53,7 @@ internal sealed class StatusTab
             DevHelpers.KeyValueRow("FireCallback", plugin.EventLogger.CallbackCaptureStatus);
 
             int findingsToday = CountFindingsToday();
-            DevHelpers.KeyValueRow("Findings (today)", findingsToday.ToString());
+            DevHelpers.KeyValueRow(Loc.T("Findings (today)", "今日发现记录"), findingsToday.ToString());
         }
 
         ImGui.Dummy(new Vector2(0, 4));
@@ -67,13 +67,13 @@ internal sealed class StatusTab
     {
         using (Theme.BeginCard("status-callprompt"))
         {
-            Theme.SectionHeader("Call-prompt analysis");
-            Theme.Subtle("Lights up during a chi/pon/kan offer. opt= is the button index the plugin would click.");
+            Theme.SectionHeader(Loc.T("Call-prompt analysis", "鸣牌提示分析"));
+            Theme.Subtle(Loc.T("Lights up during a chi/pon/kan offer. opt= is the button index the plugin would click.", "出现吃/碰/杠提示时显示。opt= 是插件会点击的按钮序号。"));
 
             var snap = ctx.Plugin.Aggregator.Latest;
             if (snap is null)
             {
-                Theme.Subtle("No snapshot.");
+                Theme.Subtle(Loc.T("No snapshot.", "没有局面快照。"));
                 return;
             }
 
@@ -85,20 +85,20 @@ internal sealed class StatusTab
             bool isCallPrompt = (legal.Flags & acceptMask) != 0;
 
             DevHelpers.KeyValueRow("Flags", legal.Flags.ToString());
-            DevHelpers.KeyValueRow("Pon / Chi / Kan candidates",
+            DevHelpers.KeyValueRow(Loc.T("Pon / Chi / Kan candidates", "碰 / 吃 / 杠 候选"),
                 $"{legal.PonCandidates.Count} / {legal.ChiCandidates.Count} / {legal.KanCandidates.Count}");
-            DevHelpers.KeyValueRow("AkaDora total", snap.AkaDora.ToString());
+            DevHelpers.KeyValueRow(Loc.T("AkaDora total", "赤宝牌总数"), snap.AkaDora.ToString());
 
             if (!isCallPrompt)
             {
                 ImGui.Dummy(new Vector2(0, 4));
-                Theme.Subtle("No accept-side action on offer — not a call prompt.");
+                Theme.Subtle(Loc.T("No accept-side action on offer — not a call prompt.", "当前没有可接受的操作，不是鸣牌提示。"));
                 return;
             }
 
             ImGui.Dummy(new Vector2(0, 4));
             ImGui.PushStyleColor(ImGuiCol.Text, Theme.Header);
-            ImGui.TextUnformatted("Dispatch indices");
+            ImGui.TextUnformatted(Loc.T("Dispatch indices", "执行序号"));
             ImGui.PopStyleColor();
             ImGui.Dummy(new Vector2(0, 2));
 
@@ -175,17 +175,17 @@ internal sealed class StatusTab
     {
         using (Theme.BeginCard("status-pick"))
         {
-            Theme.SectionHeader("Suggestions (discard-only)");
-            Theme.Subtle("Top 5 discard candidates ranked by shanten / ukeire / dora. Highlighted tile is the policy pick.");
+            Theme.SectionHeader(Loc.T("Suggestions (discard-only)", "打牌建议（仅打牌）"));
+            Theme.Subtle(Loc.T("Top 5 discard candidates ranked by shanten / ukeire / dora. Highlighted tile is the policy pick.", "按向听 / 进张 / 宝牌排序的前 5 个打牌候选。高亮的牌是策略的选择。"));
 
             var snap = ctx.Plugin.Aggregator.Latest;
             if (snap is null)
             {
-                Theme.Subtle("No snapshot — not in a match, or the addon struct is not readable.");
+                Theme.Subtle(Loc.T("No snapshot — not in a match, or the addon struct is not readable.", "没有局面快照：不在对局中，或界面结构无法读取。"));
                 return;
             }
 
-            Theme.Caption($"Hand · {snap.Hand.Count} tiles");
+            Theme.Caption(Loc.T($"Hand · {snap.Hand.Count} tiles", $"手牌 · {snap.Hand.Count} 张"));
             ImGui.Dummy(new Vector2(0, 2));
             Theme.DrawHand(snap.Hand);
 
@@ -199,7 +199,7 @@ internal sealed class StatusTab
             if (!snap.Legal.Can(ActionFlags.Discard))
             {
                 ImGui.Dummy(new Vector2(0, 4));
-                Theme.Subtle($"Waiting for our turn ({snap.Hand.Count} tiles).");
+                Theme.Subtle(Loc.T($"Waiting for our turn ({snap.Hand.Count} tiles).", $"等待轮到自家（{snap.Hand.Count} 张）。"));
                 return;
             }
 
@@ -210,7 +210,7 @@ internal sealed class StatusTab
                 if (!string.IsNullOrEmpty(scorerError))
                 {
                     ImGui.PushStyleColor(ImGuiCol.Text, Theme.Danger);
-                    ImGui.TextWrapped($"scorer error: {scorerError}");
+                    ImGui.TextWrapped(Loc.T($"scorer error: {scorerError}", $"评分出错：{scorerError}"));
                     ImGui.PopStyleColor();
                 }
                 return;
@@ -218,7 +218,7 @@ internal sealed class StatusTab
 
             ImGui.Dummy(new Vector2(0, 6));
             ImGui.PushStyleColor(ImGuiCol.Text, Theme.Header);
-            ImGui.TextUnformatted("Top picks");
+            ImGui.TextUnformatted(Loc.T("Top picks", "前几名候选"));
             ImGui.PopStyleColor();
             ImGui.Dummy(new Vector2(0, 4));
 

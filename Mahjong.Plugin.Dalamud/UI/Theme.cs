@@ -205,18 +205,18 @@ internal static class Theme
         string code = tile.ShortName;
         string name = tile.Suit switch
         {
-            TileSuit.Man => $"{tile.Number} Character",
-            TileSuit.Pin => $"{tile.Number} Dot",
-            TileSuit.Sou => $"{tile.Number} Bamboo",
+            TileSuit.Man => Loc.T($"{tile.Number} Character", $"{tile.Number}万"),
+            TileSuit.Pin => Loc.T($"{tile.Number} Dot", $"{tile.Number}筒"),
+            TileSuit.Sou => Loc.T($"{tile.Number} Bamboo", $"{tile.Number}索"),
             TileSuit.Honor => tile.HonorNumber switch
             {
-                1 => "East Wind",
-                2 => "South Wind",
-                3 => "West Wind",
-                4 => "North Wind",
-                5 => "White Dragon",
-                6 => "Green Dragon",
-                7 => "Red Dragon",
+                1 => Loc.T("East Wind", "东风"),
+                2 => Loc.T("South Wind", "南风"),
+                3 => Loc.T("West Wind", "西风"),
+                4 => Loc.T("North Wind", "北风"),
+                5 => Loc.T("White Dragon", "白"),
+                6 => Loc.T("Green Dragon", "发"),
+                7 => Loc.T("Red Dragon", "中"),
                 _ => code,
             },
             _ => code,

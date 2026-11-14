@@ -20,13 +20,13 @@ public sealed class AboutWindow : Window, IDisposable
 
     private static readonly Vector4 GreetingColor = new(0.96f, 0.84f, 0.62f, 1.00f);
     private static readonly Vector4 GreetingShimmer = new(1.00f, 0.94f, 0.78f, 1.00f);
-    private static readonly string[] GreetingParagraphs =
-    {
-        "Hello there! I'm a solo developer building FFXIV automation plugins in my free time.",
-        "If this one made your day a little easier, the best way to support the project is to share it with other players.",
-        "I'd love to hear from you too: bug reports, feature requests, and general feedback are all welcome on GitHub Discussions.",
-        "Thanks for trying it out, and have fun out there!",
-    };
+    private static string[] GreetingParagraphs =>
+    [
+        Loc.T("Hello there! I'm a solo developer building FFXIV automation plugins in my free time.", "你好！我是一名独立开发者，利用业余时间制作 FF14 自动化插件。"),
+        Loc.T("If this one made your day a little easier, the best way to support the project is to share it with other players.", "如果这个插件让你轻松了一些，支持它最好的方式就是推荐给其他玩家。"),
+        Loc.T("I'd love to hear from you too: bug reports, feature requests, and general feedback are all welcome on GitHub Discussions.", "也很欢迎你的反馈：问题报告、功能建议和各种意见，都可以发到 GitHub Discussions。"),
+        Loc.T("Thanks for trying it out, and have fun out there!", "感谢试用，玩得开心！"),
+    ];
 
     private readonly IPluginLog log;
     private readonly IDalamudPluginInterface pluginInterface;
@@ -57,6 +57,7 @@ public sealed class AboutWindow : Window, IDisposable
 
     public override void Draw()
     {
+        WindowName = Loc.T("Doman Mahjong Solver: About", "多玛麻将助手：关于") + "###domanmahjong-about";
         using var _s = Theme.PushWindowStyle();
 
         DrawIcon();
@@ -121,11 +122,11 @@ public sealed class AboutWindow : Window, IDisposable
         ImGui.TableSetupColumn("##label", ImGuiTableColumnFlags.WidthFixed, 150f);
         ImGui.TableSetupColumn("##value", ImGuiTableColumnFlags.WidthStretch);
 
-        DrawTextRow("Author", Author);
+        DrawTextRow(Loc.T("Author", "作者"), Author);
         DrawLinkRow("GitHub", RepoUrl);
-        DrawLinkRow("Report a bug", IssuesUrl);
-        DrawLinkRow("Discussions", DiscussionsUrl);
-        DrawLinkRow("Security disclosure", SecurityUrl);
+        DrawLinkRow(Loc.T("Report a bug", "报告问题"), IssuesUrl);
+        DrawLinkRow(Loc.T("Discussions", "讨论区"), DiscussionsUrl);
+        DrawLinkRow(Loc.T("Security disclosure", "安全漏洞报告"), SecurityUrl);
 
         ImGui.EndTable();
     }
@@ -215,7 +216,7 @@ public sealed class AboutWindow : Window, IDisposable
             return;
 
         ImGui.BeginTooltip();
-        ImGui.TextUnformatted("Click to open · right-click to copy");
+        ImGui.TextUnformatted(Loc.T("Click to open · right-click to copy", "左键打开 · 右键复制"));
         ImGui.EndTooltip();
 
         if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))

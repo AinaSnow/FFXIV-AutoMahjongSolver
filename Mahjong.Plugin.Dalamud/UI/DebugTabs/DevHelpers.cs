@@ -105,7 +105,7 @@ internal static class DevHelpers
         var color = justCopied ? Theme.Accent : Theme.Muted;
         bool clicked = IconActionButton(icon, key, color, out bool hovered);
         if (hovered)
-            ImGui.SetTooltip(tooltip ?? $"Copy to clipboard:\n{textToCopy}");
+            ImGui.SetTooltip(tooltip ?? Loc.T($"Copy to clipboard:\n{textToCopy}", $"复制到剪贴板：\n{textToCopy}"));
         if (clicked)
         {
             ImGui.SetClipboardText(textToCopy);
@@ -118,7 +118,7 @@ internal static class DevHelpers
     {
         bool clicked = IconActionButton(FontAwesomeIcon.FolderOpen, $"open-{id}", Theme.Muted, out bool hovered);
         if (hovered)
-            ImGui.SetTooltip(tooltip ?? $"Open folder:\n{folderPath}");
+            ImGui.SetTooltip(tooltip ?? Loc.T($"Open folder:\n{folderPath}", $"打开文件夹：\n{folderPath}"));
         if (clicked)
             OpenFolder(folderPath);
     }
@@ -127,7 +127,7 @@ internal static class DevHelpers
     public static void CopyPathButton(string fileName, string buttonId)
     {
         string path = Path.Combine(Plugin.PluginInterface.GetPluginConfigDirectory(), fileName);
-        CopyButton(path, buttonId, $"Copy path to clipboard:\n{path}");
+        CopyButton(path, buttonId, Loc.T($"Copy path to clipboard:\n{path}", $"复制路径到剪贴板：\n{path}"));
     }
 
     /// <summary>Parse "0x123" or "123" hex into int.</summary>

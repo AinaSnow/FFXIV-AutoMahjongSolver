@@ -8,6 +8,7 @@ using FFXIVClientStructs.FFXIV.Component.GUI;
 using Mahjong.Engine;
 using Mahjong.Plugin.Dalamud.GameState;
 using Mahjong.Plugin.Dalamud.GameState.Variants;
+using Mahjong.Plugin.Dalamud.UI;
 using ValueType = FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType;
 
 namespace Mahjong.Plugin.Dalamud.Commands;
@@ -98,20 +99,20 @@ public sealed class MjAutoCommand : IDisposable
 
             case "on":
                 plugin.ConfigService.Update(c => c with { AutomationArmed = true });
-                chatGui.Print("[MjAuto] Automation armed.");
+                chatGui.Print("[MjAuto] " + Loc.T("Automation armed.", "自动化已启用。"));
                 break;
 
             case "off":
                 plugin.ConfigService.Update(c => c with { AutomationArmed = false, ContinuousCollection = false });
-                chatGui.Print("[MjAuto] Automation disarmed.");
+                chatGui.Print("[MjAuto] " + Loc.T("Automation disarmed.", "自动化已停用。"));
                 break;
 
             case "collect":
                 switch (rest.Trim().ToLowerInvariant())
                 {
-                    case "on": case "start": chatGui.Print("[MjAuto] " + plugin.Collection.Start()); break;
-                    case "off": case "stop": plugin.Collection.Stop(); chatGui.Print("[MjAuto] Collection stopped; current match will finish."); break;
-                    default: chatGui.Print("[MjAuto] " + plugin.Collection.Status + " | /mjauto collect on|off"); break;
+                    case "on": case "start": chatGui.Print("[MjAuto] " + Loc.Status(plugin.Collection.Start())); break;
+                    case "off": case "stop": plugin.Collection.Stop(); chatGui.Print("[MjAuto] " + Loc.T("Collection stopped; current match will finish.", "采集已停止，当前这一场会打完。")); break;
+                    default: chatGui.Print("[MjAuto] " + Loc.Status(plugin.Collection.Status) + " | /mjauto collect on|off"); break;
                 }
                 break;
 
@@ -201,50 +202,50 @@ public sealed class MjAutoCommand : IDisposable
                 break;
 
             default:
-                chatGui.PrintError($"[MjAuto] Unknown subcommand: '{sub}'. Type /mjauto help for the command list.");
+                chatGui.PrintError("[MjAuto] " + Loc.T($"Unknown subcommand: '{sub}'. Type /mjauto help for the command list.", $"未知子命令：'{sub}'。输入 /mjauto help 查看命令列表。"));
                 break;
         }
     }
 
     private void PrintHelp()
     {
-        chatGui.Print("Doman Mahjong Solver — /mjauto commands");
-        chatGui.Print("  /mjauto — open the plugin window");
-        chatGui.Print("  /mjauto collect on | off — continuous player East-only collection; no time limit");
-        chatGui.Print("  /mjauto on | off — arm / disarm automation");
-        chatGui.Print("  /mjauto help — show this help");
+        chatGui.Print(Loc.T("Doman Mahjong Solver — /mjauto commands", "多玛麻将助手 — /mjauto 命令"));
+        chatGui.Print(Loc.T("  /mjauto — open the plugin window", "  /mjauto — 打开插件窗口"));
+        chatGui.Print(Loc.T("  /mjauto collect on | off — continuous player East-only collection; no time limit", "  /mjauto collect on | off — 玩家东风战连续采集，无时间限制"));
+        chatGui.Print(Loc.T("  /mjauto on | off — arm / disarm automation", "  /mjauto on | off — 启用 / 停用自动化"));
+        chatGui.Print(Loc.T("  /mjauto help — show this help", "  /mjauto help — 显示本帮助"));
 
         if (!plugin.Configuration.DevMode)
         {
-            chatGui.Print("  (enable \"Developer tools\" in Settings for debug commands)");
+            chatGui.Print(Loc.T("  (enable \"Developer tools\" in Settings for debug commands)", "  （在设置中启用“开发者工具”后可使用调试命令）"));
             return;
         }
 
-        chatGui.Print("Developer console:");
-        chatGui.Print("  /mjauto debug — toggle the developer console");
+        chatGui.Print(Loc.T("Developer console:", "开发者控制台："));
+        chatGui.Print(Loc.T("  /mjauto debug — toggle the developer console", "  /mjauto debug — 打开 / 关闭开发者控制台"));
 
-        chatGui.Print("Manual override:");
-        chatGui.Print("  /mjauto autodiscard — run the policy once and discard");
-        chatGui.Print("  /mjauto testdiscard <0..13> — dispatch a discard at a slot");
-        chatGui.Print("  /mjauto pass <0..5> — send a raw call-option index");
+        chatGui.Print(Loc.T("Manual override:", "手动干预："));
+        chatGui.Print(Loc.T("  /mjauto autodiscard — run the policy once and discard", "  /mjauto autodiscard — 运行一次策略并打牌"));
+        chatGui.Print(Loc.T("  /mjauto testdiscard <0..13> — dispatch a discard at a slot", "  /mjauto testdiscard <0..13> — 打出指定位置的牌"));
+        chatGui.Print(Loc.T("  /mjauto pass <0..5> — send a raw call-option index", "  /mjauto pass <0..5> — 点击鸣牌提示的第几个按钮（0 = 最左）"));
 
-        chatGui.Print("Capture for bug reports:");
-        chatGui.Print("  /mjauto log <on|off> — record clicks to emj-events.log");
-        chatGui.Print("  /mjauto capture <label> — capture a single click");
-        chatGui.Print("  /mjauto snap <label> — dump addon + agent memory to a file");
-        chatGui.Print("  /mjauto autosnap <on|off> — auto-snap on state changes");
+        chatGui.Print(Loc.T("Capture for bug reports:", "问题报告用的采集："));
+        chatGui.Print(Loc.T("  /mjauto log <on|off> — record clicks to emj-events.log", "  /mjauto log <on|off> — 把点击记录到 emj-events.log"));
+        chatGui.Print(Loc.T("  /mjauto capture <label> — capture a single click", "  /mjauto capture <标签> — 采集下一次点击"));
+        chatGui.Print(Loc.T("  /mjauto snap <label> — dump addon + agent memory to a file", "  /mjauto snap <标签> — 把界面和 agent 内存转储到文件"));
+        chatGui.Print(Loc.T("  /mjauto autosnap <on|off> — auto-snap on state changes", "  /mjauto autosnap <on|off> — 状态变化时自动转储"));
 
-        chatGui.Print("Reverse-engineering dumps:");
-        chatGui.Print("  /mjauto variant dump [addonName] — layout dump for new client variants");
-        chatGui.Print("  /mjauto walknodes — dump the AtkUld node tree");
-        chatGui.Print("  /mjauto findtiles — scan addon/agent memory for tile-encoded values");
-        chatGui.Print("  /mjauto poolslots — diff visible discard-pool slots for tile fields");
-        chatGui.Print("  /mjauto poolicons — decode discard-pool slot icon ids");
-        chatGui.Print("  /mjauto addons [filter] — list loaded addons");
-        chatGui.Print("  /mjauto dumpmem [offset] [length] — hex dump of addon memory");
-        chatGui.Print("  /mjauto atkvalues — dump the Emj AtkValues array");
-        chatGui.Print("  /mjauto hexdump [agent] [start] [end] — hex dump of addon or AgentEmj");
-        chatGui.Print("  /mjauto discardhook — print DiscardCapture health");
+        chatGui.Print(Loc.T("Reverse-engineering dumps:", "逆向分析转储："));
+        chatGui.Print(Loc.T("  /mjauto variant dump [addonName] — layout dump for new client variants", "  /mjauto variant dump [界面名] — 为新客户端变体转储布局"));
+        chatGui.Print(Loc.T("  /mjauto walknodes — dump the AtkUld node tree", "  /mjauto walknodes — 转储 AtkUld 节点树"));
+        chatGui.Print(Loc.T("  /mjauto findtiles — scan addon/agent memory for tile-encoded values", "  /mjauto findtiles — 在界面/agent 内存中扫描牌编码"));
+        chatGui.Print(Loc.T("  /mjauto poolslots — diff visible discard-pool slots for tile fields", "  /mjauto poolslots — 对比可见河牌位置的牌字段"));
+        chatGui.Print(Loc.T("  /mjauto poolicons — decode discard-pool slot icon ids", "  /mjauto poolicons — 解码河牌位置的图标 ID"));
+        chatGui.Print(Loc.T("  /mjauto addons [filter] — list loaded addons", "  /mjauto addons [过滤] — 列出已加载的界面"));
+        chatGui.Print(Loc.T("  /mjauto dumpmem [offset] [length] — hex dump of addon memory", "  /mjauto dumpmem [偏移] [长度] — 十六进制转储界面内存"));
+        chatGui.Print(Loc.T("  /mjauto atkvalues — dump the Emj AtkValues array", "  /mjauto atkvalues — 转储 Emj 的 AtkValues 数组"));
+        chatGui.Print(Loc.T("  /mjauto hexdump [agent] [start] [end] — hex dump of addon or AgentEmj", "  /mjauto hexdump [agent] [起] [止] — 十六进制转储界面或 AgentEmj"));
+        chatGui.Print(Loc.T("  /mjauto discardhook — print DiscardCapture health", "  /mjauto discardhook — 显示打牌捕获的健康状况"));
     }
 
     internal void HandleAutoDiscard()
@@ -254,7 +255,7 @@ public sealed class MjAutoCommand : IDisposable
             var snap = plugin.AddonReader.TryBuildSnapshot();
             if (snap is null)
             {
-                chatGui.PrintError("[MjAuto] no snapshot — not in a match.");
+                chatGui.PrintError("[MjAuto] " + Loc.T("no snapshot — not in a match.", "没有局面快照：当前不在对局中。"));
                 return;
             }
 
@@ -297,7 +298,7 @@ public sealed class MjAutoCommand : IDisposable
     {
         if (!int.TryParse(arg.Trim(), out int opt) || opt is < 0 or > 5)
         {
-            chatGui.PrintError("[MjAuto] Usage: /mjauto pass <0..5>  (0=leftmost, higher=rightward; rightmost = pass)");
+            chatGui.PrintError("[MjAuto] " + Loc.T("Usage: /mjauto pass <0..5>  (0=leftmost, higher=rightward; rightmost = pass)", "用法：/mjauto pass <0..5>（0 = 最左，数字越大越靠右；最右边是跳过）"));
             return;
         }
         framework.RunOnFrameworkThread(() =>
@@ -311,7 +312,7 @@ public sealed class MjAutoCommand : IDisposable
     {
         if (!int.TryParse(arg.Trim(), out int slot) || slot is < 0 or > 13)
         {
-            chatGui.PrintError("[MjAuto] Usage: /mjauto testdiscard <0..13>");
+            chatGui.PrintError("[MjAuto] " + Loc.T("Usage: /mjauto testdiscard <0..13>", "用法：/mjauto testdiscard <0..13>"));
             return;
         }
 
@@ -384,7 +385,7 @@ public sealed class MjAutoCommand : IDisposable
                 DumpVariant(requestedAddonName);
                 break;
             case "":
-                chatGui.Print("[MjAuto] Usage: /mjauto variant dump [addonName]");
+                chatGui.Print("[MjAuto] " + Loc.T("Usage: /mjauto variant dump [addonName]", "用法：/mjauto variant dump [界面名]"));
                 break;
             default:
                 chatGui.PrintError(
@@ -670,7 +671,7 @@ public sealed class MjAutoCommand : IDisposable
                 break;
 
             default:
-                chatGui.PrintError("[MjAuto] Usage: /mjauto autosnap <on|off>");
+                chatGui.PrintError("[MjAuto] " + Loc.T("Usage: /mjauto autosnap <on|off>", "用法：/mjauto autosnap <on|off>"));
                 break;
         }
     }
@@ -820,7 +821,7 @@ public sealed class MjAutoCommand : IDisposable
         if (!addon.TryGet(out var unit, out _))
         {
             if (verbose)
-                chatGui.PrintError("[MjAuto] Emj addon not found — open a table first.");
+                chatGui.PrintError("[MjAuto] " + Loc.T("Emj addon not found — open a table first.", "找不到麻将界面，请先上桌。"));
             return null;
         }
         nint addonAddr = (nint)unit;
@@ -986,7 +987,7 @@ public sealed class MjAutoCommand : IDisposable
         {
             if (!addon.TryGet(out var unit, out _))
             {
-                chatGui.PrintError("[MjAuto] Emj addon not found — open a table first.");
+                chatGui.PrintError("[MjAuto] " + Loc.T("Emj addon not found — open a table first.", "找不到麻将界面，请先上桌。"));
                 return;
             }
 
@@ -1132,7 +1133,7 @@ public sealed class MjAutoCommand : IDisposable
         {
             if (!addon.TryGet(out var unit, out _))
             {
-                chatGui.PrintError("[MjAuto] Emj addon not found — open a table first.");
+                chatGui.PrintError("[MjAuto] " + Loc.T("Emj addon not found — open a table first.", "找不到麻将界面，请先上桌。"));
                 return;
             }
 
@@ -1331,7 +1332,7 @@ public sealed class MjAutoCommand : IDisposable
             {
                 if (!addon.TryGet(out var unit, out _))
                 {
-                    chatGui.PrintError("[MjAuto] Emj addon not found — open a table first.");
+                    chatGui.PrintError("[MjAuto] " + Loc.T("Emj addon not found — open a table first.", "找不到麻将界面，请先上桌。"));
                     return;
                 }
                 basePtr = (byte*)unit;
@@ -1370,7 +1371,7 @@ public sealed class MjAutoCommand : IDisposable
         {
             if (!addon.TryGet(out var unit, out _))
             {
-                chatGui.PrintError("[MjAuto] Emj addon not found — open a table first.");
+                chatGui.PrintError("[MjAuto] " + Loc.T("Emj addon not found — open a table first.", "找不到麻将界面，请先上桌。"));
                 return;
             }
 
@@ -1535,7 +1536,7 @@ public sealed class MjAutoCommand : IDisposable
         {
             if (!addon.TryGet(out var unit, out _))
             {
-                chatGui.PrintError("[MjAuto] Emj addon not found — open a table first.");
+                chatGui.PrintError("[MjAuto] " + Loc.T("Emj addon not found — open a table first.", "找不到麻将界面，请先上桌。"));
                 return;
             }
 
@@ -1689,7 +1690,7 @@ public sealed class MjAutoCommand : IDisposable
                     $"Path: {plugin.EventLogger.LogPath}");
                 break;
             default:
-                chatGui.PrintError("[MjAuto] Usage: /mjauto log <on|off>");
+                chatGui.PrintError("[MjAuto] " + Loc.T("Usage: /mjauto log <on|off>", "用法：/mjauto log <on|off>"));
                 break;
         }
     }

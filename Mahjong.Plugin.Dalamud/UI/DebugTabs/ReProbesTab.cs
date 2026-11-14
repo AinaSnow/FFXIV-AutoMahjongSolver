@@ -22,8 +22,8 @@ internal sealed class ReProbesTab
 
         using (Theme.BeginCard("re-tree"))
         {
-            Theme.SectionHeader("Addon tree & memory scan");
-            Theme.Subtle("walknodes: every UI node in the addon. findtiles: scan memory for tile-encoded values. atkvalues: the addon's parameter array.");
+            Theme.SectionHeader(Loc.T("Addon tree & memory scan", "界面节点树与内存扫描"));
+            Theme.Subtle(Loc.T("walknodes: every UI node in the addon. findtiles: scan memory for tile-encoded values. atkvalues: the addon's parameter array.", "walknodes：界面里的所有 UI 节点。findtiles：在内存里扫描牌编码。atkvalues：界面的参数数组。"));
             if (ImGui.Button("Walk Nodes"))
             {
                 cmd.HandleWalkNodes();
@@ -52,8 +52,8 @@ internal sealed class ReProbesTab
         ImGui.Dummy(new Vector2(0, 4));
         using (Theme.BeginCard("re-pool"))
         {
-            Theme.SectionHeader("Discard-pool slot diff");
-            Theme.Subtle("Finds which byte inside each pool-tile slot encodes the tile id, by comparing slots with different tiles. Used to locate fields when a client patch moves them.");
+            Theme.SectionHeader(Loc.T("Discard-pool slot diff", "河牌位置对比"));
+            Theme.Subtle(Loc.T("Finds which byte inside each pool-tile slot encodes the tile id, by comparing slots with different tiles. Used to locate fields when a client patch moves them.", "通过对比放着不同牌的位置，找出河牌位置中哪个字节记录牌 ID。客户端更新移动了字段时用来重新定位。"));
             if (ImGui.Button("Pool Slots"))
             {
                 cmd.HandlePoolSlots();
@@ -69,15 +69,15 @@ internal sealed class ReProbesTab
             }
             ImGui.SameLine(0, 3);
             DevHelpers.CopyPathButton("emj-poolicons.txt", "poolicons");
-            Theme.Subtle("Walks types 1021..1024 and diffs candidate tile bytes across visible slots.");
+            Theme.Subtle(Loc.T("Walks types 1021..1024 and diffs candidate tile bytes across visible slots.", "遍历类型 1021..1024，对比可见位置中的候选牌字节。"));
         }
 
         ImGui.Dummy(new Vector2(0, 4));
         using (Theme.BeginCard("re-hex"))
         {
-            Theme.SectionHeader("Hex dump");
-            Theme.Subtle("Raw bytes of the addon (or AgentEmj) over a chosen range. Defaults target the current best-guess region.");
-            ImGui.Checkbox("Agent (vs addon)", ref hexAgent);
+            Theme.SectionHeader(Loc.T("Hex dump", "十六进制转储"));
+            Theme.Subtle(Loc.T("Raw bytes of the addon (or AgentEmj) over a chosen range. Defaults target the current best-guess region.", "转储界面（或 AgentEmj）指定范围的原始字节。默认范围是目前最可能的区域。"));
+            ImGui.Checkbox(Loc.T("Agent (vs addon)", "Agent（而非界面）"), ref hexAgent);
             ImGui.SetNextItemWidth(120);
             ImGui.InputText("start##hex", ref hexStart, 16);
             ImGui.SameLine(0, 8);
@@ -98,14 +98,14 @@ internal sealed class ReProbesTab
             ImGui.SameLine(0, 6);
             DevHelpers.CopyPathButton(hexAgent ? "emj-hexdump-agent.txt" : "emj-hexdump.txt", "hex");
             if (!startOk || !endOk)
-                Theme.Subtle("Use hex with optional 0x prefix.");
+                Theme.Subtle(Loc.T("Use hex with optional 0x prefix.", "使用十六进制，可带 0x 前缀。"));
         }
 
         ImGui.Dummy(new Vector2(0, 4));
         using (Theme.BeginCard("re-mem"))
         {
-            Theme.SectionHeader("Addon memory (offset + length)");
-            Theme.Subtle("Same idea as Hex dump but addon-only and written to emj-dump.txt. Convenient for fixed-offset structures.");
+            Theme.SectionHeader(Loc.T("Addon memory (offset + length)", "界面内存（偏移 + 长度）"));
+            Theme.Subtle(Loc.T("Same idea as Hex dump but addon-only and written to emj-dump.txt. Convenient for fixed-offset structures.", "和十六进制转储类似，但只针对界面，结果写入 emj-dump.txt。适合固定偏移的结构。"));
             ImGui.SetNextItemWidth(120);
             ImGui.InputText("offset##mem", ref memOffset, 16);
             ImGui.SameLine(0, 8);
@@ -129,12 +129,12 @@ internal sealed class ReProbesTab
         ImGui.Dummy(new Vector2(0, 4));
         using (Theme.BeginCard("re-addons"))
         {
-            Theme.SectionHeader("List loaded addons");
-            Theme.Subtle("Print every game UI addon currently loaded. Substring filter; empty = all. Used to confirm the mahjong addon name on your client.");
+            Theme.SectionHeader(Loc.T("List loaded addons", "列出已加载的界面"));
+            Theme.Subtle(Loc.T("Print every game UI addon currently loaded. Substring filter; empty = all. Used to confirm the mahjong addon name on your client.", "列出当前加载的所有游戏界面。可按子串过滤，留空表示全部。用来确认你的客户端上麻将界面的名字。"));
             ImGui.SetNextItemWidth(220);
             ImGui.InputText("filter##addons", ref addonsFilter, 64);
             ImGui.SameLine(0, 8);
-            if (ImGui.Button("List Addons"))
+            if (ImGui.Button(Loc.T("List Addons", "列出界面")))
             {
                 cmd.DumpAddons(addonsFilter);
                 ctx.LastToast = "addons → chat";

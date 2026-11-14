@@ -22,13 +22,13 @@ internal sealed class BugReportTab
 
         using (Theme.BeginCard("br-snap"))
         {
-            Theme.SectionHeader("Snap (one-shot memory dump)");
-            Theme.Subtle("Saves the addon + agent memory to a labeled file. Use this when an issue asks for a one-off snapshot. Label = letters, digits, dash, underscore.");
+            Theme.SectionHeader(Loc.T("Snap (one-shot memory dump)", "快照（单次内存转储）"));
+            Theme.Subtle(Loc.T("Saves the addon + agent memory to a labeled file. Use this when an issue asks for a one-off snapshot. Label = letters, digits, dash, underscore.", "把界面和 agent 内存保存到带标签的文件。问题需要一次性快照时使用。标签只能包含字母、数字、短横线和下划线。"));
 
             if (!IsValidLabel(snapLabel))
             {
                 ImGui.PushStyleColor(ImGuiCol.Text, Theme.Warn);
-                ImGui.TextUnformatted("Label must be [a-zA-Z0-9_-] only.");
+                ImGui.TextUnformatted(Loc.T("Label must be [a-zA-Z0-9_-] only.", "标签只能使用 [a-zA-Z0-9_-]。"));
                 ImGui.PopStyleColor();
             }
 
@@ -37,30 +37,30 @@ internal sealed class BugReportTab
             ImGui.SameLine(0, 8);
             using (DevHelpers.Disable(!IsValidLabel(snapLabel)))
             {
-                if (ImGui.Button("Snap"))
+                if (ImGui.Button(Loc.T("Snap", "快照")))
                 {
                     var label = snapLabel;
                     cmd.HandleSnap(label);
                     ctx.LastToast = $"snap '{label}' queued → see chat for path";
                 }
             }
-            Theme.Subtle($"Writes snap-LABEL-ts.txt to plugin config dir.");
+            Theme.Subtle(Loc.T($"Writes snap-LABEL-ts.txt to plugin config dir.", $"把 snap-标签-时间.txt 写到插件配置目录。"));
         }
 
         ImGui.Dummy(new Vector2(0, 4));
         using (Theme.BeginCard("br-autosnap"))
         {
-            Theme.SectionHeader("Autosnap (continuous capture)");
-            Theme.Subtle("Saves a fresh dump every time the game state changes. Use when you can't predict when the bug will trigger. Caps at 500 files; identical states are dropped.");
+            Theme.SectionHeader(Loc.T("Autosnap (continuous capture)", "自动快照（持续采集）"));
+            Theme.Subtle(Loc.T("Saves a fresh dump every time the game state changes. Use when you can't predict when the bug will trigger. Caps at 500 files; identical states are dropped.", "游戏状态每次变化都保存一份新的转储，适合无法预测问题何时出现的情况。最多 500 个文件，相同的状态会被丢弃。"));
             bool on = cmd.IsAutoSnapOn;
 
-            DevHelpers.KeyValueRow("State", on ? "ON" : "OFF");
-            DevHelpers.KeyValueRow("Count", $"{cmd.AutoSnapCount} / {cmd.AutoSnapMaxCountValue}");
+            DevHelpers.KeyValueRow(Loc.T("State", "状态"), on ? "ON" : "OFF");
+            DevHelpers.KeyValueRow(Loc.T("Count", "数量"), $"{cmd.AutoSnapCount} / {cmd.AutoSnapMaxCountValue}");
 
             ImGui.Dummy(new Vector2(0, 2));
             if (on)
             {
-                if (ImGui.Button("Stop autosnap"))
+                if (ImGui.Button(Loc.T("Stop autosnap", "停止自动快照")))
                 {
                     cmd.HandleAutoSnap("off");
                     ctx.LastToast = "autosnap OFF";
@@ -68,7 +68,7 @@ internal sealed class BugReportTab
             }
             else
             {
-                if (ImGui.Button("Start autosnap"))
+                if (ImGui.Button(Loc.T("Start autosnap", "开始自动快照")))
                 {
                     cmd.HandleAutoSnap("on");
                     ctx.LastToast = "autosnap ON — files: snap-auto-NNN-<ts>.txt";
@@ -79,19 +79,19 @@ internal sealed class BugReportTab
         ImGui.Dummy(new Vector2(0, 4));
         using (Theme.BeginCard("br-capture"))
         {
-            Theme.SectionHeader("Capture (arm-and-click)");
-            Theme.Subtle("Records the very next click you make in the mahjong UI with a label. Type a name, press Arm, then click in-game. Auto-disarms after one click or 60s.");
+            Theme.SectionHeader(Loc.T("Capture (arm-and-click)", "点击采集（预备后点击）"));
+            Theme.Subtle(Loc.T("Records the very next click you make in the mahjong UI with a label. Type a name, press Arm, then click in-game. Auto-disarms after one click or 60s.", "带标签记录你在麻将界面里的下一次点击。输入名称，按“预备”，然后在游戏里点击。点击一次或 60 秒后自动取消。"));
             if (!ctx.Plugin.EventLogger.CallbackCaptureAvailable)
-                Theme.Subtle($"Unavailable: {ctx.Plugin.EventLogger.CallbackCaptureStatus}");
+                Theme.Subtle(Loc.T($"Unavailable: {ctx.Plugin.EventLogger.CallbackCaptureStatus}", $"不可用：{ctx.Plugin.EventLogger.CallbackCaptureStatus}"));
             var pending = ctx.Plugin.EventLogger.PendingCaptureLabel;
 
             if (pending is not null)
             {
                 ImGui.PushStyleColor(ImGuiCol.Text, Theme.Accent);
-                ImGui.TextUnformatted($"ARMED: '{pending}' — click the action in-game");
+                ImGui.TextUnformatted(Loc.T($"ARMED: '{pending}' — click the action in-game", $"已预备：'{pending}'，请在游戏里点击对应操作"));
                 ImGui.PopStyleColor();
                 ImGui.Dummy(new Vector2(0, 2));
-                if (ImGui.Button("Disarm"))
+                if (ImGui.Button(Loc.T("Disarm", "取消预备")))
                 {
                     ctx.Plugin.EventLogger.DisarmCapture();
                     ctx.LastToast = $"capture disarmed (was: {pending})";
@@ -105,42 +105,42 @@ internal sealed class BugReportTab
                 bool armBlocked = !ctx.Plugin.EventLogger.CallbackCaptureAvailable || !IsValidLabel(captureLabel) || ctx.Plugin.Configuration.AutomationArmed;
                 using (DevHelpers.Disable(armBlocked))
                 {
-                    if (ImGui.Button("Arm"))
+                    if (ImGui.Button(Loc.T("Arm", "预备")))
                     {
                         cmd.HandleCapture(captureLabel);
                         ctx.LastToast = $"capture armed: '{captureLabel}' — auto-disarms after one click or 60s";
                     }
                 }
                 if (ctx.Plugin.Configuration.AutomationArmed)
-                    Theme.Subtle("Auto-play is ON — disarm automation first or its dispatch will race your click.");
+                    Theme.Subtle(Loc.T("Auto-play is ON — disarm automation first or its dispatch will race your click.", "自动打牌已开启。请先停用自动化，否则它的点击会和你的点击冲突。"));
             }
         }
 
         ImGui.Dummy(new Vector2(0, 4));
         using (Theme.BeginCard("br-variant"))
         {
-            Theme.SectionHeader("Variant dump (new-client report)");
-            Theme.Subtle("Run this when the plugin can't read your hand or board after a game patch. Writes one file to attach when reporting a new client variant.");
-            if (ImGui.Button("Dump variant"))
+            Theme.SectionHeader(Loc.T("Variant dump (new-client report)", "变体转储（新客户端报告）"));
+            Theme.Subtle(Loc.T("Run this when the plugin can't read your hand or board after a game patch. Writes one file to attach when reporting a new client variant.", "游戏更新后插件读不出手牌或牌桌时运行。会生成一个文件，报告新客户端变体时附上它。"));
+            if (ImGui.Button(Loc.T("Dump variant", "转储变体")))
             {
                 cmd.DumpVariant();
                 ctx.LastToast = "variant dump queued → emj-variant-dump.txt";
             }
             ImGui.SameLine(0, 6);
             DevHelpers.CopyPathButton("emj-variant-dump.txt", "variant");
-            Theme.Subtle("Attach emj-variant-dump.txt when reporting a new client variant.");
+            Theme.Subtle(Loc.T("Attach emj-variant-dump.txt when reporting a new client variant.", "报告新客户端变体时请附上 emj-variant-dump.txt。"));
         }
 
         ImGui.Dummy(new Vector2(0, 4));
         using (Theme.BeginCard("br-folder"))
         {
-            Theme.SectionHeader("Files");
-            Theme.Subtle("Open the folder containing every dump file. Drag-and-drop into a GitHub issue to attach.");
+            Theme.SectionHeader(Loc.T("Files", "文件"));
+            Theme.Subtle(Loc.T("Open the folder containing every dump file. Drag-and-drop into a GitHub issue to attach.", "打开存放所有转储文件的文件夹。拖进 GitHub issue 即可附上。"));
 
-            DrawDirRow("Plugin config", configDir, "cfgdir");
+            DrawDirRow(Loc.T("Plugin config", "插件配置"), configDir, "cfgdir");
             string findingsDir = Path.Combine(configDir, "findings");
             if (Directory.Exists(findingsDir))
-                DrawDirRow("Findings",      findingsDir, "findingsdir");
+                DrawDirRow(Loc.T("Findings", "发现记录"),      findingsDir, "findingsdir");
         }
 
         ImGui.Dummy(new Vector2(0, 4));
@@ -169,13 +169,13 @@ internal sealed class BugReportTab
     {
         using (Theme.BeginCard("br-recent"))
         {
-            Theme.SectionHeader("Recent dumps");
-            Theme.Subtle("Most recently produced dump files. Open reveals the file's folder; Copy puts the full path on your clipboard.");
+            Theme.SectionHeader(Loc.T("Recent dumps", "最近的转储"));
+            Theme.Subtle(Loc.T("Most recently produced dump files. Open reveals the file's folder; Copy puts the full path on your clipboard.", "最近生成的转储文件。“打开”会定位到文件所在文件夹，“复制”会把完整路径放进剪贴板。"));
 
             var files = RecentDumps(configDir, 10);
             if (files.Count == 0)
             {
-                Theme.Subtle("(no dumps yet)");
+                Theme.Subtle(Loc.T("(no dumps yet)", "（还没有转储）"));
                 return;
             }
 

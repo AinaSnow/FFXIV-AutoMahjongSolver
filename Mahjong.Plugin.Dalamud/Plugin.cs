@@ -136,6 +136,8 @@ public sealed class Plugin : IDalamudPlugin
         ConfigService = Services.GetRequiredService<IConfigService<Configuration>>();
 
         Policy = Services.GetRequiredService<IPolicy>();
+        Loc.SetLanguage(PluginInterface.UiLanguage);
+        PluginInterface.LanguageChanged += Loc.SetLanguage;
 
         // Sinks must exist before any reader construction — readers emit findings on probe.
         var configDir = PluginInterface.GetPluginConfigDirectory();
@@ -165,11 +167,14 @@ public sealed class Plugin : IDalamudPlugin
         MatchArchive = new MatchArchiveWriter(configDir, Log, archiveIo, () => (ConfigService.Current.ArchiveRetentionDays, ConfigService.Current.ArchiveMaxBytes), trainingCorpus: TrainingCorpus);
         NetworkCapture = new MahjongNetworkCapture(Log,
             () => AddonReader.ProtocolVariant, Path.Combine(pluginAssemblyDir, "protocols"),
-            trialEnabled: () => Configuration.MortalLimitedTrial);
+            trialEnabled: () => Configuration.MortalLimitedTrial,
+            learnedDirectory: Path.Combine(configDir, "learned-protocols"),
+            learningEnabled: () => Configuration.MortalEnabled);
         DebugPackets = new DebugPacketLogger(pluginAssemblyDir, NetworkCapture, Framework, configDir,
             () => Configuration.DebugAutoPacketLogging, () => AddonReader.LastObservation.Present,
             () => new MatchArchiveEnvironment(NetworkCapture.GameVersion, AddonReader.ProtocolVariant,
-                NetworkCapture.ProtocolVerified, NetworkCapture.ProtocolStatus, typeof(Plugin).Module.ModuleVersionId.ToString(), AddonReader.ActiveLayout?.Name), Log);
+                NetworkCapture.ProtocolVerified, NetworkCapture.ProtocolStatus, typeof(Plugin).Module.ModuleVersionId.ToString(), AddonReader.ActiveLayout?.Name), Log,
+            tableScores: EmjTableReader.ReadPoints);
         PublicState = new PublicStateTracker(NetworkCapture, Framework, AddonReader, Log, MatchArchive.RecordPacket);
         Aggregator = new StateAggregator(AddonReader, Framework, Policy, PublicState.Merge, () => Configuration);
         EventLogger = new InputEventLogger(
@@ -303,6 +308,7 @@ public sealed class Plugin : IDalamudPlugin
 
     public void Dispose()
     {
+        PluginInterface.LanguageChanged -= Loc.SetLanguage;
         Collection.Dispose();
         MeldTracker.DeferralTimedOut -= OnMeldTrackerDeferralTimedOut;
         AddonLifecycle.UnregisterListener(OnMahjongAddonPreFinalize);

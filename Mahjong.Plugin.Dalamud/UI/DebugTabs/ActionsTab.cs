@@ -24,12 +24,12 @@ internal sealed class ActionsTab
 
         using (Theme.BeginCard("actions-auto"))
         {
-            Theme.SectionHeader("Auto-discard");
-            Theme.Subtle("Asks the policy what to discard and dispatches the click. Only works on your turn.");
+            Theme.SectionHeader(Loc.T("Auto-discard", "自动打牌"));
+            Theme.Subtle(Loc.T("Asks the policy what to discard and dispatches the click. Only works on your turn.", "询问策略该打哪张并执行点击，仅在轮到你时有效。"));
             using (DevHelpers.Disable(!ourTurn))
             {
                 float w = ImGui.GetContentRegionAvail().X;
-                if (ImGui.Button("Run policy pick", new Vector2(w, 34)))
+                if (ImGui.Button(Loc.T("Run policy pick", "执行策略选择"), new Vector2(w, 34)))
                     ctx.Framework.RunOnFrameworkThread(TriggerAutoDiscard);
             }
             if (!ourTurn)
@@ -39,8 +39,8 @@ internal sealed class ActionsTab
         ImGui.Dummy(new Vector2(0, 4));
         using (Theme.BeginCard("actions-testslot"))
         {
-            Theme.SectionHeader("Test discard slot");
-            Theme.Subtle("Discards the tile at a specific hand slot regardless of policy. 0 = leftmost, 13 = just-drawn.");
+            Theme.SectionHeader(Loc.T("Test discard slot", "测试打出指定位置"));
+            Theme.Subtle(Loc.T("Discards the tile at a specific hand slot regardless of policy. 0 = leftmost, 13 = just-drawn.", "无视策略，直接打出指定位置的牌。0 = 最左，13 = 刚摸的牌。"));
 
             ImGui.SetNextItemWidth(90);
             ImGui.InputInt("##slot", ref testDiscardSlot);
@@ -48,7 +48,7 @@ internal sealed class ActionsTab
             ImGui.SameLine(0, 8);
             using (DevHelpers.Disable(!ourTurn))
             {
-                if (ImGui.Button($"Dispatch slot {testDiscardSlot}"))
+                if (ImGui.Button(Loc.T($"Dispatch slot {testDiscardSlot}", $"打出位置 {testDiscardSlot}")))
                 {
                     int slot = testDiscardSlot;
                     ctx.Framework.RunOnFrameworkThread(() =>
@@ -60,24 +60,24 @@ internal sealed class ActionsTab
             }
 
             ImGui.Dummy(new Vector2(0, 3));
-            if (ImGui.SmallButton("drawn (13)"))
+            if (ImGui.SmallButton(Loc.T("drawn (13)", "摸牌 (13)")))
                 testDiscardSlot = 13;
             ImGui.SameLine(0, 4);
-            if (ImGui.SmallButton("leftmost (0)"))
+            if (ImGui.SmallButton(Loc.T("leftmost (0)", "最左 (0)")))
                 testDiscardSlot = 0;
         }
 
         ImGui.Dummy(new Vector2(0, 4));
         using (Theme.BeginCard("actions-testcall"))
         {
-            Theme.SectionHeader("Test call option");
-            Theme.Subtle("Send a raw call-prompt button index. Enable event-logger in Diagnostics to see which button each index hits.");
+            Theme.SectionHeader(Loc.T("Test call option", "测试鸣牌选项"));
+            Theme.Subtle(Loc.T("Send a raw call-prompt button index. Enable event-logger in Diagnostics to see which button each index hits.", "发送鸣牌提示的原始按钮序号。在“诊断”里开启事件记录，可以看到每个序号对应哪个按钮。"));
 
             ImGui.SetNextItemWidth(90);
             ImGui.InputInt("##opt", ref testCallOption);
             testCallOption = Math.Clamp(testCallOption, 0, 5);
             ImGui.SameLine(0, 8);
-            if (ImGui.Button($"Dispatch opt {testCallOption}"))
+            if (ImGui.Button(Loc.T($"Dispatch opt {testCallOption}", $"发送选项 {testCallOption}")))
             {
                 int opt = testCallOption;
                 ctx.Framework.RunOnFrameworkThread(() =>
@@ -98,7 +98,7 @@ internal sealed class ActionsTab
             }
 
             ImGui.Dummy(new Vector2(0, 3));
-            Theme.Subtle("pon/pass: 0=Pass, 1=Pon.  chi/pass: likely 0=Chi, 1=Pass.  Verify by logging.");
+            Theme.Subtle(Loc.T("pon/pass: 0=Pass, 1=Pon.  chi/pass: likely 0=Chi, 1=Pass.  Verify by logging.", "碰/跳过：0=跳过，1=碰。吃/跳过：可能是 0=吃，1=跳过。请用事件记录确认。"));
         }
     }
 
