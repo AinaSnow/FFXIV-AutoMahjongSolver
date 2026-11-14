@@ -34,7 +34,30 @@ public sealed class MahjongNetworkCapture : IDisposable
     private readonly ConcurrentQueue<CapturedMahjongPacket> queue = new();
     private MahjongProtocolProfile? activeProfile;
     private readonly ConcurrentQueue<CapturedMahjongPacket> publicQueue = new();
-    private readonly MahjongProtocolProfile[] profiles;
+    private MahjongProtocolProfile[] profiles;
+    private readonly MahjongProtocolProfile[] bundledProfiles;
+    private readonly string? learnedDirectory;
+    private readonly Func<bool> learningEnabled;
+    private readonly IPluginLog? log;
+    // Same-length traffic seen at the table while this build has no profile; replayed on leaving the table.
+    private readonly List<(DateTimeOffset Time, DiscoveryPacket Packet)> learningBuffer = [];
+    private bool learningAtTable;
+    // The addon (and so the variant) is gone by the time the table closes; keep the one seen while seated.
+    private string? learningVariant;
+    private static readonly TimeSpan LearningPreRoll = TimeSpan.FromSeconds(10);
+    private readonly List<int[]> tableScores = [];
+    private const int MaxLearningPackets = 20000;
+    private volatile bool learningRunning;
+    private string learningStatus = "Not needed";
+    public string LearningStatus
+    {
+        get => LearningWanted && learningStatus == "Not needed"
+            ? "Waiting for a mahjong table; play one match by hand with Mortal enabled" : learningStatus;
+        private set => learningStatus = value;
+    }
+    /// <summary>Any bundled or learned profile exists for this exact build, regardless of the trial switch.</summary>
+    public bool HasProfileForVersion => profiles.Any(p => p.GameVersion == gameVersion);
+    public bool LearningWanted => learningEnabled() && !HasProfileForVersion && gameVersion is not null;
     private readonly Func<string?> variantAccessor;
     private readonly Func<bool> trialEnabled;
     private readonly object admissionLock = new();
@@ -77,7 +100,8 @@ public sealed class MahjongNetworkCapture : IDisposable
     private long droppedPackets;
 
     public MahjongNetworkCapture(IPluginLog log,
-        Func<string?>? variantAccessor = null, string? profilesDirectory = null, Func<bool>? trialEnabled = null)
+        Func<string?>? variantAccessor = null, string? profilesDirectory = null, Func<bool>? trialEnabled = null,
+        string? learnedDirectory = null, Func<bool>? learningEnabled = null)
     {
         ArgumentNullException.ThrowIfNull(log);
         this.variantAccessor = variantAccessor ?? (() => null);
@@ -86,16 +110,23 @@ public sealed class MahjongNetworkCapture : IDisposable
         string versionPath = Path.Combine(processDirectory ?? "", "ffxivgame.ver");
         try { gameVersion = File.Exists(versionPath) ? File.ReadAllText(versionPath).Trim() : null; }
         catch (IOException) { gameVersion = null; }
-        try { profiles = MahjongProtocolProfile.LoadDirectory(profilesDirectory ?? ""); }
-        catch (Exception ex) { profiles = []; log.Warning(ex, "[Mahjong] Invalid protocol profiles; network capture disabled."); }
+        this.log = log;
+        this.learningEnabled = learningEnabled ?? (() => false);
+        this.learnedDirectory = learnedDirectory;
+        try { bundledProfiles = MahjongProtocolProfile.LoadDirectory(profilesDirectory ?? ""); }
+        catch (Exception ex) { bundledProfiles = []; log.Warning(ex, "[Mahjong] Invalid protocol profiles; network capture disabled."); }
+        profiles = [.. bundledProfiles, .. LoadLearned()];
+        if (profiles.Length > bundledProfiles.Length) LearningStatus = "Using auto-learned protocol for this build";
         RefreshProfile();
         if (!ProtocolAdmitted) log.Warning($"[Mahjong] {ProtocolStatus}; UI-only until an admitted table is detected.");
     }
 
-    internal MahjongNetworkCapture(string version, Func<string?> variant, MahjongProtocolProfile[] profiles, Func<bool>? trialEnabled = null)
+    internal MahjongNetworkCapture(string version, Func<string?> variant, MahjongProtocolProfile[] profiles, Func<bool>? trialEnabled = null,
+        Func<bool>? learningEnabled = null, string? learnedDirectory = null)
     {
-        gameVersion = version; variantAccessor = variant; this.profiles = profiles;
-        this.trialEnabled = trialEnabled ?? (() => false); RefreshProfile();
+        gameVersion = version; variantAccessor = variant; this.profiles = profiles; bundledProfiles = profiles;
+        this.trialEnabled = trialEnabled ?? (() => false); this.learningEnabled = learningEnabled ?? (() => false);
+        this.learnedDirectory = learnedDirectory; RefreshProfile();
     }
 
     public bool CaptureEnabled { get => captureEnabled; set => SetConsumerEnabled(value, isPublic: false); }
@@ -146,7 +177,13 @@ public sealed class MahjongNetworkCapture : IDisposable
     // for two seconds, then admit them after the actual client variant is known.
     internal void Record(RawReceivedPacket packet)
     {
-        if (disposed || !HasAdmittedBuild) return;
+        if (disposed) return;
+        if (!HasProfileForVersion)
+        {
+            RecordForLearning(packet);
+            return;
+        }
+        if (!HasAdmittedBuild) return;
         lock (admissionLock)
         {
             if (disposed) return;
@@ -197,6 +234,110 @@ public sealed class MahjongNetworkCapture : IDisposable
     }
 
     internal void MarkTransportGap() => Interlocked.Increment(ref droppedPackets);
+
+    private void RecordForLearning(RawReceivedPacket packet)
+    {
+        if (!LearningWanted || learningRunning || packet.Transport != "deucalion"
+            || !ProtocolDiscovery.IsCandidateLength(packet.Payload.Length)) return;
+        lock (learningBuffer)
+        {
+            // Away from the table keep only a short pre-roll: the match-start packet precedes the addon.
+            if (!learningAtTable) learningBuffer.RemoveAll(e => e.Time < packet.Time - LearningPreRoll);
+            if (learningBuffer.Count >= MaxLearningPackets) return;
+            learningBuffer.Add((packet.Time, new DiscoveryPacket(packet.Opcode, packet.Payload.ToArray())));
+            if (learningAtTable) LearningStatus = $"Learning protocol for {gameVersion}: {learningBuffer.Count} candidate packets this match";
+        }
+    }
+
+    /// <summary>The table became visible: keep the short pre-roll, then collect the whole match.</summary>
+    internal void BeginLearningSession(DateTimeOffset now)
+    {
+        lock (learningBuffer)
+        {
+            learningAtTable = true;
+            learningVariant = variantAccessor();
+            learningBuffer.RemoveAll(e => e.Time < now - LearningPreRoll);
+            tableScores.Clear();
+        }
+    }
+
+    /// <summary>Independent ground truth from the client's own table; distinct snapshots only.</summary>
+    internal void ObserveTableScores(int[]? scores)
+    {
+        if (!LearningWanted) return;
+        lock (learningBuffer)
+        {
+            if (variantAccessor() is { } variant) learningVariant = variant;
+            if (scores is not null && tableScores.Count < 256 && !tableScores.Any(s => s.SequenceEqual(scores))) tableScores.Add(scores);
+        }
+    }
+
+    /// <summary>Called when the table closes. Learning runs off the framework thread; a result applies from the next match.</summary>
+    internal Task FinishLearningSession()
+    {
+        DiscoveryPacket[] packets;
+        int[][] scores;
+        string? variant;
+        lock (learningBuffer)
+        {
+            bool wasAtTable = learningAtTable;
+            learningAtTable = false;
+            if (!wasAtTable || !LearningWanted || learningRunning) return Task.CompletedTask;
+            packets = [.. learningBuffer.Select(e => e.Packet)];
+            scores = [.. tableScores];
+            variant = learningVariant ?? variantAccessor();
+            learningBuffer.Clear();
+            tableScores.Clear();
+            learningVariant = null;
+        }
+        if (packets.Length == 0) return Task.CompletedTask;
+        learningRunning = true;
+        LearningStatus = $"Analysing {packets.Length} packets from the last match";
+        return Task.Run(() =>
+        {
+            try { ApplyLearning(packets, scores, variant); }
+            catch (Exception ex) { LearningStatus = $"Learning failed: {ex.Message}"; log?.Warning(ex, "[Mahjong] Protocol learning failed."); }
+            finally { learningRunning = false; }
+        });
+    }
+
+    private void ApplyLearning(DiscoveryPacket[] packets, int[][] scores, string? variant)
+    {
+        if (variant is null || gameVersion is null) { LearningStatus = "Learning skipped: client variant unknown"; return; }
+        var result = ProtocolDiscovery.Discover(packets, observedHandScores: scores);
+        string tableCheck = scores.Length > 0 ? $"table-score check on {scores.Length} snapshots" : "table state unavailable";
+        if (!result.Success)
+        {
+            LearningStatus = $"Not learned yet ({result.Reason}); play another match";
+            log?.Information($"[Mahjong] Protocol learning for {gameVersion}: {result.Reason} ({result.CombinationsTried} combinations, {tableCheck}).");
+            return;
+        }
+        var s = result.Score;
+        var profile = new MahjongProtocolProfile(gameVersion, variant, Verified: false,
+            Evidence: $"Auto-learned {DateTimeOffset.UtcNow:yyyy-MM-dd}: unique mapping of {result.CombinationsTried} combinations; "
+                + $"{s.CompleteHands} clean hands, {s.DrawDiscardEvents} draw/discard events; {tableCheck}.",
+            Packets: new Dictionary<string, MahjongPacketSpec>(result.Packets),
+            LimitedTrialScope: DomanMortalTrialGuard.Scope,
+            LimitedTrialEvidence: "Auto-learned opcode remap of the 2026.09.15 limited-trial decoder; payload formats unchanged.");
+        if (learnedDirectory is not null)
+        {
+            Directory.CreateDirectory(learnedDirectory);
+            File.WriteAllText(Path.Combine(learnedDirectory, $"{gameVersion}-{variant}.json"),
+                System.Text.Json.JsonSerializer.Serialize(profile, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+        }
+        lock (admissionLock) profiles = [.. bundledProfiles, profile];
+        LearningStatus = $"Learned protocol for {gameVersion}: {string.Join(", ", result.Packets.Select(kv => $"{kv.Key}={kv.Value.MessageId}"))}";
+        log?.Information($"[Mahjong] {LearningStatus}. {profile.Evidence}");
+    }
+
+    private MahjongProtocolProfile[] LoadLearned()
+    {
+        if (learnedDirectory is null || gameVersion is null) return [];
+        // Bundled profiles always win; learned files only cover builds without one.
+        if (bundledProfiles.Any(p => p.GameVersion == gameVersion)) return [];
+        try { return MahjongProtocolProfile.LoadDirectory(learnedDirectory).Where(p => p.GameVersion == gameVersion).ToArray(); }
+        catch (Exception ex) { log?.Warning(ex, "[Mahjong] Ignoring unreadable learned protocol profiles."); return []; }
+    }
 
     private readonly record struct PacketSpec(int MessageId, int PayloadLength);
 }
