@@ -53,7 +53,9 @@
      - 在 `DomanMortalTrialGuard` 中从“一律拒绝 `roundWindIndex != 0`”升级为按实机已验证模式放行（例如区分东场/半庄进度映射，避免对半庄误开启 `east-progress-v1`）。
      - 补齐半庄终局边界、连庄/西入否定行为及跨场隔离测试后再默认开放。
 3. **A3 · 清理已知动作分发卡顿**
-   - 按 [dispatch-protocol.md](dispatch-protocol.md) 捕获或复现 `post-MinKan`（暗/明杠摸岭上瞬间手牌计数错位）与“连续第二次碰”状态停顿，修复 [`AutoPlayLoop`](../Mahjong.Plugin.Dalamud/Actions/AutoPlayLoop.cs) / `MeldTracker` 的等待条件或重试去重逻辑。
+   - 按 [dispatch-protocol.md](dispatch-protocol.md) 捕获或复现 `post-MinKan`（暗/明杠摸岭上瞬间手牌计数错位）与“连续第二次碰”状态停顿，修复 [`AutoPlayLoop`](../Mahjong.Plugin.Dalamud/Actions/AutoPlayLoop.cs) / `MeldTracker` 的等待条件或重试去重逻辑。7.58 的 44 场中两者都没有复现（25 手有两次及以上自家鸣牌，无手牌错位决策）。
+   - **2026-11-16 已修复、待实机确认**（[复核](reviews/20261116-a3-call-window-stalls.md)）：44 场的 4 次 Mortal 超时全部定位。① 立直暗杠弹窗无动作标签，`AnKan` 走了从未生效过的 `SelectItem`，改为 `[11, 行号]`；② 他家吃碰后、③ 自家舍牌后，UI 会把我们上一个提示行重新显示为 state 15，服务端并不等待我们；这类行改为不等待、不点击。11-14 的 3 次 Pass 超时来自未加载协议的纯 UI 模式，未改动。
+   - 仍待处理：无效的自家杠点击会留下虚假的 `MeldTracker` 副露，并锁住 Mortal 约 8 秒；需要等立直暗杠的实机结果出来后，再决定是否加入“无回执则撤回”。
 
 **验收门槛**：半庄完整对局在线下脱敏回放与实机观察均 0 解码失败、0 隔离；`MortalEastProgress` 仅在确认东场模式时激活；已知卡顿场景不再出现无限重试或永久阻塞。
 
