@@ -63,12 +63,13 @@ public class ContinuousCollectionTests
     public void Brief_state_27_between_hands_is_not_final_standings_or_match_completion()
     {
         var scores = Mahjong.Core.StateSnapshot.Empty with { AddonStateCode = 27, Scores = [71000,1400,13300,12300] };
-        Assert.False(ContinuousCollectionLoop.IsFinalResult(false, true, "Emj", scores));
-        Assert.False(ContinuousCollectionLoop.IsFinalResult(true, false, "Emj", scores));
-        Assert.True(ContinuousCollectionLoop.IsFinalResult(true, true, "Emj", scores));
+        Assert.False(ContinuousCollectionLoop.IsFinalResult(false, true, EmjCollectable, scores));
+        Assert.False(ContinuousCollectionLoop.IsFinalResult(true, false, EmjCollectable, scores));
+        Assert.True(ContinuousCollectionLoop.IsFinalResult(true, true, EmjCollectable, scores));
+        Assert.False(ContinuousCollectionLoop.IsFinalResult(true, true, false, scores));
         var clock = new Clock(); var c = new ContinuousCollectionController(clock);
         c.Tick(true, Playing);
-        var intermediate = Playing with { FinalResult = ContinuousCollectionLoop.IsFinalResult(false, true, "Emj", scores), CanLeave = true };
+        var intermediate = Playing with { FinalResult = ContinuousCollectionLoop.IsFinalResult(false, true, EmjCollectable, scores), CanLeave = true };
         c.Tick(true, intermediate); clock.Advance(30);
         Assert.Equal(CollectionAction.None, c.Tick(true, intermediate));
         Assert.Equal("Playing and recording", c.Status);
@@ -230,6 +231,9 @@ public class ContinuousCollectionTests
         Assert.Equal(CollectionAction.None, c.Tick(true, Playing with { CanLeave = true }));
     }
 
+    // English international client today: Emj table, emj.json resolved, bundled Emj profile for the build.
+    private static readonly bool EmjCollectable = CollectionGate.IsCollectableVariant("Emj", "Emj", variantHasProfile: true);
+
     [Theory]
     [InlineData(true, true, true, "Emj", false, true, true)]
     [InlineData(false, true, true, "Emj", false, true, false)]
@@ -241,8 +245,76 @@ public class ContinuousCollectionTests
     public void Leave_gate_requires_confirmed_same_table_and_native_permission(
         bool completed, bool target, bool present, string variant, bool transition, bool native, bool expected)
     {
+        // Loaded layouts are Emj/EmjL/EmjJP(addon EmjL); only Emj has a profile for the current build.
+        string? layout = variant is "Emj" or "EmjL" ? variant : null;
+        bool collectable = CollectionGate.IsCollectableVariant(variant, layout, variant == "Emj");
         Assert.Equal(expected, ContinuousCollectionLoop.CanLeaveCompletedMatch(
-            completed, target, present, variant, transition, native));
+            completed, target, present, collectable, transition, native));
+    }
+
+    [Theory]
+    [InlineData("Emj", "Emj", true, true)]       // English international Emj: unchanged
+    [InlineData("EmjL", "EmjL", true, true)]     // EmjL with a resolved layout and a profile for this build
+    [InlineData("EmjL", "EmjL", false, false)]   // EmjL layout but no usable profile (e.g. 2026.11.03 today)
+    [InlineData("EmjL", null, true, false)]      // profile but no resolved layout
+    [InlineData("EmjRank", null, false, false)]  // unknown addon
+    [InlineData("Emj", "EmjL", true, false)]     // stale layout from another variant
+    [InlineData(null, null, true, false)]
+    [InlineData("", "", true, false)]
+    public void Collectable_variant_needs_matching_layout_and_usable_profile(
+        string? variant, string? layout, bool profile, bool expected) =>
+        Assert.Equal(expected, CollectionGate.IsCollectableVariant(variant, layout, profile));
+
+    [Fact]
+    public void EmjL_with_layout_and_profile_can_finish_and_leave()
+    {
+        var scores = Mahjong.Core.StateSnapshot.Empty with { AddonStateCode = 27, Scores = [71000, 1400, 13300, 12300] };
+        bool collectable = CollectionGate.IsCollectableVariant("EmjL", "EmjL", variantHasProfile: true);
+        Assert.True(ContinuousCollectionLoop.IsFinalResult(true, true, collectable, scores));
+        Assert.True(ContinuousCollectionLoop.CanLeaveCompletedMatch(true, true, true, collectable, false, true));
+        bool noProfile = CollectionGate.IsCollectableVariant("EmjL", "EmjL", variantHasProfile: false);
+        Assert.False(ContinuousCollectionLoop.IsFinalResult(true, true, noProfile, scores));
+        Assert.False(ContinuousCollectionLoop.CanLeaveCompletedMatch(true, true, true, noProfile, false, true));
+    }
+
+    private static readonly CollectionDutyRow NoviceEast = new(766, 831, 61005, 19);
+
+    [Theory]
+    [InlineData("Novice Mahjong (Quick Ranked Match)")] // English, as checked before
+    [InlineData("新人雀士东风战（快速段位赛）")]           // illustrative non-English names; not read from a live client
+    [InlineData("ドマ式麻雀：東風戦（ランクマッチ）")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void Duty_row_is_verified_from_numeric_columns_whatever_the_client_language(string? localizedName) =>
+        Assert.True(CollectionGate.IsTargetDutyRow(NoviceEast with { Name = localizedName }));
+
+    [Theory]
+    [InlineData(767u, 831u, 61005u, 19u)]  // advanced East row
+    [InlineData(766u, 832u, 61005u, 19u)]  // territory moved
+    [InlineData(766u, 831u, 61006u, 19u)]  // content shifted
+    [InlineData(766u, 831u, 0u, 19u)]
+    [InlineData(766u, 831u, 61005u, 0u)]   // content type changed
+    [InlineData(0u, 0u, 0u, 0u)]
+    public void Shifted_or_wrong_duty_row_fails_closed(uint row, uint territory, uint content, uint type)
+    {
+        // Even the expected English name does not rescue a row whose links moved.
+        Assert.False(CollectionGate.IsTargetDutyRow(new CollectionDutyRow(row, territory, content, type, "Novice Mahjong (Quick Ranked Match)")));
+        Assert.False(CollectionGate.IsTargetDutyRow(null));
+    }
+
+    [Fact]
+    public void Usable_profile_is_exact_build_and_variant_and_independent_of_trial_switch()
+    {
+        var emj = new Mahjong.Plugin.Game.Mjai.MahjongProtocolProfile("2026.11.03.0000.0000", "Emj", false, "e", new(),
+            Mahjong.Plugin.Game.Mjai.DomanMortalTrialGuard.Scope, "trial evidence");
+        var candidate = emj with { Variant = "EmjL", LimitedTrialScope = null, LimitedTrialEvidence = null };
+        using var capture = new Mahjong.Plugin.Dalamud.Mortal.MahjongNetworkCapture("2026.11.03.0000.0000", () => null, [emj, candidate]);
+        Assert.True(capture.HasUsableProfileFor("Emj"));
+        Assert.False(capture.HasUsableProfileFor("EmjL")); // unverified candidate without trial scope
+        Assert.False(capture.HasUsableProfileFor(null));
+        Assert.False(capture.ProtocolAdmitted); // admission itself is untouched
+        using var other = new Mahjong.Plugin.Dalamud.Mortal.MahjongNetworkCapture("2026.11.04.0000.0000", () => "Emj", [emj]);
+        Assert.False(other.HasUsableProfileFor("Emj"));
     }
 
     [Fact]

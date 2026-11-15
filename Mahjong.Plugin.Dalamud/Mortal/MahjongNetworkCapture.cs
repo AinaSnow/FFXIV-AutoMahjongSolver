@@ -58,6 +58,9 @@ public sealed class MahjongNetworkCapture : IDisposable
     /// <summary>Any bundled or learned profile exists for this exact build, regardless of the trial switch.</summary>
     public bool HasProfileForVersion => profiles.Any(p => p.GameVersion == gameVersion);
     public bool LearningWanted => learningEnabled() && !HasProfileForVersion && gameVersion is not null;
+    /// <summary>A verified or limited-trial-scoped profile exists for this build and variant. Read-only; admission is unchanged.</summary>
+    public bool HasUsableProfileFor(string? variant) =>
+        profiles.Any(p => p.Matches(gameVersion, variant) || p.MatchesLimitedTrial(gameVersion, variant));
     private readonly Func<string?> variantAccessor;
     private readonly Func<bool> trialEnabled;
     private readonly object admissionLock = new();

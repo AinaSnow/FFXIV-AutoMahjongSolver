@@ -15,20 +15,29 @@
 
 ## 适配与保护
 
-限定国际服 `2026.09.15.0000.0000`。已从本机该版本游戏表读取并在启动时再核对：
+需要当前版本至少有一个内置或自动学习的协议 profile。下表数值从本机国际服 `2026.09.15.0000.0000` 英文游戏表读取，插件加载时再核对：
 
 | 项目 | 值 |
 | --- | --- |
-| ContentFinderCondition | 766 — Novice Mahjong (Quick Ranked Match) |
+| ContentFinderCondition | 766（英文名 Novice Mahjong (Quick Ranked Match)） |
 | TerritoryType / ContentType | 831 / 19 |
 | Content | 61005 |
+
+核对只比较行号 766 与它链接的 TerritoryType、Content、ContentType 三个数字列，用客户端自身语言加载表，
+不再比较英文名称，也不再强制加载英文表。名称只写入日志 `[Collection] Duty sheet (...)` 作辅助信息。
+补丁后行号挪位或被复用时，三个链接值任一不符即判定未验证、拒绝开启（按原有提示“匹配流程尚未验证”）。
 
 使用普通段位玩家东风排位；高级段位东风 767、半庄 643/644、四人组队 768/769 不会被当作目标。
 任务身份读 `GameMain.CurrentContentFinderConditionId`，不能仅凭所有麻将模式共用的 831 场地判断。
 队列必须只有一个目标任务且不是随机任务，进场还必须核对弹出的任务 ID。
 点击当前 Commence 按钮登记的 ButtonClick 事件，绝不自动确认通用 Yes/No 对话框。
 
-离场同时要求目标任务的 Dalamud `DutyCompleted` 完成通知、实际 Emj 窗口、空手牌、状态 27 和有效最终分数，稳定 5 秒且游戏允许离开。
+离场同时要求目标任务的 Dalamud `DutyCompleted` 完成通知、可采集的麻将窗口、空手牌、状态 27 和有效最终分数，稳定 5 秒且游戏允许离开。
+“可采集”指：窗口名（`Emj`、`EmjL` 等）与本桌已解析布局（`data/layouts/*.json`）的 `addonName` 一致，
+且当前游戏版本有该窗口名的协议 profile（已验证，或带当前试用范围；内置与 `learned-protocols/` 都算，与 Mortal 试用开关无关）。
+不满足时不自动离场并记一次警告日志，其余行为与以前非 `Emj` 窗口相同；Mortal 准入（`DomanMortalTrialGuard`）不受影响。
+当前 `2026.11.03` 只有 `Emj` profile，因此北美 `EmjL` 仍不可采集；自动学习只在该版本完全没有 profile 时运行，
+所以需要先为 `EmjL` 提供 profile（见路线图 B2）。
 状态 27 也会短暂出现在局间，因此不再单独将它当成整场结束；完成后由游戏或玩家提前离桌，同样只计一次，不要求插件发出 Leave。
 完成通知按任务、场地和角色核对，注销与换角色清除通知。没有收到确认时不把中途离开计为完成；它不是归档文件数。
 状态 29/32 的小局结算不能触发离场。离场后至少等待 10 秒再排；原有后台归档流程照常封口。
@@ -47,6 +56,10 @@
 自动测试覆盖完整循环、超过一天继续运行、停止时的排队状态、热重载接管、角色切换、错误任务、
 晚到的排队确认、最终结算稳定性、有限重试、录制故障以及旧配置兼容。
 2026-09-24 六场实机日志已确认连续排队、确认进场和归档循环。此次新增的完成通知计数和离场条件已通过状态机回归，仍需后续正常对局核对 `[Collection] Observed player East-only duty completion`；旧记录没有这一信号，无法离线证明新通知在麻将中到达。无需为此专门随机补采。
+
+2026-11-16 去英文硬编码只经过离线单元测试（`CollectionGate` 与离场门槛）。尚无人在国服、日服、北美或其他非英文客户端实机运行过持续采集；
+各语言客户端的 766/831/61005/19 是否一致、国服版本行号是否相同均未实测，首次使用请查看 `[Collection] Duty sheet` 日志。
+不一致时插件会拒绝开启而不会排错任务。
 
 接口依据为本机 Dalamud/FFXIVClientStructs 绑定与上游声明：
 [ContentsFinder](https://github.com/aers/FFXIVClientStructs/blob/main/FFXIVClientStructs/FFXIV/Client/Game/UI/ContentsFinder.cs)、
