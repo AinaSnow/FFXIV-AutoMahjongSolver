@@ -1,0 +1,2969 @@
+{
+  "note": "7.58 (2026.11.03 Emj) public mapped events for three kan hands. Opaque payload fields and all result fields except the four score words are zeroed; opponent draw/replacement tiles are hidden; no names, actor/content IDs, IPC headers, roster or opponent concealed hands. UI checkpoints are tile ids of the self closed hand and dora indicators read from the match archive. Not a verified live profile.",
+  "game_version": "2026.11.03.0000.0000",
+  "variant": "Emj",
+  "hands": [
+    {
+      "label": "self-ankan-then-0x211",
+      "capture_sha256": "e9e7e96088f19167289ea05c7215368b3f7aff65f6d1c1887a50378f91731b03",
+      "ui_source": {
+        "file": "game-20261115-134529-hand01.ndjson",
+        "sha256": "9b9df1de909a0ff8c1f111b7474fbf83d88d6395f62bae912586839a4a500acb"
+      },
+      "ui_result_kind": "unknown",
+      "ui_deltas": [
+        -1000,
+        9000,
+        0,
+        -8000
+      ],
+      "ui_scores_after": [
+        24000,
+        34000,
+        25000,
+        17000
+      ],
+      "ui_checkpoints": [
+        {
+          "after_sequence": 101,
+          "hand": [
+            1,
+            3,
+            5,
+            6,
+            12,
+            13,
+            14,
+            21,
+            22,
+            23,
+            4
+          ],
+          "riichi": false,
+          "dora": [
+            10,
+            19
+          ]
+        },
+        {
+          "after_sequence": 105,
+          "hand": [
+            3,
+            4,
+            5,
+            6,
+            12,
+            13,
+            14,
+            21,
+            22,
+            23
+          ],
+          "riichi": true
+        }
+      ],
+      "packets": [
+        {
+          "sequence": 4,
+          "t": "2026-11-15T13:45:29.7796163+00:00",
+          "opcode": "0x0370",
+          "message_id": 637,
+          "payload_hex": "000000000000000000000000000000000000000000000000000000000A000000FA000000FA000000FA000000FA000000080000001B0000001D0000001F0000000E0000000600000017000000030000001B000000010000000D000000160000001E00000000000000"
+        },
+        {
+          "sequence": 14,
+          "t": "2026-11-15T13:45:37.0534927+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "00000000000100005400FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 17,
+          "t": "2026-11-15T13:45:39.5975958+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000100100007400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 18,
+          "t": "2026-11-15T13:45:39.7309219+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 20,
+          "t": "2026-11-15T13:45:40.6646724+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100100006800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 21,
+          "t": "2026-11-15T13:45:40.7649132+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0200000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 23,
+          "t": "2026-11-15T13:45:43.2163088+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000100100008000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 27,
+          "t": "2026-11-15T13:45:45.3030123+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 28,
+          "t": "2026-11-15T13:45:46.2380699+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000100100004C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 31,
+          "t": "2026-11-15T13:45:48.3406956+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "00000000000100003000FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 33,
+          "t": "2026-11-15T13:45:50.0752618+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000100100007800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 34,
+          "t": "2026-11-15T13:45:50.3071143+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 37,
+          "t": "2026-11-15T13:45:51.1917574+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100100007400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 38,
+          "t": "2026-11-15T13:45:51.2750867+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0200000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 39,
+          "t": "2026-11-15T13:45:53.2433277+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000120100007000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 41,
+          "t": "2026-11-15T13:45:54.6617755+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000050000FFFFFFFF70007000FFFFFFFF00000000"
+        },
+        {
+          "sequence": 43,
+          "t": "2026-11-15T13:45:55.9461176+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100A00008400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 44,
+          "t": "2026-11-15T13:45:56.0459853+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0200000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 47,
+          "t": "2026-11-15T13:45:59.9655069+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000100100002800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 51,
+          "t": "2026-11-15T13:46:01.6175501+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 53,
+          "t": "2026-11-15T13:46:03.8878173+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000120100005400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 55,
+          "t": "2026-11-15T13:46:04.8304065+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "00000000000100006C00FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 58,
+          "t": "2026-11-15T13:46:06.3358971+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000100100007C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 59,
+          "t": "2026-11-15T13:46:06.4189529+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 60,
+          "t": "2026-11-15T13:46:07.6197933+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100100002000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 61,
+          "t": "2026-11-15T13:46:07.7199595+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0200000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 65,
+          "t": "2026-11-15T13:46:10.740651+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000100100004800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 66,
+          "t": "2026-11-15T13:46:10.8407925+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 68,
+          "t": "2026-11-15T13:46:13.5092221+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000100100000C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 69,
+          "t": "2026-11-15T13:46:13.6427964+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "00000000000100001400FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 72,
+          "t": "2026-11-15T13:46:15.9986959+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000100100002000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 73,
+          "t": "2026-11-15T13:46:16.0822567+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 75,
+          "t": "2026-11-15T13:46:18.7175671+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100100008400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 76,
+          "t": "2026-11-15T13:46:18.8008872+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0200000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 79,
+          "t": "2026-11-15T13:46:20.8526009+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000120100004800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 80,
+          "t": "2026-11-15T13:46:20.9365192+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 82,
+          "t": "2026-11-15T13:46:22.1866636+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000120100008000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 83,
+          "t": "2026-11-15T13:46:22.3216378+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "00000000000100007C00FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 84,
+          "t": "2026-11-15T13:46:23.6206643+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000120100007C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 85,
+          "t": "2026-11-15T13:46:23.7041632+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 87,
+          "t": "2026-11-15T13:46:24.9882272+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100100000000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 91,
+          "t": "2026-11-15T13:46:27.2566499+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0200000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 93,
+          "t": "2026-11-15T13:46:29.3911552+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000100100005000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 94,
+          "t": "2026-11-15T13:46:29.491159+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 97,
+          "t": "2026-11-15T13:46:30.7760913+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000120100007000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 98,
+          "t": "2026-11-15T13:46:30.909546+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "00000000000100006C00FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 99,
+          "t": "2026-11-15T13:46:32.1135643+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0000000030010000FFFFFFFF6C006C006C006C0000000000"
+        },
+        {
+          "sequence": 101,
+          "t": "2026-11-15T13:46:33.2815111+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "000000000002000010004C002400FFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 105,
+          "t": "2026-11-15T13:46:37.9130305+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000110200000400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 106,
+          "t": "2026-11-15T13:46:37.9965306+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 107,
+          "t": "2026-11-15T13:46:39.1150462+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000120100007400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 109,
+          "t": "2026-11-15T13:46:39.1984076+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0200000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 113,
+          "t": "2026-11-15T13:46:43.5199294+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000120100004800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 114,
+          "t": "2026-11-15T13:46:43.6032347+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 115,
+          "t": "2026-11-15T13:46:44.4200094+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000100100002000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 116,
+          "t": "2026-11-15T13:46:44.5366547+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "00000000000100001000FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 118,
+          "t": "2026-11-15T13:46:45.6549247+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000120100001000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 120,
+          "t": "2026-11-15T13:46:45.7548677+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 122,
+          "t": "2026-11-15T13:46:48.9948626+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000120100000000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 127,
+          "t": "2026-11-15T13:46:53.6277671+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0200000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 132,
+          "t": "2026-11-15T13:47:00.0517167+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000100100006800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 136,
+          "t": "2026-11-15T13:47:02.0187355+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 137,
+          "t": "2026-11-15T13:47:02.9532977+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000100100006800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 138,
+          "t": "2026-11-15T13:47:03.0866053+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "00000000000100002400FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 140,
+          "t": "2026-11-15T13:47:04.2380839+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000120100002400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 142,
+          "t": "2026-11-15T13:47:05.8055077+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 146,
+          "t": "2026-11-15T13:47:09.1914801+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100100001000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 147,
+          "t": "2026-11-15T13:47:09.2913952+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0200000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 150,
+          "t": "2026-11-15T13:47:11.6925836+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000120100007C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 151,
+          "t": "2026-11-15T13:47:11.9259647+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 153,
+          "t": "2026-11-15T13:47:13.8440687+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000120100000400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 154,
+          "t": "2026-11-15T13:47:13.9773915+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "00000000000100004800FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 156,
+          "t": "2026-11-15T13:47:15.1278088+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000120100004800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 157,
+          "t": "2026-11-15T13:47:15.31123+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 163,
+          "t": "2026-11-15T13:47:23.1670227+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100100005000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 164,
+          "t": "2026-11-15T13:47:23.300698+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0200000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 167,
+          "t": "2026-11-15T13:47:26.6359499+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000100100000400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 168,
+          "t": "2026-11-15T13:47:26.7360081+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 170,
+          "t": "2026-11-15T13:47:27.7034539+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000100100002400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 173,
+          "t": "2026-11-15T13:47:29.805179+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "00000000000100003C00FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 175,
+          "t": "2026-11-15T13:47:30.9723743+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000120100003C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 180,
+          "t": "2026-11-15T13:47:37.8815856+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000060000FFFFFFFF35003800FFFFFFFF00000000"
+        },
+        {
+          "sequence": 181,
+          "t": "2026-11-15T13:47:38.7345936+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100A00004400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 187,
+          "t": "2026-11-15T13:47:43.221998+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0200000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 189,
+          "t": "2026-11-15T13:47:45.5068639+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000100100004400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 190,
+          "t": "2026-11-15T13:47:45.5902445+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 192,
+          "t": "2026-11-15T13:47:46.6576972+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000100100002400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 193,
+          "t": "2026-11-15T13:47:46.791008+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "00000000000100000400FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 194,
+          "t": "2026-11-15T13:47:47.9590409+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000120100000400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 195,
+          "t": "2026-11-15T13:47:48.0423293+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 201,
+          "t": "2026-11-15T13:47:54.8161814+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100100003C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 204,
+          "t": "2026-11-15T13:47:56.871374+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0200000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 208,
+          "t": "2026-11-15T13:48:01.0595291+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000100100007800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 209,
+          "t": "2026-11-15T13:48:01.1429608+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 211,
+          "t": "2026-11-15T13:48:01.777175+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000100100005000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 212,
+          "t": "2026-11-15T13:48:01.9108393+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "00000000000100005800FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 213,
+          "t": "2026-11-15T13:48:03.0614977+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000120100005800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 215,
+          "t": "2026-11-15T13:48:03.1619528+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 216,
+          "t": "2026-11-15T13:48:06.0477204+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000120100001C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 219,
+          "t": "2026-11-15T13:48:06.3651892+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0200000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 225,
+          "t": "2026-11-15T13:48:15.6728679+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000100100003C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 228,
+          "t": "2026-11-15T13:48:18.0918076+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 233,
+          "t": "2026-11-15T13:48:21.6614735+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000100100004000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 234,
+          "t": "2026-11-15T13:48:23.4802774+00:00",
+          "opcode": "0x0114",
+          "message_id": 640,
+          "payload_hex": "000000000000000000000000000000000000000000000000000000000000000000000000F000000054010000FA000000AA0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "sequence": 244,
+          "t": "2026-11-15T13:48:36.8156143+00:00",
+          "opcode": "0x0370",
+          "message_id": 637,
+          "payload_hex": "000000000000000001000000000000000000000000000000030000001C00000054010000FA000000AA000000F00000001B0000001A0000000F0000000D0000001F0000001D000000000000000F0000001E0000000300000001000000190000001000000000000000"
+        }
+      ]
+    },
+    {
+      "label": "self-kakan-then-ryukyoku",
+      "capture_sha256": "5e0759fab628f3b1ca9b0e18249fdaa9c29d30c392262e0901edf867c4a46e64",
+      "ui_source": {
+        "file": "game-20261114-135144-hand03.ndjson",
+        "sha256": "2fc4d5c9d35136ae8366dc87d9be82787692c43fec46e8d87fce7fe8a4e45b00"
+      },
+      "ui_result_kind": "draw",
+      "ui_deltas": [
+        1500,
+        -1500,
+        1500,
+        -1500
+      ],
+      "ui_scores_after": [
+        26500,
+        17500,
+        32500,
+        23500
+      ],
+      "ui_checkpoints": [
+        {
+          "after_sequence": 613,
+          "hand": [
+            11,
+            12,
+            14,
+            15,
+            16
+          ],
+          "riichi": false,
+          "dora": [
+            3,
+            5
+          ]
+        }
+      ],
+      "packets": [
+        {
+          "sequence": 404,
+          "t": "2026-11-14T13:51:42.6821304+00:00",
+          "opcode": "0x0370",
+          "message_id": 637,
+          "payload_hex": "0000000000000000020000000000000000000000000000000000000003000000FA000000BE00000036010000FA00000021000000000000000B00000006000000200000000C0000000F0000001B000000210000001300000002000000200000001E00000000000000"
+        },
+        {
+          "sequence": 411,
+          "t": "2026-11-14T13:51:51.4129618+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "00000000000100007800FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 412,
+          "t": "2026-11-14T13:51:52.2296442+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000100100004C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 414,
+          "t": "2026-11-14T13:51:53.299123+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 418,
+          "t": "2026-11-14T13:51:55.2513919+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100100008000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 419,
+          "t": "2026-11-14T13:51:56.0527583+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0000000000050000FFFFFFFF80008000FFFFFFFF00000000"
+        },
+        {
+          "sequence": 421,
+          "t": "2026-11-14T13:51:57.656051+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000100A00001800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 423,
+          "t": "2026-11-14T13:51:59.4445093+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 426,
+          "t": "2026-11-14T13:52:00.3281515+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100100008400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 428,
+          "t": "2026-11-14T13:52:02.6989699+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0000000000050000FFFFFFFF84008400FFFFFFFF00000000"
+        },
+        {
+          "sequence": 430,
+          "t": "2026-11-14T13:52:04.317431+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000100A00000000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 431,
+          "t": "2026-11-14T13:52:04.3509261+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 434,
+          "t": "2026-11-14T13:52:07.0247471+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100100005400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 436,
+          "t": "2026-11-14T13:52:08.1939931+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0200000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 437,
+          "t": "2026-11-14T13:52:08.7277055+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000100100007800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 439,
+          "t": "2026-11-14T13:52:09.846678+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0000000000050000FFFFFFFF78007800FFFFFFFF00000000"
+        },
+        {
+          "sequence": 442,
+          "t": "2026-11-14T13:52:11.5332919+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000100A00000800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 443,
+          "t": "2026-11-14T13:52:11.6166689+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 445,
+          "t": "2026-11-14T13:52:14.5208493+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100100002800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 446,
+          "t": "2026-11-14T13:52:14.7557677+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0200000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 449,
+          "t": "2026-11-14T13:52:16.2585372+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000100100006400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 450,
+          "t": "2026-11-14T13:52:16.3919697+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 451,
+          "t": "2026-11-14T13:52:17.3777232+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000100100000000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 452,
+          "t": "2026-11-14T13:52:17.5117811+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "00000000000100004000FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 454,
+          "t": "2026-11-14T13:52:19.38207+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000100100006C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 455,
+          "t": "2026-11-14T13:52:19.4664356+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 459,
+          "t": "2026-11-14T13:52:22.4694433+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000120100002000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 460,
+          "t": "2026-11-14T13:52:22.6869168+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0200000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 462,
+          "t": "2026-11-14T13:52:23.9731666+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000120100006C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 463,
+          "t": "2026-11-14T13:52:24.0731263+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 465,
+          "t": "2026-11-14T13:52:25.8580785+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000100100001800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 466,
+          "t": "2026-11-14T13:52:25.9914029+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "00000000000100007000FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 467,
+          "t": "2026-11-14T13:52:26.8254178+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000120100007000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 469,
+          "t": "2026-11-14T13:52:26.9254921+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 473,
+          "t": "2026-11-14T13:52:31.7860134+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100100001C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 474,
+          "t": "2026-11-14T13:52:31.9526917+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0200000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 476,
+          "t": "2026-11-14T13:52:33.6057695+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000120100000C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 477,
+          "t": "2026-11-14T13:52:33.7392043+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 479,
+          "t": "2026-11-14T13:52:35.5253784+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000100100001C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 480,
+          "t": "2026-11-14T13:52:35.6589349+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "00000000000100000800FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 482,
+          "t": "2026-11-14T13:52:38.3464984+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000120100000800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 486,
+          "t": "2026-11-14T13:52:40.4341803+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 489,
+          "t": "2026-11-14T13:52:44.2745877+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100100001C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 490,
+          "t": "2026-11-14T13:52:44.491454+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0200000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 493,
+          "t": "2026-11-14T13:52:46.5470199+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000120100007000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 494,
+          "t": "2026-11-14T13:52:46.847408+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 495,
+          "t": "2026-11-14T13:52:47.7813622+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000100100007000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 497,
+          "t": "2026-11-14T13:52:47.9313322+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "00000000000100000000FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 499,
+          "t": "2026-11-14T13:52:50.818039+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000120100000000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 503,
+          "t": "2026-11-14T13:52:52.9859618+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 505,
+          "t": "2026-11-14T13:52:55.0636598+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100100001400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 506,
+          "t": "2026-11-14T13:52:55.2971966+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0200000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 508,
+          "t": "2026-11-14T13:52:56.5822674+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000100100005C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 509,
+          "t": "2026-11-14T13:52:56.666401+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 511,
+          "t": "2026-11-14T13:52:58.4032265+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000100100008000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 512,
+          "t": "2026-11-14T13:52:58.5366551+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "00000000000100007000FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 513,
+          "t": "2026-11-14T13:52:59.7887078+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000120100007000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 514,
+          "t": "2026-11-14T13:52:59.8386688+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 519,
+          "t": "2026-11-14T13:53:04.9492134+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100100006800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 520,
+          "t": "2026-11-14T13:53:05.1831909+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0200000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 523,
+          "t": "2026-11-14T13:53:07.9700236+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000100100002400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 527,
+          "t": "2026-11-14T13:53:10.6072394+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 530,
+          "t": "2026-11-14T13:53:13.0932689+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000100100006800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 531,
+          "t": "2026-11-14T13:53:13.2270187+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "00000000000100005400FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 533,
+          "t": "2026-11-14T13:53:15.2324021+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000120100005400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 536,
+          "t": "2026-11-14T13:53:16.2177478+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 538,
+          "t": "2026-11-14T13:53:18.8382463+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000120100001400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 539,
+          "t": "2026-11-14T13:53:19.0715138+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0200000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 540,
+          "t": "2026-11-14T13:53:20.0062181+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000120100006000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 541,
+          "t": "2026-11-14T13:53:20.0895763+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 546,
+          "t": "2026-11-14T13:53:25.0467861+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000120100005C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 547,
+          "t": "2026-11-14T13:53:25.1801541+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "00000000000100007C00FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 549,
+          "t": "2026-11-14T13:53:26.7501335+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000120100007C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 550,
+          "t": "2026-11-14T13:53:26.7834055+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 552,
+          "t": "2026-11-14T13:53:28.4852578+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000120100007C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 553,
+          "t": "2026-11-14T13:53:28.7019598+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0200000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 554,
+          "t": "2026-11-14T13:53:29.6873883+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000120100006000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 555,
+          "t": "2026-11-14T13:53:29.8209659+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 560,
+          "t": "2026-11-14T13:53:34.6464222+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000100100005800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 561,
+          "t": "2026-11-14T13:53:34.7798586+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "00000000000100001C00FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 564,
+          "t": "2026-11-14T13:53:36.5500246+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000120100001C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 565,
+          "t": "2026-11-14T13:53:36.650086+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 566,
+          "t": "2026-11-14T13:53:38.2544143+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100100006800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 567,
+          "t": "2026-11-14T13:53:38.4375705+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0200000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 569,
+          "t": "2026-11-14T13:53:39.5050962+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000120100007C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 570,
+          "t": "2026-11-14T13:53:39.5884046+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 574,
+          "t": "2026-11-14T13:53:41.8572487+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000120100005900FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 575,
+          "t": "2026-11-14T13:53:41.9905748+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "00000000000100006400FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 576,
+          "t": "2026-11-14T13:53:43.9913103+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000120100006400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 580,
+          "t": "2026-11-14T13:53:45.7433181+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 582,
+          "t": "2026-11-14T13:53:48.6321336+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100100005C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 583,
+          "t": "2026-11-14T13:53:48.8655873+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0200000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 587,
+          "t": "2026-11-14T13:53:52.9219669+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000120100003400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 590,
+          "t": "2026-11-14T13:53:54.5652004+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 592,
+          "t": "2026-11-14T13:53:55.9913744+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000100100005800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 593,
+          "t": "2026-11-14T13:53:56.1625464+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "00000000000100006000FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 595,
+          "t": "2026-11-14T13:53:57.5445715+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000120100006000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 596,
+          "t": "2026-11-14T13:53:57.5943964+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 599,
+          "t": "2026-11-14T13:54:01.2085975+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100100000400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 603,
+          "t": "2026-11-14T13:54:02.8605706+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0200000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 604,
+          "t": "2026-11-14T13:54:05.3543308+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000120100005000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 608,
+          "t": "2026-11-14T13:54:06.961024+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 609,
+          "t": "2026-11-14T13:54:07.845071+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000120100006C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 610,
+          "t": "2026-11-14T13:54:07.9825889+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "00000000000100008400FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 612,
+          "t": "2026-11-14T13:54:09.2789521+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "000000000000000040010000FFFFFFFF84007800FFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 613,
+          "t": "2026-11-14T13:54:10.4311838+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0000000000020000380014001800FFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 617,
+          "t": "2026-11-14T13:54:13.2851795+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000100200003000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 620,
+          "t": "2026-11-14T13:54:14.9034549+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 622,
+          "t": "2026-11-14T13:54:16.9064553+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000120100002000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 623,
+          "t": "2026-11-14T13:54:17.2571139+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0200000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 625,
+          "t": "2026-11-14T13:54:18.6910083+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000120100000000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 626,
+          "t": "2026-11-14T13:54:18.7745674+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 627,
+          "t": "2026-11-14T13:54:19.5756507+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000100100003000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 628,
+          "t": "2026-11-14T13:54:19.7089368+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "00000000000100005800FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 631,
+          "t": "2026-11-14T13:54:21.2292123+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000120100005800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 635,
+          "t": "2026-11-14T13:54:24.9696152+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 638,
+          "t": "2026-11-14T13:54:29.3951378+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000120100001000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 639,
+          "t": "2026-11-14T13:54:29.5617598+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0200000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 642,
+          "t": "2026-11-14T13:54:31.1306525+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000120100001000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 646,
+          "t": "2026-11-14T13:54:33.1823128+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 647,
+          "t": "2026-11-14T13:54:33.8005017+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000100100003000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 648,
+          "t": "2026-11-14T13:54:33.9337955+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "00000000000100004800FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 649,
+          "t": "2026-11-14T13:54:35.1007363+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000120100004800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 650,
+          "t": "2026-11-14T13:54:35.1842837+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 653,
+          "t": "2026-11-14T13:54:37.1021268+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000120100000400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 655,
+          "t": "2026-11-14T13:54:38.5373697+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0200000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 657,
+          "t": "2026-11-14T13:54:39.8224892+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000120100006C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 658,
+          "t": "2026-11-14T13:54:39.9224331+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 659,
+          "t": "2026-11-14T13:54:41.1232496+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000100100001100FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 661,
+          "t": "2026-11-14T13:54:41.2567074+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "00000000000100007400FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 664,
+          "t": "2026-11-14T13:54:43.9277926+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000120100007400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 665,
+          "t": "2026-11-14T13:54:44.027753+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 667,
+          "t": "2026-11-14T13:54:45.6793607+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000120100004800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 668,
+          "t": "2026-11-14T13:54:45.845891+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0200000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 670,
+          "t": "2026-11-14T13:54:47.7654888+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000120100007400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 672,
+          "t": "2026-11-14T13:54:47.8652766+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 673,
+          "t": "2026-11-14T13:54:48.6162536+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000100100007400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 674,
+          "t": "2026-11-14T13:54:48.7499995+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "00000000000100007C00FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 675,
+          "t": "2026-11-14T13:54:50.3919538+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000120100007C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 676,
+          "t": "2026-11-14T13:54:50.4922068+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 680,
+          "t": "2026-11-14T13:54:52.8953154+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000120100006800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 681,
+          "t": "2026-11-14T13:54:53.0788683+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0200000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 683,
+          "t": "2026-11-14T13:54:54.6315274+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000120100006400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 684,
+          "t": "2026-11-14T13:54:54.7649238+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 685,
+          "t": "2026-11-14T13:54:55.6162237+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000100100007800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 686,
+          "t": "2026-11-14T13:54:55.7503606+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "00000000000100005000FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 689,
+          "t": "2026-11-14T13:54:57.6221896+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000120100005000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 690,
+          "t": "2026-11-14T13:54:57.7055845+00:00",
+          "opcode": "0x03E1",
+          "message_id": 643,
+          "payload_hex": "000000000000000009010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000AF00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000045010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000EB000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "sequence": 695,
+          "t": "2026-11-14T13:55:04.4480567+00:00",
+          "opcode": "0x0370",
+          "message_id": 637,
+          "payload_hex": "000000000000000002000000010000000000000000000000000000001400000009010000AF00000045010000EB0000001500000019000000040000000B0000001100000010000000020000000E0000000D0000001500000005000000040100001200000000000000"
+        }
+      ]
+    },
+    {
+      "label": "opponent-daiminkan-then-ryukyoku",
+      "capture_sha256": "99e27ad11a5055e4a8b76473c4ea3a54ba051b6f7502c5f0f85700413898caab",
+      "ui_source": {
+        "file": "game-20261115-102730-hand04.ndjson",
+        "sha256": "ed2a4afd53bf7ee0e3d382224f68f48d54d66989921fc7c71d5ab1b63827778b"
+      },
+      "ui_result_kind": "draw",
+      "ui_deltas": [
+        -1500,
+        -1500,
+        1500,
+        1500
+      ],
+      "ui_scores_after": [
+        29300,
+        22500,
+        25900,
+        22300
+      ],
+      "ui_checkpoints": [
+        {
+          "after_sequence": 756,
+          "dora": [
+            22,
+            7
+          ]
+        }
+      ],
+      "packets": [
+        {
+          "sequence": 607,
+          "t": "2026-11-15T10:27:29.453417+00:00",
+          "opcode": "0x0370",
+          "message_id": 637,
+          "payload_hex": "0000000000000000020000000000000000000000000000000200000016000000F4000000D000000034010000F00000001F00000016000000040000000D0000001400000009000000150000000E0000001B0000000F00000014000000070000001F00000000000000"
+        },
+        {
+          "sequence": 614,
+          "t": "2026-11-15T10:27:38.0636003+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0000000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 616,
+          "t": "2026-11-15T10:27:39.7988946+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000120100000000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 617,
+          "t": "2026-11-15T10:27:40.199321+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 619,
+          "t": "2026-11-15T10:27:41.9342573+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100100007800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 621,
+          "t": "2026-11-15T10:27:42.0675263+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "02000000000100008400FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 623,
+          "t": "2026-11-15T10:27:42.7392747+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000100100006C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 624,
+          "t": "2026-11-15T10:27:42.8227023+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 625,
+          "t": "2026-11-15T10:27:45.0592141+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000100100005000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 628,
+          "t": "2026-11-15T10:27:47.021137+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0000000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 631,
+          "t": "2026-11-15T10:27:49.1891657+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000120100000400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 632,
+          "t": "2026-11-15T10:27:49.2891792+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 634,
+          "t": "2026-11-15T10:27:51.107283+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100100004400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 635,
+          "t": "2026-11-15T10:27:51.4239101+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "02000000000100000000FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 638,
+          "t": "2026-11-15T10:27:52.3643718+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000100100008400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 639,
+          "t": "2026-11-15T10:27:52.4474124+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 641,
+          "t": "2026-11-15T10:27:55.4329902+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000100100004400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 642,
+          "t": "2026-11-15T10:27:55.5662627+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0000000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 645,
+          "t": "2026-11-15T10:27:57.7018374+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000100100004800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 646,
+          "t": "2026-11-15T10:27:57.8025061+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 647,
+          "t": "2026-11-15T10:27:59.6204145+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100100000800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 648,
+          "t": "2026-11-15T10:27:59.7536986+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "02000000000100004800FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 650,
+          "t": "2026-11-15T10:28:00.52148+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000100100002400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 651,
+          "t": "2026-11-15T10:28:00.6881267+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 655,
+          "t": "2026-11-15T10:28:03.9915571+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000120100005000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 657,
+          "t": "2026-11-15T10:28:05.0133263+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0000000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 658,
+          "t": "2026-11-15T10:28:06.2154277+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000100100004C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 659,
+          "t": "2026-11-15T10:28:06.3154863+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 663,
+          "t": "2026-11-15T10:28:09.9685024+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100100004C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 666,
+          "t": "2026-11-15T10:28:12.1571771+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "02000000000100002800FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 669,
+          "t": "2026-11-15T10:28:13.8428146+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000120100002800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 672,
+          "t": "2026-11-15T10:28:15.8946139+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 678,
+          "t": "2026-11-15T10:28:22.7857303+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000100100002400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 679,
+          "t": "2026-11-15T10:28:22.9190609+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0000000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 681,
+          "t": "2026-11-15T10:28:24.6196585+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000100100006400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 682,
+          "t": "2026-11-15T10:28:24.7030349+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 683,
+          "t": "2026-11-15T10:28:26.4542833+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000120100002000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 684,
+          "t": "2026-11-15T10:28:26.5875585+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "02000000000100002C00FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 687,
+          "t": "2026-11-15T10:28:27.7148859+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000120100002C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 688,
+          "t": "2026-11-15T10:28:27.7985501+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 690,
+          "t": "2026-11-15T10:28:30.6520623+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000100100003000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 692,
+          "t": "2026-11-15T10:28:30.7853715+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0000000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 695,
+          "t": "2026-11-15T10:28:34.004061+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000100100001000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 697,
+          "t": "2026-11-15T10:28:36.006615+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 700,
+          "t": "2026-11-15T10:28:37.4419675+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100100001400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 701,
+          "t": "2026-11-15T10:28:37.5753953+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "02000000000100007000FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 702,
+          "t": "2026-11-15T10:28:38.7763523+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000120100007000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 703,
+          "t": "2026-11-15T10:28:38.8760393+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 706,
+          "t": "2026-11-15T10:28:41.3784416+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000120100000000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 707,
+          "t": "2026-11-15T10:28:41.5119894+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0000000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 710,
+          "t": "2026-11-15T10:28:42.7474158+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000100100004000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 711,
+          "t": "2026-11-15T10:28:42.8472959+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 712,
+          "t": "2026-11-15T10:28:44.4486533+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000120100004000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 715,
+          "t": "2026-11-15T10:28:46.2839244+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "02000000000100006C00FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 717,
+          "t": "2026-11-15T10:28:47.8016659+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000120100006C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 718,
+          "t": "2026-11-15T10:28:47.8850976+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 720,
+          "t": "2026-11-15T10:28:49.3031128+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000120100004400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 721,
+          "t": "2026-11-15T10:28:49.4365353+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0000000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 722,
+          "t": "2026-11-15T10:28:50.6369479+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000100100003800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 724,
+          "t": "2026-11-15T10:28:50.7370562+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 726,
+          "t": "2026-11-15T10:28:52.0213178+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100100007000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 727,
+          "t": "2026-11-15T10:28:52.155513+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "02000000000100007400FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 729,
+          "t": "2026-11-15T10:28:53.3658397+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000100100000000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 730,
+          "t": "2026-11-15T10:28:53.4658713+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 732,
+          "t": "2026-11-15T10:28:54.532789+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000100100007800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 733,
+          "t": "2026-11-15T10:28:54.6995356+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0000000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 734,
+          "t": "2026-11-15T10:28:57.3016+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000120100006400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 735,
+          "t": "2026-11-15T10:28:57.3849914+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 738,
+          "t": "2026-11-15T10:28:58.8528241+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100100003C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 740,
+          "t": "2026-11-15T10:29:00.0092011+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "02000000000100003400FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 743,
+          "t": "2026-11-15T10:29:01.1274979+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000100100001C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 745,
+          "t": "2026-11-15T10:29:03.1778218+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0000000000050000FFFFFFFF1C001C000400040000000000"
+        },
+        {
+          "sequence": 747,
+          "t": "2026-11-15T10:29:04.3292106+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000100A00002400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 750,
+          "t": "2026-11-15T10:29:06.5153714+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 752,
+          "t": "2026-11-15T10:29:08.4840821+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100100008000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 754,
+          "t": "2026-11-15T10:29:10.535561+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0000000000040000FFFFFFFF800080008000040000000000"
+        },
+        {
+          "sequence": 756,
+          "t": "2026-11-15T10:29:11.6537724+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0000000000020000FFFF1C000000FFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 759,
+          "t": "2026-11-15T10:29:12.5539909+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000120200000400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 760,
+          "t": "2026-11-15T10:29:12.6706396+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 761,
+          "t": "2026-11-15T10:29:14.1551227+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000120100007000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 762,
+          "t": "2026-11-15T10:29:14.288422+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "02000000000100003500FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 763,
+          "t": "2026-11-15T10:29:15.1756026+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000100100001000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 767,
+          "t": "2026-11-15T10:29:18.8434598+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000060000FFFFFFFF14001800FFFFFFFF00000000"
+        },
+        {
+          "sequence": 770,
+          "t": "2026-11-15T10:29:21.6610606+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000100A00006000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 771,
+          "t": "2026-11-15T10:29:21.7944917+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0000000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 773,
+          "t": "2026-11-15T10:29:24.1634385+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000120100005400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 777,
+          "t": "2026-11-15T10:29:26.431586+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 782,
+          "t": "2026-11-15T10:29:31.1684611+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100100001800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 784,
+          "t": "2026-11-15T10:29:32.6029601+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0000000000050000FFFFFFFF180018008000040000000000"
+        },
+        {
+          "sequence": 786,
+          "t": "2026-11-15T10:29:33.6376525+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000100A00006C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 788,
+          "t": "2026-11-15T10:29:35.6893149+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 790,
+          "t": "2026-11-15T10:29:37.2572588+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000120100006C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 791,
+          "t": "2026-11-15T10:29:37.3905647+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "02000000000100004400FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 793,
+          "t": "2026-11-15T10:29:38.4960382+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000120100004400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 794,
+          "t": "2026-11-15T10:29:38.596172+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 797,
+          "t": "2026-11-15T10:29:41.6309391+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000120100000000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 798,
+          "t": "2026-11-15T10:29:41.7642583+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0000000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 802,
+          "t": "2026-11-15T10:29:47.4700476+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000100100003000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 806,
+          "t": "2026-11-15T10:29:49.3870503+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 807,
+          "t": "2026-11-15T10:29:50.5541822+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000120100002000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 808,
+          "t": "2026-11-15T10:29:50.6874398+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "02000000000100002400FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 811,
+          "t": "2026-11-15T10:29:51.940276+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000120100002400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 812,
+          "t": "2026-11-15T10:29:52.0235045+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 814,
+          "t": "2026-11-15T10:29:53.374217+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000120100007000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 817,
+          "t": "2026-11-15T10:29:55.4263454+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0000000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 820,
+          "t": "2026-11-15T10:29:59.6287408+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000100100002C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 824,
+          "t": "2026-11-15T10:30:01.5799818+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 827,
+          "t": "2026-11-15T10:30:04.0822524+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100100004C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 829,
+          "t": "2026-11-15T10:30:05.6057646+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "02000000000100002C00FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 831,
+          "t": "2026-11-15T10:30:06.8514128+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000120100002C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 832,
+          "t": "2026-11-15T10:30:06.9514903+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 834,
+          "t": "2026-11-15T10:30:08.9194138+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000120100002800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 835,
+          "t": "2026-11-15T10:30:09.2700153+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0000000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 840,
+          "t": "2026-11-15T10:30:14.2747742+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000100100002000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 841,
+          "t": "2026-11-15T10:30:14.3581053+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 844,
+          "t": "2026-11-15T10:30:18.2441738+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000100100003000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 847,
+          "t": "2026-11-15T10:30:19.3153431+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "02000000000100003400FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 848,
+          "t": "2026-11-15T10:30:20.0188958+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000100100004800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 849,
+          "t": "2026-11-15T10:30:20.1189494+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 852,
+          "t": "2026-11-15T10:30:22.6206881+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000120100007800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 854,
+          "t": "2026-11-15T10:30:22.7872649+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0000000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 856,
+          "t": "2026-11-15T10:30:24.5376851+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000120100000800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 858,
+          "t": "2026-11-15T10:30:26.722341+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 861,
+          "t": "2026-11-15T10:30:28.1560249+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000120100007800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 862,
+          "t": "2026-11-15T10:30:28.289337+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "02000000000100004800FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 863,
+          "t": "2026-11-15T10:30:28.9161863+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000120100004800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 864,
+          "t": "2026-11-15T10:30:28.999532+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 867,
+          "t": "2026-11-15T10:30:32.3522652+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000120100000C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 868,
+          "t": "2026-11-15T10:30:32.4858711+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0000000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 870,
+          "t": "2026-11-15T10:30:33.4199894+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000120100005400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 873,
+          "t": "2026-11-15T10:30:35.7052627+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 876,
+          "t": "2026-11-15T10:30:37.8918432+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000120100003C00FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 878,
+          "t": "2026-11-15T10:30:39.2632354+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "02000000000100006000FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 880,
+          "t": "2026-11-15T10:30:40.5698911+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000100100005400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 881,
+          "t": "2026-11-15T10:30:40.6530955+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 885,
+          "t": "2026-11-15T10:30:43.5551483+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000120100003800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 886,
+          "t": "2026-11-15T10:30:43.6884433+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0000000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 887,
+          "t": "2026-11-15T10:30:44.588363+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000120100004000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 888,
+          "t": "2026-11-15T10:30:44.721734+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 890,
+          "t": "2026-11-15T10:30:47.2247698+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000120100004000FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 894,
+          "t": "2026-11-15T10:30:48.6927308+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "02000000000100000400FFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 895,
+          "t": "2026-11-15T10:30:50.6175196+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0200000000000000100100003800FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 896,
+          "t": "2026-11-15T10:30:50.7008516+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0300000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 901,
+          "t": "2026-11-15T10:30:55.8047888+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0300000000000000100100008400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 902,
+          "t": "2026-11-15T10:30:55.8882109+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0000000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 905,
+          "t": "2026-11-15T10:30:57.7557186+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0000000000000000120100005400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 907,
+          "t": "2026-11-15T10:31:00.308824+00:00",
+          "opcode": "0x0211",
+          "message_id": 638,
+          "payload_hex": "0100000000010000FFFFFFFFFFFFFFFFFFFFFFFF00000000"
+        },
+        {
+          "sequence": 910,
+          "t": "2026-11-15T10:31:01.9593409+00:00",
+          "opcode": "0x0382",
+          "message_id": 641,
+          "payload_hex": "0100000000000000120100000400FFFFFFFFFFFFFFFFFFFF0000000000000000"
+        },
+        {
+          "sequence": 911,
+          "t": "2026-11-15T10:31:02.0926967+00:00",
+          "opcode": "0x03E1",
+          "message_id": 643,
+          "payload_hex": "000000000000000003010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000DF00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000025010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000E1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "sequence": 916,
+          "t": "2026-11-15T10:31:08.8315791+00:00",
+          "opcode": "0x0370",
+          "message_id": 637,
+          "payload_hex": "000000000000000002000000010000000000000000000000020000001000000003010000DF00000025010000E10000001E0000000C000000080000001E000000070000001C0000001B00000012000000080000000600000003000000020000000800000000000000"
+        }
+      ]
+    }
+  ]
+}

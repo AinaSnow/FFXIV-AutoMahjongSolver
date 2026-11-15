@@ -149,7 +149,9 @@ public sealed class MahjongPacketMjaiDecoderTests
     [Theory]
     [InlineData(0x140u)] // No matching confirmed pon or preceding draw.
     [InlineData(0x210u)] // No confirmed kan/replacement context.
+    [InlineData(0x211u)]
     [InlineData(0x212u)]
+    [InlineData(0x213u)] // Never observed; stays rejected.
     [InlineData(0xDEADu)]
     public void Unsupported_or_unsequenced_discard_does_not_invent_a_tedashi_flag(uint action)
     {

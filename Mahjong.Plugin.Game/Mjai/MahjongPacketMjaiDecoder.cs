@@ -330,9 +330,11 @@ public sealed class MahjongPacketMjaiDecoder
         }
         // The 0x200 phase uses the same 0x10 discard / 0x02 drawn-tile bits
         // as the independently observed 0x100 family; require a matching rinshan.
-        if (action is not (0x110 or 0x111 or 0x112 or 0x113 or 0x210 or 0x212 or 0xA10))
+        // 0x211 (riichi hand discard after rinshan) has one self 7.58 sample with
+        // UI riichi and the score-ledger stick; 0x213 has never been observed.
+        if (action is not (0x110 or 0x111 or 0x112 or 0x113 or 0x210 or 0x211 or 0x212 or 0xA10))
             throw new InvalidDataException($"Unsupported discard action 0x{action:X}; hand history is incomplete.");
-        if (action is 0x210 or 0x212)
+        if (action is 0x210 or 0x211 or 0x212)
             RequireDraw(actor, replacement: true, action);
         else if (lastDraw is { Replacement: true })
             throw new InvalidDataException($"0x{action:X} conflicts with the replacement-draw phase.");
@@ -352,7 +354,9 @@ public sealed class MahjongPacketMjaiDecoder
         if (action == 0x212 && actor == 0
             && (tile == MjaiTile.Unknown || lastDraw?.Tile != tile))
             throw new InvalidDataException("Replacement tsumogiri conflicts with the drawn tile/red identity.");
-        bool riichi = action is 0x111 or 0x113;
+        if (action == 0x211 && declaredRiichi[actor])
+            throw new InvalidDataException("Replacement riichi repeats an accepted declaration.");
+        bool riichi = action is 0x111 or 0x113 or 0x211;
         if (riichi)
             output.Add(new MjaiReach(actor));
         output.Add(new MjaiDahai(actor, tile, action is 0x112 or 0x113 or 0x212));
