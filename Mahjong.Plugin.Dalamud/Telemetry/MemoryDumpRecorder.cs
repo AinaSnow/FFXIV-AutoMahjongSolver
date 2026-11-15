@@ -26,7 +26,6 @@ public sealed class MemoryDumpRecorder : IDisposable
 
     private const int AddonDumpBytes = 0x300 + 0x1000;
     private const int RootDumpBytes = 0x400;
-    private const int SeatPoolDumpBytes = 0x1000;
     private const int MaxAtkValues = 1024;
     private const long FileRolloverBytes = 1024 * 1024;
 
@@ -43,7 +42,6 @@ public sealed class MemoryDumpRecorder : IDisposable
     };
 
     private readonly AddonEmjReader reader;
-    private readonly SeatPoolRegistry seatPools;
     private readonly ErrorSink errors;
     private readonly string memdumpsDir;
     private readonly Func<bool> enabled;
@@ -60,20 +58,17 @@ public sealed class MemoryDumpRecorder : IDisposable
 
     public MemoryDumpRecorder(
         AddonEmjReader reader,
-        SeatPoolRegistry seatPools,
         ErrorSink errors,
         string pluginConfigDirectory,
         Func<bool> enabled,
         Func<(int Days, long Bytes)> retention)
     {
         ArgumentNullException.ThrowIfNull(reader);
-        ArgumentNullException.ThrowIfNull(seatPools);
         ArgumentNullException.ThrowIfNull(errors);
         ArgumentException.ThrowIfNullOrEmpty(pluginConfigDirectory);
         ArgumentNullException.ThrowIfNull(enabled);
         ArgumentNullException.ThrowIfNull(retention);
         this.reader = reader;
-        this.seatPools = seatPools;
         this.errors = errors;
         this.enabled = enabled;
         this.retention = retention;
@@ -142,18 +137,6 @@ public sealed class MemoryDumpRecorder : IDisposable
             atkBytes = SafeReadBytes(atkAddr, atkCount * sizeof(AtkValue));
         }
 
-        List<SeatPoolDump>? pools = null;
-        foreach (var poolBase in seatPools.Bases)
-        {
-            var poolBytes = SafeReadBytes(poolBase, SeatPoolDumpBytes);
-            if (poolBytes is null)
-                continue;
-            pools ??= new List<SeatPoolDump>(4);
-            pools.Add(new SeatPoolDump(
-                Address: poolBase.ToInt64(),
-                BytesB64: Convert.ToBase64String(poolBytes)));
-        }
-
         byte[]? agentBytes = null;
         nint agentAddr = 0;
         List<AgentDump>? agentCandidates = null;
@@ -190,7 +173,7 @@ public sealed class MemoryDumpRecorder : IDisposable
             errors.RecordException("MemoryDumpRecorder.AgentDump", ex);
         }
 
-        var hash = ComputeHash(addonBytes, rootBytes, atkBytes, pools, agentBytes, agentCandidates);
+        var hash = ComputeHash(addonBytes, rootBytes, atkBytes, agentBytes, agentCandidates);
 
         var layout = reader.ActiveLayout;
         var seatOffsets = layout is null ? null : new AddonSeatOffsets(
@@ -216,7 +199,6 @@ public sealed class MemoryDumpRecorder : IDisposable
             AtkValuesAddress: atkAddr.ToInt64(),
             AtkValuesCount: atkCount,
             AtkValuesBytesB64: atkBytes is null ? null : Convert.ToBase64String(atkBytes),
-            SeatPools: pools,
             AgentInternalId: (int)MahjongAgentId,
             AgentAddress: agentAddr.ToInt64(),
             AgentBytesB64: agentBytes is null ? null : Convert.ToBase64String(agentBytes),
@@ -244,7 +226,7 @@ public sealed class MemoryDumpRecorder : IDisposable
     }
 
     private static string ComputeHash(
-        byte[]? addonBytes, byte[]? rootBytes, byte[]? atkBytes, List<SeatPoolDump>? pools,
+        byte[]? addonBytes, byte[]? rootBytes, byte[]? atkBytes,
         byte[]? agentBytes, List<AgentDump>? agentCandidates)
     {
         using var sha = SHA256.Create();
@@ -254,14 +236,6 @@ public sealed class MemoryDumpRecorder : IDisposable
             sha.TransformBlock(rootBytes, 0, rootBytes.Length, null, 0);
         if (atkBytes is not null)
             sha.TransformBlock(atkBytes, 0, atkBytes.Length, null, 0);
-        if (pools is not null)
-        {
-            foreach (var p in pools)
-            {
-                var b = Convert.FromBase64String(p.BytesB64);
-                sha.TransformBlock(b, 0, b.Length, null, 0);
-            }
-        }
         if (agentBytes is not null)
             sha.TransformBlock(agentBytes, 0, agentBytes.Length, null, 0);
         if (agentCandidates is not null)
@@ -330,7 +304,6 @@ public sealed class MemoryDumpRecorder : IDisposable
         [property: JsonPropertyName("atk_addr")] long AtkValuesAddress,
         [property: JsonPropertyName("atk_count")] int AtkValuesCount,
         [property: JsonPropertyName("atk_b64")] string? AtkValuesBytesB64,
-        [property: JsonPropertyName("seat_pools")] List<SeatPoolDump>? SeatPools,
         [property: JsonPropertyName("agent_id")] int AgentInternalId,
         [property: JsonPropertyName("agent_addr")] long AgentAddress,
         [property: JsonPropertyName("agent_b64")] string? AgentBytesB64,
@@ -338,10 +311,6 @@ public sealed class MemoryDumpRecorder : IDisposable
         [property: JsonPropertyName("variant")] string? Variant,
         [property: JsonPropertyName("addon_seat_offsets")] AddonSeatOffsets? AddonSeatOffsets,
         [property: JsonPropertyName("hash")] string Hash);
-
-    private sealed record SeatPoolDump(
-        [property: JsonPropertyName("addr")] long Address,
-        [property: JsonPropertyName("b64")] string BytesB64);
 
     private sealed record AgentDump(
         [property: JsonPropertyName("id")] int InternalId,

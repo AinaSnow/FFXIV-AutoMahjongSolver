@@ -81,8 +81,6 @@ public sealed class Plugin : IDalamudPlugin
 
     public ErrorSink ErrorSink { get; }
     public IFindingsLog FindingsLog { get; }
-    public ISigprobeLog SigprobeLog { get; }
-    public SeatPoolRegistry SeatPoolRegistry { get; } = new();
     public MemoryDumpRecorder MemoryDumpRecorder { get; }
     public DiscardTracker DiscardTracker { get; }
     public StrategyDiagnostics StrategyDiagnostics { get; }
@@ -145,7 +143,6 @@ public sealed class Plugin : IDalamudPlugin
         TrainingProvenance = new TrainingProvenanceProvider(Services.GetRequiredService<IWeightProvider>(), () => Configuration, () => MortalBridge?.ModelIdentityJson);
         ErrorSink = new ErrorSink(configDir);
         FindingsLog = new FindingsLog(configDir, ErrorSink);
-        SigprobeLog = new SigprobeLog(configDir);
         mirroredLog.AttachSink(ErrorSink);
 
         // Surface silent meld-tracker drops: the inference loop gives up after MaxDeferralTicks
@@ -202,8 +199,7 @@ public sealed class Plugin : IDalamudPlugin
         AutoPlay = new AutoPlayLoop(this, Framework, Log, mahjongAddon);
         Collection = new ContinuousCollectionLoop(this, Framework, Log);
 
-        DiscardCapture = DiscardCaptureFactory.Create(
-            Log, Framework, SigScanner, Aggregator, SeatPoolRegistry, SigprobeLog);
+        DiscardCapture = DiscardCaptureFactory.Create(Log, Framework, Aggregator);
         DiscardCaptureLogger = new DiscardCaptureLogger(
             DiscardCapture, PluginInterface.GetPluginConfigDirectory());
         DiscardTracker = new DiscardTracker(DiscardCapture, configDir);
@@ -214,7 +210,7 @@ public sealed class Plugin : IDalamudPlugin
             usesExternalRecommendations: () => Configuration.MortalEnabled);
 
         MemoryDumpRecorder = new MemoryDumpRecorder(
-            AddonReader, SeatPoolRegistry, ErrorSink, configDir,
+            AddonReader, ErrorSink, configDir,
             enabled: () => Configuration.MemoryDumpsEnabled,
             retention: () => (Configuration.DiagnosticRetentionDays, Configuration.DiagnosticMaxBytes));
 
@@ -344,7 +340,6 @@ public sealed class Plugin : IDalamudPlugin
         MemoryDumpRecorder.Dispose();
         (FindingsLog as IDisposable)?.Dispose();
         ErrorSink.Dispose();
-        (SigprobeLog as IDisposable)?.Dispose();
 
         // Services last — container singletons may still be touched by components disposed above.
         Services.Dispose();
