@@ -243,6 +243,14 @@ public sealed class AutoPlayLoop : IDisposable
             EmitSkipReason("waiting for a new opponent offer or our draw", snap.AddonStateCode, snap.Hand.Count, (int)snap.Legal.Flags);
             return;
         }
+        if (snap is not null && plugin.MortalBridge.IsStaleCallPromptWithoutOffer(snap))
+        {
+            // Retained call row after our discard or another player's call: no click, no Mortal wait.
+            hasMortalWait = false;
+            CheckStuckStateAndEmit(null);
+            EmitSkipReason("stale call row: no opponent discard since our discard or the last call", snap.AddonStateCode, snap.Hand.Count, (int)snap.Legal.Flags);
+            return;
+        }
         CheckStuckStateAndEmit(snap);
 
         if (snap is null)
@@ -963,7 +971,8 @@ public sealed class AutoPlayLoop : IDisposable
                 log.Info($"[AutoPlayLoop] {LastActionDescription}");
                 return;
             }
-            if ((snap.Legal.Flags & CallPromptFlags) == 0 || !plugin.Dispatcher.IsCallPromptVisible())
+            if ((snap.Legal.Flags & CallPromptFlags) == 0 || !plugin.Dispatcher.IsCallPromptVisible()
+                || plugin.MortalBridge.IsStaleCallPromptWithoutOffer(snap))
             {
                 pendingTerminalWin = null;
                 hasMortalWait = false;

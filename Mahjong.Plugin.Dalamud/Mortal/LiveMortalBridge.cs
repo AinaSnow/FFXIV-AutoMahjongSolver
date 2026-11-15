@@ -61,6 +61,10 @@ public sealed class LiveMortalBridge : IDisposable
     private MjaiKakan? lastNetworkKakan;
     private MjaiDahai? recoveredPendingServerDiscard;
     private int? lastNetworkDrawActor;
+    // True while the latest table-advancing server event is our own discard or an
+    // opponent's chi/pon/daiminkan. Until another opponent discard arrives no
+    // chi/pon/minkan offer can exist (A3, 2026-11-16 review).
+    private bool callOfferPrecludedByNetwork;
     private readonly int[] observedDiscardCounts = [-1, -1, -1, -1];
     private int? latestUiDiscardSeat;
     private int latestUiDiscardCount = -1;
@@ -626,6 +630,7 @@ public sealed class LiveMortalBridge : IDisposable
             lastNetworkKakan = null;
             recoveredPendingServerDiscard = null;
             lastNetworkDrawActor = null;
+            callOfferPrecludedByNetwork = false;
             ResetObservedDiscardCounts();
             bool resumed = ProcessCapturedPacket(packet);
             if (resumed)
@@ -788,6 +793,7 @@ public sealed class LiveMortalBridge : IDisposable
             lastNetworkKakan = null;
             recoveredPendingServerDiscard = null;
             lastNetworkDrawActor = null;
+            callOfferPrecludedByNetwork = false;
             ResetObservedDiscardCounts();
             lastCandidateCorrectionKey = 0;
         }
@@ -843,6 +849,7 @@ public sealed class LiveMortalBridge : IDisposable
         lastNetworkKakan = null;
         recoveredPendingServerDiscard = null;
         lastNetworkDrawActor = null;
+        callOfferPrecludedByNetwork = false;
         ResetObservedDiscardCounts();
         lastCandidateCorrectionKey = 0;
         replayStateOnNextStart = false;
@@ -1058,6 +1065,17 @@ public sealed class LiveMortalBridge : IDisposable
         // Deferred UI conflicts cannot survive any new authoritative event.
         deferredWinReaction = null;
         lastNetworkKakan = null;
+        // Reach/reach_accepted/dora announcements do not advance the call window.
+        if (evt is MjaiDahai or MjaiTsumo or MjaiOpenCall or MjaiDaiminkan or MjaiAnkan
+            or MjaiKakan or MjaiStartKyoku or MjaiEndKyoku)
+        {
+            callOfferPrecludedByNetwork = evt switch
+            {
+                MjaiDahai { Actor: 0 } => true,
+                MjaiOpenCall { Actor: > 0 } or MjaiDaiminkan { Actor: > 0 } => true,
+                _ => false,
+            };
+        }
         switch (evt)
         {
             case MjaiDahai discard:
@@ -1218,6 +1236,17 @@ public sealed class LiveMortalBridge : IDisposable
         && lastNetworkDrawActor is > 0
         && snapshot.Hand.Count > 0 && snapshot.Hand.Count % 3 == 1
         && IsOpponentResponseWindow(snapshot.Legal.Flags);
+
+    /// <summary>
+    /// The addon re-shows our previous chi/pon/minkan row (state 15) right after our own
+    /// discard or another player's call. 2026-11-14/15 live corpus: 118 and 36 such rows,
+    /// none followed by a real offer; the table never waited for an answer. Only a later
+    /// opponent discard can open a new call window, so do not wait for Mortal or click.
+    /// Ron/Tsumo/Discard rows are never matched.
+    /// </summary>
+    internal bool IsStaleCallPromptWithoutOffer(StateSnapshot snapshot) =>
+        Enabled && !CurrentHandQuarantined && callOfferPrecludedByNetwork
+        && IsCancellableOpponentPrompt(snapshot);
 
     internal static bool IsCancellableOpponentPrompt(StateSnapshot snapshot)
     {
