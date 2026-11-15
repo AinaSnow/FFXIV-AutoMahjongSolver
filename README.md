@@ -2,12 +2,10 @@
   <img src="Mahjong.Plugin.Dalamud/Images/Icon.png" width="180" alt="Doman Mahjong Solver icon" />
 </p>
 
-<h1 align="center">Currently unstable, new full overhaul version coming very soon</h1>
+<h1 align="center">Doman Mahjong Solver</h1>
 
 <p align="center">
-  <a href="https://github.com/XeldarAlz/FFXIV-DomanMahjongSolver/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/XeldarAlz/FFXIV-DomanMahjongSolver?style=flat-square&color=blue"></a>
-  <a href="https://github.com/XeldarAlz/FFXIV-DomanMahjongSolver/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/XeldarAlz/FFXIV-DomanMahjongSolver/total?style=flat-square&color=blue"></a>
-  <a href="https://github.com/XeldarAlz/FFXIV-DomanMahjongSolver/actions/workflows/ci.yml"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/XeldarAlz/FFXIV-DomanMahjongSolver/ci.yml?style=flat-square"></a>
+  <a href="https://github.com/AinaSnow/FFXIV-AutoMahjongSolver/actions/workflows/ci.yml"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/AinaSnow/FFXIV-AutoMahjongSolver/ci.yml?style=flat-square"></a>
   <a href="LICENSE.md"><img alt="License" src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue?style=flat-square"></a>
 </p>
 
@@ -95,6 +93,10 @@ If you liked this plugin, take a look at my other Dalamud work. You might find s
 AGPL-3.0-or-later. See [LICENSE.md](LICENSE.md).
 
 
-## Stability and experimental strategy update
+## Stability and status
 
-See [implementation status](docs/implementation-status.md), [Mortal compatibility](docs/mortal.md) and [paired evaluation](docs/evaluation.md). Unsupported game protocol versions use UI-only fallback. Enhanced strategy is disabled by default and shadow-only when first enabled. Small offline smoke runs have completed; the 8,000-match acceptance evaluation and current-client capture validation remain outstanding. No improvement in live win rate is claimed.
+See [development roadmap](docs/plan-20261115-roadmap.md), [implementation status](docs/implementation-status.md), [Mortal compatibility](docs/mortal.md) and [paired evaluation](docs/evaluation.md).
+
+- International `Emj` uses Deucalion `1.5.1` (including the 7.58 protocol profile) with runtime post-patch opcode auto-learning (`ProtocolDiscovery` + `EmjTableReader`) under the East-only limited trial (`doman-east-self-kakan-v7`); unsupported builds fall back to UI-only readout and the built-in heuristic policy.
+- UI text switches dynamically between English and Chinese (`Loc.cs`) following Dalamud's UI language.
+- Opt-in `MortalEastProgress` (`east-progress-v1`) is validated in 1,500-group `doman-quick` evaluation; `EnhancedStrategy` remains disabled by default and shadow-only when first enabled.

@@ -12,13 +12,16 @@ to find offsets, AtkValue indices, and node IDs.
 | `scan_tiles.py` | Find tile-id encoding in a snapshot — pins the texture base | `emj-snapshot-*.txt` |
 | `diff_nodes.py` | Diff two `/mjauto walknodes` captures to spot visibility / id changes between states | Two `emj-walknodes-*.txt` files |
 | `gen_icon.ps1` | Generate the plugin's `Images/Icon.png` from a source SVG | `Images/Icon.svg` |
-| `sync-corpus.ps1` | Mirror the R2 telemetry corpus to local `corpus/`, gunzipping as it arrives | `wrangler` + Cloudflare credentials |
+| `analyze-play-stats.mjs` | Aggregate local per-hand `games/*.ndjson` logs into rank and deal-in summaries | Local plugin `games/` dir |
 | `extract-fixture.mjs` | Convert one memdump record into a Track 0 replay fixture | A memdumps `.ndjson(.gz)` + a `seq` number |
 | `test-extract-fixture.mjs` | Smoke test the above against a synthetic memdump | None |
 | `parse-mahjong-packets.mjs` | Decode confirmed Mahjong packets into text, NDJSON, or a summary | A Packet Logger session `.log` |
 | `test-parse-mahjong-packets.mjs` | Regression-test the confirmed packet layouts with synthetic payloads | None |
+| `audit-mahjong-capture.mjs` | Inventory capture timestamps, opcode/length stats and unknown actions | Packet Logger `.log` + game version |
+| `audit-debug-packets.mjs` | Audit Deucalion debug packet captures for loss/length integrity | Debug `capture-*.ndjson` |
 | `mortal-bridge.mjs` | Replay a Packet Logger session, or follow a file written by an append-capable producer, through Mortal | Packet log + bot config JSON |
 | `test-mortal-bridge.mjs` | Exercise Mortal subprocess JSONL transport with a fake bot | None |
+| `re/` | Ad-hoc memory-dump offset scanners operating on local `memdumps-*.ndjson.gz` | Local `memdumps/` dir |
 
 ## Workflow for a new variant
 
@@ -86,10 +89,10 @@ See [international 2026.09.15 capture checklist](../docs/capture-20260915.md). R
 
 ### Live Mortal integration
 
-**Current status:** no verified protocol profile is shipped for 2026.09.15.0000.0000. Network capture and Mortal inference remain disabled on this build; UI logs continue. Use a separate Packet Logger export for validation. The historical six-message description below is not a compatibility claim. See [current protocol requirements](../docs/mortal.md).
+**Current status:** Network capture uses Deucalion `1.5.1` named pipes and supports bundled international `Emj` candidate profiles (including `2026.11.03` / 7.58) plus runtime `ProtocolDiscovery` post-patch opcode learning under the East-only limited trial (`doman-east-self-kakan-v7`). On unsupported or unverified builds without the limited-trial gate, Mortal stays disabled and UI fallback continues. See [current protocol requirements](../docs/mortal.md).
 
-The Dalamud plugin captures the six confirmed Mahjong receive opcodes directly
-in-process and never captures message 642, whose payload contains player names.
+The Dalamud plugin captures the Mahjong receive opcodes directly
+in-process via Deucalion and never captures message 642, whose payload contains player names.
 It converts the payloads to MJAI and owns the Mortal WSL subprocess, so no
 separate Python backend needs to be started manually.
 
@@ -100,66 +103,26 @@ Configure these values under **Settings > Mortal AI** while Mortal is disabled:
 - Python executable, normally `python`
 
 Enable Mortal before a match or before the next hand begins. The current opcode
-map is patch-specific and comes from the verified human-match capture; the
-offline parser continues to key on the analysis tool's stable `DOWN_ID_*` names.
+map is patch-specific; the offline `parse-mahjong-packets.mjs` parser continues to key on Packet Logger's `DOWN_ID_*` names.
 
-## Historical telemetry tooling (inactive)
+### Extracting a replay fixture from a local memdump
 
-The plugin no longer uploads telemetry. This section describes legacy corpus maintenance only.
-
-Once the Cloudflare Worker is deployed (see `server/README.md`):
+Once **Memory snapshots** (`MemoryDumpRecorder`) is enabled in plugin settings and you have a local `memdumps-*.ndjson(.gz)` and the `seq` of the frame you want to lock down:
 
 ```powershell
-# Pull everything new
-.\tools\sync-corpus.ps1
-
-# Just findings from a specific date — fast iteration loop
-.\tools\sync-corpus.ps1 -Stream findings -Date 2026-05-07
-
-# A single install's full memdump history
-.\tools\sync-corpus.ps1 -Stream memdumps -InstallId 8e4c0a12-...
-```
-
-Output lands in `./corpus/{stream}/{install_id}/{date}/` — both the `.gz`
-and the gunzipped NDJSON sit side by side. The script is incremental: a
-local file existing means "already synced", so re-runs only fetch what's
-new. Pass `-Force` to redownload everything if a sync was interrupted
-mid-decompress.
-
-### Extracting a replay fixture from a memdump
-
-Once you have a local memdumps NDJSON and the `seq` of the frame you want to lock down:
-
-```powershell
-node tools/extract-fixture.mjs corpus/memdumps/<install>/<date>/memdumps-*.ndjson 1234 --name state15_chi_pon_simultaneous
+node tools/extract-fixture.mjs "<pluginConfigs>\Mahjong.Plugin.Dalamud\memdumps\memdumps-....ndjson" 1234 --name state15_chi_pon_simultaneous
 ```
 
 The fixture lands in `tests/Mahjong.Plugin.Dalamud.Tests/Replay/fixtures/`. The
-tool decodes `atk_b64` into typed slots (Int/UInt/Bool); strings get null since
-telemetry captures the pointer only, not the bytes it dereferences to. Open the
+tool decodes `atk_b64` into typed slots (Int/UInt/Bool); strings get null. Open the
 generated file, fill in `expected.*` fields, commit. The
 `ReplayFixtureTests.Fixture_matches_expected_snapshot` theory picks it up
 automatically on next test run.
 
-### Telemetry workflow
-
-After syncing, run Claude Code from the corpus directory for analysis:
-
-```powershell
-cd corpus
-claude
-```
-
-Then ask things like *"group every `variant_miss` finding by addon_name +
-game_version and tell me which client builds have no matching variant"*
-— Claude has direct file access to the whole corpus.
-
 ## Status
 
-Scripts are ad-hoc one-offs — no test coverage, no formal API, run on
-demand. The `/mjauto` capture commands they consume live in the plugin's
-`Commands/MjAutoCommand.cs`.
+Ad-hoc reverse-engineering scripts live in [`tools/re/`](re/README.md) without formal API guarantees. The `/mjauto` capture commands they consume live in `Commands/MjAutoCommand.cs`.
 
 ### Built-in debug captures
 
-Enable **Debug packet logger** in plugin settings before matchmaking; see [automatic capture](../docs/auto-packet-logger.md). Audit its raw `.ndjson` with `node tools/audit-debug-packets.mjs capture.ndjson 2026.09.15.0000.0000 report.json`. This reports sequence/length/transport loss and opcode inventory without guessing message names or exposing payloads. Tests: `node tools/test-audit-debug-packets.mjs`.
+Enable **Debug packet logger** in plugin settings before matchmaking; see [automatic capture](../docs/auto-packet-logger.md). Audit its raw `.ndjson` with `node tools/audit-debug-packets.mjs capture.ndjson 2026.11.03.0000.0000 report.json`. This reports sequence/length/transport loss and opcode inventory without guessing message names or exposing payloads. Tests: `node tools/test-audit-debug-packets.mjs`.

@@ -1,6 +1,6 @@
 # 内置自动调试录包
 
-2026-09-24 起使用 **Deucalion 1.5.0 命名管道后端**。旧 OnReceivePacket 前置段头假设已被实机否定，不再安装这个接收 Hook。插件设置 → **Debug packet logger** → **Automatically record packets at mahjong tables**，原有开关和默认关闭行为保留，不需要 NetworkPacket 或 ACT。
+2026-09-24 起切换为 **Deucalion 命名管道后端**（当前固定 `1.5.1`）。旧 OnReceivePacket 前置段头假设已被实机否定，已从代码移除。插件设置 → **Debug packet logger** → **Automatically record packets at mahjong tables**，原有开关和默认关闭行为保留，不需要 NetworkPacket 或 ACT。
 
 ## 使用与实机验收
 
