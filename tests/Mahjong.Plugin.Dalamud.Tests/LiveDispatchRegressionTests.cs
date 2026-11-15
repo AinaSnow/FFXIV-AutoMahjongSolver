@@ -14,12 +14,38 @@ public class LiveDispatchRegressionTests
     [Theory]
     [InlineData(6, ActionKind.Tsumo, true)]
     [InlineData(6, ActionKind.Riichi, false)]
-    [InlineData(6, ActionKind.AnKan, false)]
+    [InlineData(6, ActionKind.AnKan, true)]
     [InlineData(15, ActionKind.Ron, true)]
     [InlineData(28, ActionKind.Riichi, false)]
     [InlineData(30, ActionKind.Tsumo, false)]
     public void Recorded_self_draw_route_does_not_change_riichi_or_other_states(int state, ActionKind kind, bool expected) =>
         Assert.Equal(expected, InputDispatcher.UseClassicCallPath(state, 15, 6, kind, false));
+
+    // 2026-11-15 live: riichi ippatsu draw of the fourth red dragon, state 6, rows
+    // "AnKan, Pass" without classic labels. SelectItem(0) produced no callback and no
+    // server kan; the prompt stayed until an 8 s fallback cancelled the kan.
+    private static StateSnapshot RiichiAnkanPrompt => StateSnapshot.Empty with
+    {
+        HandId = 1, Revision = 28749, AddonStateCode = 6, OurRiichi = true,
+        Hand = new[] { 15,16,17,19,20,21,22,23,29,29,33,33,33,33 }.Select(Tile.FromId).ToArray(),
+        Legal = new LegalActions(ActionFlags.AnKan | ActionFlags.Pass, [], [], [], []),
+    };
+
+    [Fact]
+    public void Recorded_riichi_ankan_accept_uses_button_callback_and_its_pass_keeps_cancel()
+    {
+        var snap = RiichiAnkanPrompt;
+        Assert.True(InputDispatcher.UseClassicCallPath(6, 15, 6, ActionKind.AnKan, hasLabels: false));
+        Assert.Equal(0, AutoPlayLoop.ComputeAcceptIndex(ActionKind.AnKan, snap.Legal, null));
+        Assert.False(InputDispatcher.UseRiichiKanCancel(6, 6, ActionKind.AnKan, snap));
+        // The decline path is unchanged: still the observed [8] cancel.
+        Assert.True(InputDispatcher.UseRiichiKanCancel(6, 6, ActionKind.Pass, snap));
+        // Other label-less list rows keep their existing route.
+        Assert.False(InputDispatcher.UseClassicCallPath(6, 15, 6, ActionKind.Riichi, hasLabels: false));
+        Assert.False(InputDispatcher.UseClassicCallPath(6, 15, 6, ActionKind.Pass, hasLabels: false));
+        Assert.False(InputDispatcher.UseClassicCallPath(6, 15, 6, ActionKind.ShouMinKan, hasLabels: false));
+        Assert.False(InputDispatcher.UseClassicCallPath(28, 15, 6, ActionKind.AnKan, hasLabels: false));
+    }
 
     private static StateSnapshot RiichiKanPrompt => StateSnapshot.Empty with
     {

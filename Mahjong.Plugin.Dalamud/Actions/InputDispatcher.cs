@@ -92,9 +92,12 @@ public sealed class InputDispatcher
 
     // Live evidence: 2026-09-23 state=6 self-draw [11,0] changed state to 19;
     // SelectItem did not. Keep the existing riichi/list flow separate.
+    // Label-less state-6 rows: SelectItem never committed (Tsumo 2026-09-23, riichi
+    // kan pass 2026-09-24, riichi AnKan 2026-11-15: no callback, no 0x130). Every
+    // committed state-6 self-declaration (Tsumo, AnKan, ShouMinKan, Riichi) was [11, row].
     internal static bool UseClassicCallPath(int state, int callPrompt, int selfDeclare,
         ActionKind? action, bool hasLabels) => state == callPrompt || hasLabels
-        || state == selfDeclare && action == ActionKind.Tsumo;
+        || state == selfDeclare && (action is ActionKind.Tsumo or ActionKind.AnKan);
 
     internal static bool UseRiichiKanCancel(int state, int selfDeclare, ActionKind? action, StateSnapshot? snap)
     {
