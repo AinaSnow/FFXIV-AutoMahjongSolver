@@ -49,7 +49,7 @@ Historical inventory below includes May observations. Current capture evidence a
 | Classic our-turn discard | 30 | 14 | `[15, raw]` then `[7, slot]` (back-to-back) | ✅ | Same as above |
 | Post-call discard popup (after pon) | 6 | 11 | Same `[15, raw]` + `[7, slot]` handshake | ✅ | Live-confirmed 2026-05-23T15:13 after chi-candidate count fix |
 | Post-MinKan transient (rinshan pending) | 6 | 10 | UNKNOWN — closed shows 10 with `melds=1 (MinKan)`, shanten total = 10 + 3·1 = 13 ≠ 14. Either the rinshan replacement tile hasn't propagated to the hand-array yet, or the addon expects a different action here. | 🔴 | Live freeze 2026-05-23T15:29..32: 50+ DiscardScorer exceptions in 3 min because variant emitted Discard but shanten math invalid. **Action required**: capture a manual MinKan + rinshan + discard via `/mjauto capture minkantest` to identify the expected dispatch. Defensive guard 2026-05-23T15:35 catches the exception and returns Pass cleanly so the bot stops spamming; user has to manually click to unblock until the protocol is known. |
-| Post-2nd-pon stuck (consecutive pon offers within ~1 sec) | 6 | 10 melds=1 | UNKNOWN — 2nd pon dispatched [11, 0], game state cycled 15→22→9→6 but the meld never registered in our snapshot. Two indistinguishable possibilities: (a) game refused the 2nd pon and dismissed popup, OR (b) game accepted but addon hand-array kept stale entries while MeldTracker missed the meld. Reproduced 2026-05-23T15:13 and again 2026-05-23T15:42. | 🔴 | **Action required**: when next stuck, run `/mjauto capture pon2test`, manually click a tile, paste capture log content. The captured FireCallback shape disambiguates (a) vs (b). |
+| Post-2nd-pon stuck (consecutive pon offers within ~1 sec) | 6 | 10 melds=1 | UNKNOWN — 2nd pon dispatched [11, 0], game state cycled 15→22→9→6 but the meld never registered in our snapshot. Two indistinguishable possibilities: (a) game refused the 2nd pon and dismissed popup, OR (b) game accepted but addon hand-array kept stale entries while MeldTracker missed the meld. Reproduced 2026-05-23T15:13 and again 2026-05-23T15:42. Not reproduced in 7.58 (44 matches, 25 hands with ≥2 own calls, no out-of-sync decision). The 2026-11-15 "pon after our pon" stall was a retained row, not this. | 🔴 (unconfirmed on 7.58) | **Action required**: when next stuck, run `/mjauto capture pon2test`, manually click a tile, paste capture log content. The captured FireCallback shape disambiguates (a) vs (b). |
 | Post-call discard popup (after 2 calls) | 6 | 8 | Same as hand=11 (assumed) | ⚫ | Untested |
 | Post-call discard popup (after 3 calls) | 6 | 5 | Same | ⚫ | Untested |
 | Post-call discard popup (after 4 calls) | 6 | 2 | Same | ⚫ | Untested |
@@ -78,12 +78,15 @@ FireCallback even on success — game accepts via side effect, not return.
 |---|---|---|---|
 | Classic button row | 15 | `[11, passIndex]` where passIndex = number of accept buttons offered | ✅ |
 | Novice list | 28 | `SelectItem(passIndex, dispatchEvent: true)` | 🟡 |
+| Retained row after an opponent's draw | 15 | `[8]` (`call:opcode-8(expired-opponent-prompt)`); `[11,1]` is a no-op here | ✅ 149 uses on 2026-11-14/15, no timeouts. UI-only mode still sends `[11,1]` and times out (3 cases on 11-14). |
+| Retained row after our own discard or another player's chi/pon/daiminkan | 15 | **No input.** The row only replays our previous prompt; the server is not waiting. Skipped while the last server event is our discard or an opponent call (Mortal network mode only). | 🟡 fix 2026-11-16, awaiting live confirmation. 154 such rows in 41 captures; 151 closed by themselves, 3 caused ~6 s Mortal timeouts + a no-op `[11,1]`. |
 
 ### 4. Self-declared kan from own turn
 
 | Action | Protocol | Status | Evidence |
 |---|---|---|---|
-| AnKan (closed kan from hand) | `[11, ankanOptionIndex]` via call-prompt button row | 🟡 | Routed via `DispatchCallOption(ComputeAcceptIndex(AnKan, ...))` since v0.1.1.1; same path family as Pon/Chi which are corpus-confirmed. Live verification pending. The pre-fix `[12, slot]` path is removed. |
+| AnKan (closed kan from hand) | `[11, ankanOptionIndex]` via call-prompt button row | ✅ outside riichi; 🟡 in riichi | Routed via `DispatchCallOption(ComputeAcceptIndex(AnKan, ...))` since v0.1.1.1; same path family as Pon/Chi which are corpus-confirmed. Live verification pending. The pre-fix `[12, slot]` path is removed. |
+| AnKan while in riichi (state 6, rows `AnKan, Pass`, no classic labels) | Accept: `[11, row]` (since 2026-11-16). Decline: `[8]` (`call:opcode-8(riichi-kan-pass)`, observed manual click 2026-09-24). | 🟡 | 2026-11-15 `SelectItem(0)` on this popup produced no callback and no server `0x130`; the prompt stayed 8 s until fallback Pass. Non-riichi `[11,0]` AnKan/ShouMinKan committed 3/3 (server ack 112–161 ms). `[11,0]` on the riichi popup is inferred, not yet observed — see [A3 review](reviews/20261116-a3-call-window-stalls.md). |
 | ShouMinKan (upgrade pon to kan) | `[11, shouminkanOptionIndex]` via call-prompt button row | 🟡 | Same as AnKan — routed via the button-row path; index computation in `AutoPlayLoop.ComputeAcceptIndex`. Live verification pending. |
 
 The post-draw self-declare popup (state-6 hand=14) offers AnKan/ShouMinKan as button labels, so the button-row click path matches what a manual user click would do. Button-order assumption: Pon → Chi → AnKan → MinKan → ShouMinKan → Ron → Riichi → Tsumo → Pass. AnKan/MinKan/ShouMinKan are grouped because the addon button row keeps kan variants adjacent.
@@ -198,6 +201,16 @@ The v2 recorder used `GetAgentByInternalId((AgentId)5)`. Current FFXIVClientStru
 Schema v3 now calls `GetAgentByInternalId(AgentId.Emj)` and writes `agent_id` into each record. Agent scanners require `v >= 3`; the next step is a fresh multi-hand capture containing dealer rotations and riichi declarations.
 
 ---
+
+## Recent fixes (2026-11-16) — A3 call-window stalls
+
+Evidence and risk analysis: [A3 review](reviews/20261116-a3-call-window-stalls.md).
+
+| Fix | File | Status |
+|---|---|---|
+| State-6 `AnKan` without classic labels (the riichi kan popup) uses `[11, row]` like `Tsumo`; `SelectItem` never committed a label-less state-6 row in any live record | `InputDispatcher.UseClassicCallPath` | 🟡 awaiting a live riichi ankan |
+| Retained chi/pon/minkan rows after our own discard or an opponent's call are skipped (no Mortal wait, no click) | `LiveMortalBridge.IsStaleCallPromptWithoutOffer`, `AutoPlayLoop.OnUpdate` / call body | 🟡 awaiting live confirmation |
+| Not changed: a no-op self-kan click still records a phantom `MeldTracker` kan and blocks Mortal until the ~8 s fallback | `AutoPlayLoop.DispatchAnkan`, `LiveMortalBridge.ConfirmKanDecisionDispatched` | 🔴 known |
 
 ## Recent fixes (2026-05-24) — issue #39 architectural cleanup
 
