@@ -2,7 +2,7 @@
   "gameVersion": "2026.11.03.0000.0000",
   "variant": "Emj",
   "verified": false,
-  "evidence": "Opcode remap of the 2026.09.15 Emj profile for the 7.58 international build. Recovered by ProtocolDiscovery from a sealed 2026-11-14 capture (1170 packets, dropped 0, rejected 0, Deucalion 1.5.1): unique best of all same-length candidate combinations, 4 clean hands, 203 draws / 211 discards / 10 calls, no decoder failure; payload lengths and formats unchanged. Cross-checked against UI self-hand checkpoints in docs/reviews/20261114-758-protocol-remap.md. Inherits every unverified area of the 2026.09.15 profile.",
+  "evidence": "Opcode remap of the 2026.09.15 Emj profile for the 7.58 international build. Recovered by ProtocolDiscovery from a sealed 2026-11-14 capture (1170 packets, dropped 0, rejected 0, Deucalion 1.5.1): unique best of all same-length candidate combinations, 4 clean hands, 203 draws / 211 discards / 10 calls, no decoder failure; payload lengths and formats unchanged. Cross-checked against UI self-hand checkpoints in docs/reviews/20261114-758-protocol-remap.md. Inherits every unverified area of the 2026.09.15 profile. 2026-11-16: 42 later 7.58 captures (217 hands) replay cleanly; 14 ankan / 7 kakan / 5 opponent daiminkan each followed by 0x200 rinshan + dora, 25 0x03E1 draw boundaries score-consistent; replacement riichi discard 0x211 decoded from one self sample. No self 0x400, 0x240 or 0x213 sample (docs/reviews/20261116-758-kan-and-0x211.md).",
   "packets": {
     "0x020F": { "messageId": 636, "payloadLength": 48 },
     "0x0370": { "messageId": 637, "payloadLength": 104 },

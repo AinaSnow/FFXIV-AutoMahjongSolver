@@ -24,5 +24,6 @@
     <None Update="RegressionFixtures/**/*.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../data/protocols/20260915-international-emjl-candidate.json" Link="RegressionFixtures/emjl-candidate-profile.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../data/protocols/20260915-international-candidate.json" Link="RegressionFixtures/candidate-profile.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../data/protocols/20261103-international-candidate.json" Link="RegressionFixtures/758-candidate-profile.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

@@ -193,6 +193,69 @@ public sealed class KanPacketTests
         Assert.Throws<InvalidDataException>(() => d.Process(641, Discard(0, wrongRed ? (ushort)88 : (ushort)24, 0x212)));
     }
 
+    [Theory]
+    [InlineData(0, 0)] [InlineData(1, 0)] [InlineData(2, 0)] [InlineData(3, 0)]
+    [InlineData(0, 1)] [InlineData(3, 2)]
+    public void Replacement_riichi_hand_discard_declares_and_accepts_riichi(int self, int relativeActor)
+    {
+        var decoder = new MahjongPacketMjaiDecoder();
+        var state = new PublicStateReducer();
+        List<IMjaiEvent> history = [];
+        void Send(int id, byte[] bytes)
+        {
+            foreach (var e in decoder.Process(id, bytes)) { history.Add(e); state.Apply(e); }
+            Assert.True(state.Complete, state.Failure);
+        }
+        var opening = Start(self);
+        int[] hand = [27, 27, 27, 1, 3, 5, 6, 12, 13, 14, 21, 22, 23];
+        for (int i = 0; i < hand.Length; i++) I32(opening, 48 + 4 * i, hand[i]);
+        Send(637, opening);
+        int actor = (self + relativeActor) % 4;
+        var draw = Draw(actor); if (relativeActor == 0) U16(draw, 8, 108); Send(638, draw);
+        Send(638, Call(actor, 0x130, 108, 108, 108, 108));
+        var replacement = Replacement(actor, 76); if (relativeActor == 0) U16(replacement, 8, 16);
+        Send(638, replacement);
+        var before = state.Snapshot(LegalActions.None);
+        Send(641, Discard(actor, 4, 0x211)); // 7.58 sample: draw 5m, keep it, discard 2m.
+        Assert.Equal(new MjaiReach(relativeActor), history[^3]);
+        Assert.Equal(new MjaiDahai(relativeActor, "2m", false), history[^2]);
+        Assert.Equal(new MjaiReachAccepted(relativeActor), history[^1]);
+        var after = state.Snapshot(LegalActions.None);
+        Assert.Equal(before.Scores[relativeActor] - 1000, after.Scores[relativeActor]);
+        Assert.Equal(before.RiichiSticks + 1, after.RiichiSticks);
+        Assert.True(after.Seats[relativeActor].DiscardIsTedashi.Last());
+        if (relativeActor == 0)
+        {
+            Assert.True(after.OurRiichi);
+            Assert.Equal(new byte[] { 3, 4, 5, 6, 12, 13, 14, 21, 22, 23 }, after.Hand.Select(t => t.Id).Order());
+        }
+    }
+
+    [Theory]
+    [InlineData(0)] [InlineData(1)] [InlineData(2)]
+    public void Replacement_riichi_requires_rinshan_and_a_first_declaration(int scenario)
+    {
+        var d = new MahjongPacketMjaiDecoder(); d.Process(637, Start());
+        d.Process(638, Draw(1));
+        if (scenario == 0)
+        {
+            // Ordinary draw phase: 0x211 has no replacement draw to follow.
+            Assert.Throws<InvalidDataException>(() => d.Process(641, Discard(1, 4, 0x211)));
+            return;
+        }
+        if (scenario == 2)
+        {
+            d.Process(641, Discard(1, 8, 0x111));
+            d.Process(638, Draw(1));
+        }
+        d.Process(638, Call(1, 0x130, 124, 124, 124, 124));
+        d.Process(638, Replacement(1, 8));
+        if (scenario == 1)
+            Assert.Equal(3, d.Process(641, Discard(1, 4, 0x211)).Count);
+        else
+            Assert.Throws<InvalidDataException>(() => d.Process(641, Discard(1, 4, 0x211)));
+    }
+
     [Fact]
     public void Unknown_self_replacement_is_rejected_before_publishing_dora()
     {
