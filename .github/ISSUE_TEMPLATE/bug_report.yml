@@ -42,9 +42,7 @@ body:
       label: Plugin version
       description: Shown in /xlplugins next to "Doman Mahjong Solver", and at the bottom of the /mjauto window.
       options:
-        - 0.1.1.1
-        - 0.1.1.0
-        - 0.1.0.12
+        - 0.1.2.3
         - Older / not sure
     validations:
       required: true
@@ -92,7 +90,7 @@ body:
         - **Record clicks to emj-events.log** (under the *Diagnostics* tab): every UI callback the addon received
         - **Dump variant**: only if the bug looks like a new-client / post-patch read failure
         - The discard log is always on while you're in a match, just drag it in too
-        - Findings file: only if you have opt-in telemetry logging enabled
+        - Findings / archive files (`findings-*.ndjson`, `match-archives/`): attach only if relevant and review for private data first
 
   - type: textarea
     id: extra
