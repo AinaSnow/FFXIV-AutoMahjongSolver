@@ -1,4 +1,3 @@
-using Dalamud.Game;
 using Dalamud.Game.DutyState;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Plugin.Services;
@@ -23,7 +22,7 @@ public sealed class ContinuousCollectionLoop : IDisposable
     private readonly ContinuousCollectionController controller = new();
     private bool disposed, wasEnabled, engaged;
     private int completionSignal;
-    private string? lastStatus;
+    private string? lastStatus, refusedVariant;
     private readonly bool dutyVerified;
     private Task<string?>? storageCheck;
     private string? storageBlock = "Checking capture storage";
@@ -36,9 +35,12 @@ public sealed class ContinuousCollectionLoop : IDisposable
         this.plugin = plugin; this.framework = framework; this.log = log;
         try
         {
-            var row = Plugin.DataManager.GetExcelSheet<ContentFinderCondition>(ClientLanguage.English).GetRowOrDefault(DutyId);
-            dutyVerified = row is { } duty && duty.Name.ToString() == "Novice Mahjong (Quick Ranked Match)"
-                && duty.TerritoryType.RowId == TerritoryId && duty.Content.RowId == ContentId && duty.ContentType.RowId == 19;
+            // Client language sheet: numeric columns are identical across languages; the name is logged only.
+            var row = Plugin.DataManager.GetExcelSheet<ContentFinderCondition>().GetRowOrDefault(DutyId);
+            CollectionDutyRow? duty = row is { } r
+                ? new(r.RowId, r.TerritoryType.RowId, r.Content.RowId, r.ContentType.RowId, r.Name.ToString()) : null;
+            dutyVerified = CollectionGate.IsTargetDutyRow(duty);
+            log.Information($"[Collection] Duty sheet ({Plugin.DataManager.Language}): {duty?.ToString() ?? $"row {DutyId} missing"}; verified={dutyVerified}");
         }
         catch (Exception e) { log.Warning($"[Collection] Duty sheet verification failed: {e.Message}"); }
         Plugin.DutyState.DutyCompleted += OnDutyCompleted;
@@ -131,15 +133,16 @@ public sealed class ContinuousCollectionLoop : IDisposable
         }
     }
 
-    internal static bool IsFinalResult(bool completed, bool present, string? variant, StateSnapshot? snap) =>
-        completed && present && variant == "Emj" && snap is { AddonStateCode: 27 }
+    // collectableVariant: CollectionGate.IsCollectableVariant for the table's addon variant.
+    internal static bool IsFinalResult(bool completed, bool present, bool collectableVariant, StateSnapshot? snap) =>
+        completed && present && collectableVariant && snap is { AddonStateCode: 27 }
         && snap.Hand.Count == 0 && UiHandBoundaryTracker.ScoresKnown(snap.Scores);
 
     // DutyCompleted is authoritative; the final score panel can disappear in < 2 s.
     // Re-evaluate this gate at dispatch, including transition and native leave permission.
     internal static bool CanLeaveCompletedMatch(bool completed, bool targetDuty, bool present,
-        string? variant, bool transitioning, bool nativeCanLeave) =>
-        completed && targetDuty && present && variant == "Emj" && !transitioning && nativeCanLeave;
+        bool collectableVariant, bool transitioning, bool nativeCanLeave) =>
+        completed && targetDuty && present && collectableVariant && !transitioning && nativeCanLeave;
 
     private unsafe CollectionObservation Observe(Configuration cfg)
     {
@@ -157,7 +160,17 @@ public sealed class ContinuousCollectionLoop : IDisposable
         var snap = plugin.Aggregator.Latest;
         bool present = plugin.AddonReader.LastObservation.Present;
         bool completed = Volatile.Read(ref completionSignal) != 0;
-        bool final = IsFinalResult(completed, present, plugin.AddonReader.ProtocolVariant, snap);
+        string? variant = plugin.AddonReader.ProtocolVariant, layout = plugin.AddonReader.ActiveLayout?.AddonName;
+        bool hasProfile = plugin.NetworkCapture.HasUsableProfileFor(variant);
+        bool collectable = CollectionGate.IsCollectableVariant(variant, layout, hasProfile);
+        bool final = IsFinalResult(completed, present, collectable, snap);
+        if (!present) refusedVariant = null;
+        else if (completed && !collectable && refusedVariant != (variant ?? ""))
+        {
+            refusedVariant = variant ?? "";
+            log.Warning($"[Collection] Variant {variant ?? "unknown"} not collectable (layout={layout ?? "none"}, "
+                + $"profile for {plugin.NetworkCapture.GameVersion ?? "unknown build"}={hasProfile}); not leaving automatically");
+        }
         var confirm = GetConfirmation();
         var agent = AgentContentsFinder.Instance();
         bool transitioning = Plugin.Condition[ConditionFlag.BetweenAreas] || Plugin.Condition[ConditionFlag.BetweenAreas51]
@@ -190,7 +203,7 @@ public sealed class ContinuousCollectionLoop : IDisposable
             AtTable = present, MatchCompleted = completed, FinalResult = final,
             CanLeave = CanLeaveCompletedMatch(completed,
                 currentDuty == DutyId && Plugin.ClientState.TerritoryType == TerritoryId,
-                present, plugin.AddonReader.ProtocolVariant, transitioning,
+                present, collectable, transitioning,
                 completed && !transitioning && currentDuty == DutyId && EventFramework.CanLeaveCurrentContent()),
             QueueBlockReason = block,
             FatalReason = !dutyVerified || !plugin.NetworkCapture.HasProfileForVersion ? "Unverified duty or no protocol profile for this build; collection stopped" :
