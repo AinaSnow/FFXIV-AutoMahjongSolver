@@ -445,6 +445,90 @@ public sealed class MortalLimitedTrialTests
         Assert.Single(h.Clients); Assert.Equal(0, h.Bridge.DecisionTimeouts);
     }
 
+    private static byte[] SeatPacket(byte[] bytes, int seat)
+    {
+        BinaryPrimitives.WriteInt32LittleEndian(bytes, seat);
+        return bytes;
+    }
+    private static byte[] TileAt(byte[] bytes, int offset, int physical)
+    {
+        BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(offset), (ushort)physical);
+        return bytes;
+    }
+    private static byte[] CallPacket(int seat, uint action, int first, int second)
+    {
+        var bytes = new byte[24];
+        BinaryPrimitives.WriteInt32LittleEndian(bytes, seat);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), action);
+        BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(12), (ushort)first);
+        BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(14), (ushort)second);
+        return bytes;
+    }
+    private static void OpenWithHand(Harness h, int[] hand)
+    {
+        var opening = Opening();
+        for (int i = 0; i < hand.Length; i++)
+            BinaryPrimitives.WriteInt32LittleEndian(opening.AsSpan(48 + i * 4), hand[i]);
+        h.Send(0x0133, opening);
+    }
+
+    [Fact]
+    public void Retained_pon_row_after_another_players_chi_is_not_a_call_window()
+    {
+        // 2026-11-15 live (two hands): we passed a pon on the across player's 5p; the
+        // left player chied it; 20 ms later state 15 re-showed "Pon, Pass" with no
+        // candidates. Mortal waited for a discard for ~6 s, then a fallback [11,1] did
+        // nothing. 34 of 36 identical rows in the corpus closed on their own.
+        using var h = new Harness();
+        OpenWithHand(h, [2, 6, 13, 13, 15, 15, 15, 17, 17, 19, 20, 20, 22]);
+        StateSnapshot Prompt(ActionFlags flags = ActionFlags.Pon | ActionFlags.Pass) => h.Snapshot with
+            { AddonStateCode = 15, Legal = new LegalActions(flags, [], [], [], []) };
+        Assert.False(h.Bridge.IsStaleCallPromptWithoutOffer(Prompt())); // No history is not evidence.
+        h.Send(0x0214, TileAt(SeatPacket(Discard(0x110), 2), 12, 52));
+        Assert.False(h.Bridge.IsStaleCallPromptWithoutOffer(Prompt())); // The real offer.
+        h.Send(0x02BB, CallPacket(3, 0x600, 56, 60));
+        Assert.False(h.Bridge.CurrentHandQuarantined);
+        Assert.True(h.Bridge.IsStaleCallPromptWithoutOffer(Prompt()));
+        Assert.True(h.Bridge.IsStaleCallPromptWithoutOffer(Prompt(ActionFlags.Chi | ActionFlags.Pass)));
+        // Never suppress a win, our own turn or a malformed row.
+        Assert.False(h.Bridge.IsStaleCallPromptWithoutOffer(Prompt(ActionFlags.Ron | ActionFlags.Pon | ActionFlags.Pass)));
+        Assert.False(h.Bridge.IsStaleCallPromptWithoutOffer(Prompt(ActionFlags.Discard | ActionFlags.Pon | ActionFlags.Pass)));
+        Assert.False(h.Bridge.IsStaleCallPromptWithoutOffer(Prompt() with { Hand = h.Snapshot.Hand.Take(12).ToArray() }));
+        // The caller's discard opens a genuine window again.
+        h.Send(0x0214, TileAt(SeatPacket(Discard(0xA10), 3), 12, 32));
+        Assert.False(h.Bridge.IsStaleCallPromptWithoutOffer(Prompt()));
+        Assert.Equal(0, h.Bridge.DecisionTimeouts);
+    }
+
+    [Fact]
+    public void Retained_pon_row_after_our_own_post_pon_discard_is_not_a_call_window()
+    {
+        // 2026-11-15 live: we ponned 3p and discarded 5p (0xA10); 20 ms later state 15
+        // showed "Pon, Pass" with pon:[2m]. Nobody can call on their own discard.
+        using var h = new Harness();
+        OpenWithHand(h, [1, 1, 5, 6, 6, 10, 10, 12, 13, 13, 14, 22, 23]);
+        StateSnapshot Prompt() => h.Snapshot with
+            { AddonStateCode = 15, Legal = new LegalActions(ActionFlags.Pon | ActionFlags.Pass, [], [], [], []) };
+        h.Send(0x0214, TileAt(SeatPacket(Discard(0x110), 3), 12, 40));
+        Assert.False(h.Bridge.IsStaleCallPromptWithoutOffer(Prompt()));
+        h.Send(0x02BB, CallPacket(0, 0x500, 41, 42));
+        h.Send(0x0214, TileAt(Discard(0xA10), 12, 52));
+        Assert.False(h.Bridge.CurrentHandQuarantined);
+        Assert.Equal(10, Prompt().Hand.Count);
+        Assert.True(h.Bridge.IsStaleCallPromptWithoutOffer(Prompt()));
+        // The next player's call keeps the row stale; their discard reopens; a draw hands over to the
+        // existing expired-prompt cancel.
+        h.Send(0x02BB, CallPacket(1, 0x600, 44, 48));
+        Assert.True(h.Bridge.IsStaleCallPromptWithoutOffer(Prompt()));
+        h.Send(0x0214, TileAt(SeatPacket(Discard(0xA10), 1), 12, 64));
+        Assert.False(h.Bridge.IsStaleCallPromptWithoutOffer(Prompt()));
+        h.Send(0x02BB, SeatPacket(Draw(), 2));
+        Assert.False(h.Bridge.IsStaleCallPromptWithoutOffer(Prompt()));
+        Assert.True(h.Bridge.HasExpiredOpponentPrompt(Prompt()));
+        h.Send(0x018D, new byte[264]);
+        Assert.False(h.Bridge.IsStaleCallPromptWithoutOffer(Prompt()));
+    }
+
     [Theory]
     [InlineData(1, 2)] [InlineData(2, 1)] [InlineData(3, 1)] [InlineData(4, 1)]
     public void Captured_carried_pool_and_combined_riichi_hands_are_admitted_until_result(int index, int sticks)
