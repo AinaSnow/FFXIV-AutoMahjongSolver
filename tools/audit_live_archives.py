@@ -127,7 +127,13 @@ def run_audit(archives, output, captures=None, profile=None, decoder=None, timeo
                 row["hands"].append(dict(number=hand["number"], wind=start.get("bakaze"), kyoku=start.get("kyoku"),
                                          honba=start.get("honba"), boundary=hand["boundary"],
                                          failure=hand["failure"], failure_sequence=hand["failure_sequence"],
-                                         offline_model_eligible=hand["offline_model_eligible"]))
+                                         offline_model_eligible=hand["offline_model_eligible"],
+                                         # Decoder side channel (absent in older replay exports): stays None, never inferred.
+                                         result=(hand.get("result") or {}).get("outcome"),
+                                         result_winners=(hand.get("result") or {}).get("winners"),
+                                         result_discarder=(hand.get("result") or {}).get("discarder"),
+                                         result_deltas=(hand.get("result") or {}).get("deltas"),
+                                         result_unknown_reason=(hand.get("result") or {}).get("unknown_reason")))
             row["status"] = "exported"
         except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as error:
             row["reason"] = str(error)

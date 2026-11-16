@@ -3,6 +3,7 @@ import io
 import json
 from pathlib import Path
 import shutil
+import struct
 import sys
 import tempfile
 import unittest
@@ -195,6 +196,98 @@ class DatasetTests(unittest.TestCase):
         d=import_archive(self.archive,self.root/"complete-corpus",raw)
         rows,_=export_match(d,read_manifest(d))
         self.assertNotIn("raw_archive_packets_missing",rows[0]["quality_flags"])
+
+
+FIXTURE = Path(__file__).resolve().parents[2] / "tests/Mahjong.Plugin.Game.Tests/RegressionFixtures/20261116-758-hand-results.json"
+
+
+class ServerLabelExportTests(unittest.TestCase):
+    """A sanitized 7.58 self-ron hand exported with one dispatched discard of ours."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.archive = self.root / "source"; (self.archive / "games").mkdir(parents=True)
+        hand = next(h for h in json.loads(FIXTURE.read_text(encoding="utf-8"))["hands"] if h["label"] == "self-ron")
+        result_at = next(i for i, p in enumerate(hand["packets"]) if p["message_id"] == 640)
+        packets = [dict(t=hand["packets"][0]["t"], opcode="0x020F", message_id=636, payload_hex="00" * 48)]
+        packets += [{k: p[k] for k in ("t", "opcode", "message_id", "payload_hex")} for p in hand["packets"][:result_at + 1]]
+        self.packets = packets
+        ours = next(p for p in packets if p["message_id"] == 641 and p["payload_hex"].startswith(self.self_seat(packets)))
+        physical = struct.unpack_from("<H", bytes.fromhex(ours["payload_hex"]), 12)[0]
+        self.tile, self.red = physical >> 2, physical >> 2 in (4, 13, 22) and physical & 3 == 1
+        dispatched = ours["t"][:20] + "0000000Z"  # same second, before the server packet's fraction
+        state = dict(e="state", hand_id=9, revision=10, state_code=30, hand=[self.tile], hand_red=[self.red],
+                     scores=[25000]*4, complete=True)
+        final = dict(e="state", hand_id=9, revision=99, state_code=27, hand=[], scores=[30000, 27000, 26000, 17000], initial_dealer=0)
+        self.rows = [state, dict(e="action", action_id=1, t=dispatched, hand_id=9, revision=10, kind="Discard",
+                                 tile=self.tile, is_red=self.red, result="Ok", dispatch_context="before-input"),
+                     dict(e="action-outcome", action_id=1, label="discard", status="state-changed"), final]
+        (self.archive / "games/hand.ndjson").write_text("\n".join(json.dumps(r) for r in self.rows) + "\n", encoding="utf-8")
+        (self.archive / "packets.ndjson").write_text("\n".join(json.dumps(p) for p in packets) + "\n", encoding="utf-8")
+        (self.archive / "managed-complete.json").write_text("{}", encoding="utf-8")
+        self.raw = self.root / "raw.ndjson"
+        self.raw.write_text("\n".join([json.dumps(dict(p, e="raw-packet")) for p in packets]
+                                      + ['{"e":"capture-end","stream_complete":true,"dropped":0,"rejected":0}']), encoding="utf-8")
+
+    @staticmethod
+    def self_seat(packets):
+        start = next(p for p in packets if p["message_id"] == 637)
+        seat = struct.unpack_from("<i", bytes.fromhex(start["payload_hex"]), 24)[0]
+        return struct.pack("<i", seat).hex().upper()
+
+    def export(self, verified):
+        (self.archive / "summary.json").write_text(json.dumps(dict(packet_write_failed=False,
+            environment={"protocol_verified": verified})), encoding="utf-8")
+        d = import_archive(self.archive, self.root / f"corpus-{verified}", self.raw)
+        return export_match(d, read_manifest(d))
+
+    def test_labels_and_server_confirmation_are_filled_but_protocol_gate_stays_independent(self):
+        rows, report = self.export(False)
+        row = rows[0]
+        self.assertTrue(row["labels"]["won"])
+        self.assertFalse(row["labels"]["deal_in"])
+        self.assertEqual("ron", row["labels"]["hand_result"]["outcome"])
+        self.assertEqual([0], row["labels"]["hand_result"]["winners"])
+        confirmation = row["labels"]["server_confirmed_action"]
+        self.assertEqual("server-confirmed", confirmation["status"])
+        self.assertEqual(dict(type="dahai", actor=0, tile=self.tile, red=self.red), {k: confirmation["server_event"][k] for k in ("type", "actor", "tile", "red")})
+        self.assertNotIn("server_action_not_verified", row["quality_flags"])
+        gates = row["eligibility"]
+        self.assertFalse(gates.pop("protocol_verified"))
+        self.assertTrue(all(gates.values()), gates)
+        self.assertFalse(row["training_eligible"])
+        hand = report["hand_rows"][0]
+        self.assertTrue(hand["opponent_stats_eligible"])
+        self.assertIn("protocol_not_fully_verified", hand["quality_flags"])
+
+    def test_every_gate_including_protocol_is_required(self):
+        rows, _ = self.export(True)
+        self.assertTrue(rows[0]["training_eligible"])
+
+    def test_wrong_tile_or_lost_packets_close_the_gates(self):
+        self.rows[1]["tile"] = (self.tile + 1) % 34
+        (self.archive / "games/hand.ndjson").write_text("\n".join(json.dumps(r) for r in self.rows) + "\n", encoding="utf-8")
+        self.raw.write_text(self.raw.read_text(encoding="utf-8").replace('"dropped":0', '"dropped":3'), encoding="utf-8")
+        rows, report = self.export(True)
+        row = rows[0]
+        self.assertEqual("server-action-mismatch", row["labels"]["server_confirmed_action"]["status"])
+        self.assertFalse(row["eligibility"]["server_actions_consistent"])
+        self.assertFalse(row["eligibility"]["no_packet_loss"])
+        self.assertIn("raw_capture_packet_loss", row["quality_flags"])
+        self.assertFalse(row["training_eligible"])
+        self.assertFalse(report["hand_rows"][0]["opponent_stats_eligible"])
+
+    def test_export_publishes_hands_file_and_eligibility_counts(self):
+        self.export(False)
+        report = export_corpus(self.root / "corpus-False", self.root / "export")
+        self.assertEqual(0, report["training_eligible"])
+        self.assertEqual(1, report["eligibility"]["eligible_except_protocol_gate"])
+        self.assertEqual(1, report["hands"]["opponent_stats_eligible"])
+        hands = (self.root / "export/hands.jsonl").read_text(encoding="utf-8").splitlines()
+        self.assertEqual(1, len(hands))
+        self.assertIn("hands", report["outputs"])
 
 
 class ModelIdentityTests(unittest.TestCase):
