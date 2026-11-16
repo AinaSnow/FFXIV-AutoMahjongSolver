@@ -14,13 +14,28 @@ import re
 import shutil
 import tempfile
 
+from live_hand_labels import confirm_actions, decode_hands, hand_index_for, LABEL_VERSION
+
 SCHEMA = 1
+EXPORT_SCHEMA = 2  # 2026-11-16: hand-result labels, server action outcomes, eligibility flags, hands.jsonl
 SPLIT_VERSION = "match-sha256-v1"
 PARTITIONS = ("train", "development", "acceptance", "unassigned")
 STATE_FIELDS = ("state_code", "wall", "turn", "obs", "hand", "hand_red", "our_melds", "dora",
                 "our_riichi", "our_ippatsu", "legal", "scores", "seats", "discard_restriction_known",
                 "discardable_tiles", "initial_dealer", "our_seat", "seat_wind", "seat_info_known",
                 "round_wind", "dealer", "honba", "riichi_sticks", "kyoku", "scheduled_rounds", "complete")
+# Exact key allow-lists for an exported sample; anything else fails the pii_whitelist_intact check.
+SAMPLE_KEYS = {"schema_version", "data_origin", "match_id", "split", "sample_id", "hand_id", "revision", "observed_at",
+               "observation", "recommendation", "dispatched_action", "execution_status", "provenance", "labels",
+               "eligibility", "training_eligible", "quality_flags"}
+PROVENANCE_KEYS = ("policy_weights_sha256", "policy_build_id", "rules_build_id", "rule_set", "strategy",
+                   "mortal_enabled", "mortal_limited_trial", "search_budget_ms", "calibration_identity", "mortal_model")
+PACKET_LOSS_FLAGS = {"raw_capture_missing", "raw_capture_incomplete", "raw_capture_interrupted", "raw_capture_segmented",
+                     "raw_capture_packet_loss", "raw_archive_packets_missing", "archive_incomplete",
+                     "malformed_packet_log", "malformed_raw_capture", "packet_history_rejected"}
+# A pass is never acknowledged by the server; "window closed without our call" is the
+# strongest evidence available and is accepted as consistent, never as confirmed.
+CONSISTENT_SERVER_STATUSES = ("server-confirmed", "server-window-closed")
 
 
 def digest(path):
@@ -110,6 +125,7 @@ def match_quality(directory, files):
     events = []
     opening = False
     archived_packets, raw_packets = set(), set()
+    packet_rows = []
     for item in files:
         name = item["path"]
         if name.startswith("archive/games/") and name.endswith(".ndjson"):
@@ -123,6 +139,7 @@ def match_quality(directory, files):
                 if error:
                     flags.add("malformed_packet_log")
                 else:
+                    packet_rows.append(row)
                     if row.get("message_id") == 636:
                         opening = True
                     if (identity := packet_identity(row)) is not None:
@@ -161,6 +178,8 @@ def match_quality(directory, files):
                     raw_packets.add(identity)
         if not last or last.get("e") != "capture-end" or last.get("stream_complete") is not True:
             flags.add("raw_capture_incomplete")
+        elif any(last.get(field) not in (None, 0) for field in ("dropped", "rejected")):
+            flags.add("raw_capture_packet_loss")
         if last and last.get("reason") == "disabled":
             flags.add("raw_capture_interrupted")
     if raw_files and archived_packets - raw_packets:
@@ -172,7 +191,10 @@ def match_quality(directory, files):
         flags.add("protocol_not_fully_verified")
     if (summary.get("execution_health") or {}).get("missing_outcomes", 0):
         flags.add("missing_action_outcomes")
-    return flags, events, opening, final, summary
+    hands = decode_hands(packet_rows)
+    if any(h["label"]["unknown_reason"] and h["label"]["unknown_reason"].startswith("hand history") for h in hands):
+        flags.add("packet_history_rejected")
+    return flags, events, opening, final, summary, hands
 
 
 def read_manifest(directory):
@@ -222,7 +244,7 @@ def import_archive(archive, corpus, raw=None):
             raise ValueError("Linked raw file rejected")
         shutil.copyfile(raw, staging / "raw-capture.ndjson")
     files = inventory(staging)
-    flags, _, opening, final, _ = match_quality(staging, files)
+    flags, _, opening, final, _, _ = match_quality(staging, files)
     flags.update(("legacy_import", "provenance_unknown"))
     match_id = identity_for(files)
     manifest = dict(schema_version=SCHEMA, match_id=match_id, split_version=SPLIT_VERSION,
@@ -257,7 +279,7 @@ def action_matches(decision, action):
 
 
 def export_match(directory, m):
-    flags, events, opening, final, summary = match_quality(directory, m["files"])
+    flags, events, opening, final, summary, hands = match_quality(directory, m["files"])
     flags.update(m.get("quality_flags", []))
     # Legacy manifests used a per-decision flag for missing identity at archive
     # close (e.g. a quarantined process). Keep that fact in the match report;
@@ -290,6 +312,18 @@ def export_match(directory, m):
         elif type(east) is int and 0 <= east < 4:
             order = sorted(range(4), key=lambda i: (-final["scores"][i], (i - east) % 4))
             rank = order.index(0) + 1
+    first_labels = {aid: entries[0][1].get("label") for aid, entries in outcomes.items() if entries}
+    server = confirm_actions(hands, [dict(row, label=first_labels.get(row.get("action_id")))
+                                     for _, _, _, row in actions if ids[row.get("action_id")] == 1])
+    statuses = Counter(entry["status"] for entry in server.values())
+    match_eligibility = dict(
+        opening_observed=opening,
+        final_result_observed=final is not None,
+        hand_results_labelled=bool(hands) and all(h["label"]["outcome"] != "unknown" for h in hands),
+        server_actions_consistent=bool(hands) and statuses["server-action-mismatch"] == 0
+        and statuses["no-server-evidence"] == 0,
+        no_packet_loss=not (flags & PACKET_LOSS_FLAGS),
+        protocol_verified="protocol_not_fully_verified" not in flags)
     rows = []
     for order, name, line, action in actions:
         quality = flags - {"mortal_model_at_close_unknown"}
@@ -321,23 +355,78 @@ def export_match(directory, m):
             quality.add("mortal_model_unknown")
         if rank is None:
             quality.add("final_rank_unknown")
-        quality.add("server_action_not_verified")
+        confirmation = server.get(action.get("action_id")) if ids[action.get("action_id")] == 1 else None
+        if confirmation is None or confirmation["status"] == "no-server-evidence":
+            confirmation = None
+            quality.add("server_action_not_verified")
+        elif confirmation["status"] == "server-window-closed":
+            quality.add("server_pass_not_acknowledged")
+        elif confirmation["status"] != "server-confirmed":
+            quality.add("server_action_not_verified")
+        hand_index = hand_index_for(hands, action.get("t")) if hands else None
+        hand_label = hands[hand_index]["label"] if hand_index is not None else None
+        known = hand_label is not None and hand_label["outcome"] != "unknown"
+        if not known:
+            quality.add("hand_result_unknown")
         # Explicit allow-list: no player names, actor IDs, raw payloads, local paths or free-text reasoning.
         features = {field: state[field] for field in STATE_FIELDS if state and field in state}
-        provenance = {k: v for k, v in (provenance or {}).items() if k in (
-            "policy_weights_sha256", "policy_build_id", "rules_build_id", "rule_set", "strategy",
-            "mortal_enabled", "mortal_limited_trial", "search_budget_ms", "calibration_identity", "mortal_model")}
-        rows.append(dict(schema_version=1, data_origin="ffxiv-live", match_id=m["match_id"], split=m["split"],
+        provenance = {k: v for k, v in (provenance or {}).items() if k in PROVENANCE_KEYS}
+        eligibility = dict(match_eligibility,
+                           hand_result_labelled=known,
+                           server_action_consistent=confirmation is not None
+                           and confirmation["status"] in CONSISTENT_SERVER_STATUSES,
+                           sample_observation_complete=state is not None and state.get("complete") is True
+                           and action.get("dispatch_context") == "before-input")
+        row = dict(schema_version=EXPORT_SCHEMA, data_origin="ffxiv-live", match_id=m["match_id"], split=m["split"],
             sample_id=hashlib.sha256(f"{m['match_id']}:{name}:{line}".encode()).hexdigest(),
             hand_id=action.get("hand_id"), revision=action.get("revision"), observed_at=action.get("t"),
             observation=features, recommendation={k: recommendation.get(k) for k in ("source", "kind", "tile", "is_red")} if recommendation else None,
             dispatched_action={k: action.get(k) for k in ("kind", "tile", "is_red", "result")},
             execution_status=outcome.get("status") if outcome else None, provenance=provenance,
             labels=dict(final_scores=final["scores"] if final else None, final_rank=rank,
-                        won=None, deal_in=None, optimal_action=None, server_confirmed_action=None),
-            training_eligible=False, quality_flags=sorted(quality)))
+                        won=(0 in hand_label["winners"]) if known else None,
+                        deal_in=(hand_label["discarder"] == 0) if known else None,
+                        hand_result=public_hand_result(hand_label) if known else None,
+                        optimal_action=None, server_confirmed_action=confirmation),
+            eligibility=eligibility, training_eligible=False, quality_flags=sorted(quality))
+        eligibility["pii_whitelist_intact"] = whitelist_intact(row)
+        # Every gate, including the independent protocol gate, must hold. No gate is waived here.
+        row["training_eligible"] = all(eligibility.values())
+        rows.append(row)
+    hand_rows = []
+    for number, hand in enumerate(hands):
+        label = hand["label"]
+        hand_flags = sorted(flags & (PACKET_LOSS_FLAGS | {"protocol_not_fully_verified", "match_start_unobserved"}))
+        hand_rows.append(dict(schema_version=EXPORT_SCHEMA, label_version=LABEL_VERSION, data_origin="ffxiv-live",
+                              match_id=m["match_id"], split=m["split"], hand_number=number + 1,
+                              result=public_hand_result(label) if label["outcome"] != "unknown" else None,
+                              round_wind=label["round_wind"], kyoku=label["kyoku"], honba=label["honba"],
+                              dealer=label["dealer"], riichi=label["riichi"], open_calls=label["open_calls"],
+                              closed_kans=label["closed_kans"], discards=label["discards"],
+                              unknown_reason=label["unknown_reason"],
+                              # Weaker tier for C2 opponent statistics only; never a training gate and
+                              # deliberately independent of the protocol gate (see training-data.md).
+                              opponent_stats_eligible=label["outcome"] != "unknown" and opening
+                              and not (flags & PACKET_LOSS_FLAGS),
+                              quality_flags=hand_flags))
     return rows, dict(match_id=m["match_id"], split=m["split"], samples=len(rows), quality_flags=sorted(flags),
-                      final_result_observed=final is not None, decision_sources=(summary.get("decision_health") or {}).get("sources", {}))
+                      final_result_observed=final is not None, decision_sources=(summary.get("decision_health") or {}).get("sources", {}),
+                      hands=len(hands), hands_labelled=sum(h["label"]["outcome"] != "unknown" for h in hands),
+                      eligibility=match_eligibility, server_action_statuses=dict(sorted(statuses.items())),
+                      hand_rows=hand_rows)
+
+
+def public_hand_result(label):
+    """Seat-relative hand outcome without the internal evidence checks."""
+    return {k: label[k] for k in ("outcome", "winners", "discarder", "multi_winner", "deltas", "tenpai",
+                                  "winner_details")}
+
+
+def whitelist_intact(row):
+    return (set(row) <= SAMPLE_KEYS and set(row["observation"]) <= set(STATE_FIELDS)
+            and set(row["provenance"]) <= set(PROVENANCE_KEYS)
+            and (row["recommendation"] is None or set(row["recommendation"]) <= {"source", "kind", "tile", "is_red"})
+            and set(row["dispatched_action"]) <= {"kind", "tile", "is_red", "result"})
 
 
 def export_corpus(corpus, output):
@@ -352,6 +441,8 @@ def export_corpus(corpus, output):
     rejected = []
     staging = Path(tempfile.mkdtemp(prefix=".pending-export-", dir=output))
     targets = {part: (staging / (part + ".jsonl")).open("w", encoding="utf-8", newline="\n") for part in PARTITIONS}
+    targets["hands"] = (staging / "hands.jsonl").open("w", encoding="utf-8", newline="\n")
+    eligibility, hands = Counter(), Counter()
     try:
         for directory in matches:
             try:
@@ -366,6 +457,17 @@ def export_corpus(corpus, output):
                 for row in rows:
                     targets[m["split"]].write(json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n")
                     totals[m["split"]] += 1
+                    gates = row["eligibility"]
+                    eligibility["training_eligible"] += row["training_eligible"]
+                    eligibility["eligible_except_protocol_gate"] += all(
+                        value for gate, value in gates.items() if gate != "protocol_verified")
+                    for gate, value in gates.items():
+                        eligibility["failing_" + gate] += not value
+                for hand in report.pop("hand_rows"):
+                    targets["hands"].write(json.dumps(hand, ensure_ascii=False, separators=(",", ":")) + "\n")
+                    hands["hands"] += 1
+                    hands["labelled"] += hand["result"] is not None
+                    hands["opponent_stats_eligible"] += hand["opponent_stats_eligible"]
                 reports.append(report)
             except (ValueError, KeyError, TypeError, OSError) as error:
                 rejected.append(dict(directory=directory.name, reason=str(error)))
@@ -375,13 +477,22 @@ def export_corpus(corpus, output):
     if rejected:
         (output / "rejected.json").write_text(json.dumps(rejected, indent=2), encoding="utf-8")
         raise ValueError(f"{len(rejected)} corpus entries failed validation; no training split files published")
-    for part in PARTITIONS:
+    for part in (*PARTITIONS, "hands"):
         (staging / (part + ".jsonl")).rename(output / (part + ".jsonl"))
     staging.rmdir()
-    report = dict(schema_version=1, data_origin="ffxiv-live", split_version=SPLIT_VERSION,
-                  matches=reports, totals={part: totals[part] for part in PARTITIONS},
-                  training_eligible=0, notice="Prepared observations only. Verify server actions, protocol and rule-specific labels before training; no optimal-action labels are inferred.")
-    report["outputs"] = {part: digest(output / (part + ".jsonl")) for part in PARTITIONS}
+    match_gates = Counter(gate for r in reports for gate, value in r["eligibility"].items() if value)
+    report = dict(schema_version=EXPORT_SCHEMA, data_origin="ffxiv-live", split_version=SPLIT_VERSION,
+                  label_version=LABEL_VERSION, matches=reports, totals={part: totals[part] for part in PARTITIONS},
+                  training_eligible=eligibility["training_eligible"],
+                  eligibility=dict(sorted(eligibility.items())),
+                  match_gates_passed=dict(sorted(match_gates.items())),
+                  matches_eligible_except_protocol_gate=sum(
+                      all(v for g, v in r["eligibility"].items() if g != "protocol_verified") for r in reports),
+                  hands=dict(hands),
+                  notice="Prepared observations only. training_eligible requires every gate including the "
+                         "independent protocol gate; opponent_stats_eligible hands are a weaker tier for "
+                         "opponent statistics, not training. No optimal-action labels are inferred.")
+    report["outputs"] = {part: digest(output / (part + ".jsonl")) for part in (*PARTITIONS, "hands")}
     (output / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     return report
 
@@ -406,7 +517,10 @@ def main():
                 print(import_archive(archive, args.corpus))
     if args.output:
         report = export_corpus(args.corpus, args.output)
-        print(json.dumps({"matches": len(report["matches"]), "samples": report["totals"], "training_eligible": 0}))
+        print(json.dumps({"matches": len(report["matches"]), "samples": report["totals"],
+                          "training_eligible": report["training_eligible"],
+                          "eligible_except_protocol_gate": report["eligibility"].get("eligible_except_protocol_gate", 0),
+                          "hands": report["hands"]}))
 
 
 if __name__ == "__main__":
