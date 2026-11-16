@@ -39,6 +39,16 @@ public sealed class MahjongPacketMjaiDecoder
 
     public uint? LastDiscardAction { get; private set; }
 
+    /// <summary>
+    /// Cross-checked outcome of the most recent hand-result packet (null until one arrives in an
+    /// open hand; reset at each hand start). Logged as server evidence, never sent to Mortal.
+    /// </summary>
+    public ServerHandResult? LastHandResult { get; private set; }
+
+    private int[]? startScoresAbsolute;
+    private int handHonba;
+    private (int Actor, string Tile)? lastKakan;
+
     public IReadOnlyList<IMjaiEvent> Process(int messageId, ReadOnlySpan<byte> payload)
     {
         var output = new List<IMjaiEvent>(3);
@@ -59,6 +69,8 @@ public sealed class MahjongPacketMjaiDecoder
                     selfSeat = null;
                     lastDiscard = null;
                     lastDraw = null;
+                    startScoresAbsolute = null;
+                    LastHandResult = null;
                 }
                 break;
 
@@ -84,6 +96,14 @@ public sealed class MahjongPacketMjaiDecoder
             case HandResultBMessageId:
                 if (handOpen)
                 {
+                    // Side channel for logs only; MjaiEndKyoku (and therefore Mortal's input)
+                    // is unchanged, and an unexpected result shape degrades to "unknown".
+                    LastHandResult = selfSeat is { } seat && startScoresAbsolute is { } start
+                        ? ServerHandResultReader.Read(messageId, payload, new HandResultContext(seat, start, handHonba,
+                            Enumerable.Range(0, 4).Where(actor => declaredRiichi[actor]).ToHashSet(),
+                            lastDiscard is { } d ? (d.Actor, d.Tile, d.Riichi) : null, lastKakan,
+                            lastDraw is { } draw ? (draw.Actor, draw.Tile) : null))
+                        : ServerHandResult.Unknown("hand start not decoded");
                     output.Add(new MjaiEndKyoku());
                     handOpen = false;
                     lastDiscard = null;
@@ -186,8 +206,12 @@ public sealed class MahjongPacketMjaiDecoder
         string dora = DecodeTileKind(doraId);
 
         var scores = new int[4];
+        var absoluteScores = new int[4];
         for (int absoluteSeat = 0; absoluteSeat < 4; absoluteSeat++)
-            scores[RelativeSeat(absoluteSeat, absoluteSelfSeat)] = ScaleScore(ReadInt32(payload, 32 + absoluteSeat * 4));
+        {
+            absoluteScores[absoluteSeat] = ScaleScore(ReadInt32(payload, 32 + absoluteSeat * 4));
+            scores[RelativeSeat(absoluteSeat, absoluteSelfSeat)] = absoluteScores[absoluteSeat];
+        }
 
         int kyotaku = DomanMortalTrialGuard.InferOpeningRiichiSticks(scores)
             ?? throw new InvalidDataException("Opening scores cannot establish the Doman riichi pool.");
@@ -214,6 +238,10 @@ public sealed class MahjongPacketMjaiDecoder
             Tehais: tehais));
 
         selfSeat = absoluteSelfSeat;
+        startScoresAbsolute = absoluteScores;
+        handHonba = ReadInt32(payload, 12);
+        LastHandResult = null;
+        lastKakan = null;
         Array.Clear(declaredRiichi);
         pons.Clear();
         kanKinds.Clear();
@@ -234,6 +262,7 @@ public sealed class MahjongPacketMjaiDecoder
 
         int actor = RelativeSeat(seat, selfSeat.Value);
         uint action = ReadUInt32(payload, 4);
+        lastKakan = null;
         if (action == 0x200)
         {
             if (pendingKanActor != actor)
@@ -313,6 +342,7 @@ public sealed class MahjongPacketMjaiDecoder
 
         int actor = RelativeSeat(seat, selfSeat.Value);
         uint action = ReadUInt32(payload, 8);
+        lastKakan = null;
         RequireNoPendingKan(action);
         if (action is 0x140 or 0x240)
         {
@@ -325,6 +355,7 @@ public sealed class MahjongPacketMjaiDecoder
                 ?? throw new InvalidDataException($"0x{action:X} added kan has no matching confirmed pon.");
             BeginKan(actor, [.. pon.Tiles, added], action);
             pons.Remove(pon);
+            lastKakan = (actor, added); // a ron before the replacement draw robs this kan
             output.Add(new MjaiKakan(actor, added, pon.Tiles));
             return;
         }
@@ -365,7 +396,7 @@ public sealed class MahjongPacketMjaiDecoder
             output.Add(new MjaiReachAccepted(actor));
             declaredRiichi[actor] = true;
         }
-        lastDiscard = new LastDiscard(actor, tile);
+        lastDiscard = new LastDiscard(actor, tile, riichi);
         lastDraw = null;
     }
 
@@ -439,7 +470,7 @@ public sealed class MahjongPacketMjaiDecoder
     private static uint ReadUInt32(ReadOnlySpan<byte> payload, int offset) =>
         BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(offset, sizeof(uint)));
 
-    private sealed record LastDiscard(int Actor, string Tile);
+    private sealed record LastDiscard(int Actor, string Tile, bool Riichi = false);
     private sealed record LastDraw(int Actor, string Tile, bool Replacement = false);
     private sealed record ConfirmedPon(int Actor, byte Kind, string[] Tiles);
 }
