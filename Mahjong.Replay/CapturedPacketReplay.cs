@@ -91,7 +91,11 @@ public static class CapturedPacketReplay
                     current.Events.Add(new PacketReplayEvent(sequence, time,
                         JsonSerializer.SerializeToElement(evt, evt.GetType())));
                 }
-                if (events.Any(evt => evt is MjaiEndKyoku)) Close("result", sequence);
+                if (events.Any(evt => evt is MjaiEndKyoku))
+                {
+                    current.Result = decoder.LastHandResult;
+                    Close("result", sequence);
+                }
             }
             catch (Exception ex) when (ex is InvalidDataException or FormatException or ArgumentException)
             {
@@ -130,6 +134,8 @@ public sealed class PacketReplayHand(int number, long startSequence)
     public string? Failure { get; set; }
     public long? FailureSequence { get; set; }
     public List<PacketReplayEvent> Events { get; } = [];
+    /// <summary>Cross-checked server hand outcome; null when no result packet closed the hand.</summary>
+    public ServerHandResult? Result { get; set; }
     public bool OfflineModelEligible => Failure is null && Boundary == "result";
 }
 public sealed record PacketReplayReport(int Schema, bool RuntimeEligible, string Scope, string[] Caveats,
