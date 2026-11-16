@@ -89,8 +89,14 @@
 
 1. **C1 · 打通实机动作闭环与训练语料可用性（解除 `training_eligible = False`）**
    - 扩展 [`ServerCallOutcomeTracker`](../Mahjong.Plugin.Dalamud/Actions/ServerCallOutcomeTracker.cs)：除鸣牌外，补齐对 `Discard`（对应 `MjaiDahai { Actor: 0 }`）、`Riichi`（对应 `MjaiReach { Actor: 0 }`）、`Hora` 与超时/主动 `Pass` 的服务端确认闭环，并将确认事件写入游戏日志与归档。
-   - 完善 `0x018D` 等流局与小局结果归因，消除实机复盘中仍大量出现的 `unknown` 和牌/放铳标签。
+   - 完善 `0x018D`（7.58 为 `0x03E1`）等流局与小局结果归因，消除实机复盘中仍大量出现的 `unknown` 和牌/放铳标签。
    - 在满足“开局完整、终局观测、服务端动作核对一致、无丢包/无隔离、协议对应动作已验证”的前提下，使 [`TrainingCorpusWriter`](../Mahjong.Plugin.Dalamud/Logging/TrainingCorpusWriter.cs) 与 [`training_dataset.py`](../tools/training_dataset.py) 能真正产出 `training_eligible = true` 样本（严格维持现有 PII 脱敏白名单）。
+   - **2026-11-16 已完成标签与核对，资格仍为 0**（[C1 复核](reviews/20261116-c1-live-data-loop.md)）：
+     - 7.58 结算包 639（自摸）、640（荣和，两个块，第二块用于双响）、643（荒牌/途中流局）的字段已确定。放铳者不是字段，取最后舍牌并由点数核算确认。41 场归档 213 手、42 份录包 217 手全部标注，与下一局开局、UI 分数、点数表逐项一致，0 处不一致；C# 解码器旁路结果（不进 MJAI/Mortal）与 Python 标签器 217/217 一致，回放仍为 217/217。
+     - 服务端动作核对：44 场的舍牌、立直、和牌、鸣牌 0 次不一致；唯一 `no-effect` 是 A3 的立直暗杠。Pass 不能被服务端确认，单列为 `server-window-closed`。实机日志 schema 9 新增 `server-outcome` / `server-hand-result`，派发与计时不变。
+     - 资格拆成独立标志，`training_eligible` 仍要求协议已验证，因此为 0；只剩协议门槛时 41 场、3142/3704 条样本合格。`TrainingCorpusWriter` 的 `training_ready` 仍为 false（资格在导出时按证据计算）。
+     - **待用户决定**：是否让 C2 使用新增的弱层级 `hands.jsonl` 中的 `opponent_stats_eligible`（不要求协议已验证）。
+     - 仍未证明：双响时本场/供托的分配、三家和、流局满贯、抢杠、途中流局种类；遇到时标为 unknown。
 2. **C2 · 构建“FF14 实机标定对手池”**
    - 针对 [10 月 11 日复盘](plan-20261011-decision-uplift.md) 暴露的核心偏差（真实 FF14 玩家放铳率约 15.2%，而当前噪声池仅 12.8%）：从脱敏实机语料统计 FF14 菜鸟/段位桌真实分布（各巡目立直率、副露率、放铳率、和了巡目与打点分布），用校准后的异质参数池替代对称 `v4` 克隆用于离线评测。
 3. **C3 · 延续低风险“观测对齐与顺位目标适配”路线**
