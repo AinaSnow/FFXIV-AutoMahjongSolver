@@ -48,9 +48,21 @@ python tools/training_dataset.py --corpus $corpus --output artifacts/training-ex
 只按同一手局和局面版本关联操作与先前状态，推荐还须匹配动作、牌种及红牌身份。
 模型推荐、客户端操作返回成功、UI 状态变化、服务端确认是不同证据层级。
 导出会核对封存原始包是否覆盖已有麻将网络事件；缺失时标记 `raw_archive_packets_missing`。UTC 时间统一到 100 ns，只规范序列化末尾零，不用模糊时间配对。
-本轮导出还没有对每条操作做服务端逐条确认，因此 `server_confirmed_action` 保持 null，`training_eligible` 明确为 false。
-最终分数来自空手牌的状态 27；不会把中途比分或推测出来的 hand-end 充当整场最终结果。
-和牌、放铳及最优动作标签目前保持 null，不根据分差或 Mortal 选择编造。
+最终分数来自空手牌的状态 27；不会把中途比分或推测出来的 hand-end 充当整场最终结果。最优动作标签保持 null，不根据 Mortal 选择编造。
+
+### 结算标签与服务端核对（2026-11-16，导出 schema 2）
+
+证据与字段含义见 [C1 复核](reviews/20261116-c1-live-data-loop.md)。导出从归档的 `packets.ndjson` 离线解码（[`live_hand_labels.py`](../tools/live_hand_labels.py)），不需要重跑实机：
+
+- `labels.hand_result`：本手结果（`ron` / `tsumo` / `exhaustive_draw` / `abortive_draw`）、和牌者、放铳者、相对座位点数增减、听牌、各和牌者的番符打点。每个字段都经过点数核算和下一局开局核对；任何一项不一致时整手为 unknown，`hand_result` 为 null，并加 `hand_result_unknown` 标记。
+- `labels.won` / `labels.deal_in`：由本手结果得出；结果未知时为 null。
+- `labels.server_confirmed_action`：`{status, reason, server_event}`。状态含义见 C1 复核第四节；只有 `server-confirmed` 是服务端确认，Pass 最多是 `server-window-closed`（另加 `server_pass_not_acknowledged` 标记）。没有归档报文时为 null，并保留 `server_action_not_verified`。
+- `eligibility`：开局、终局、结算标签、服务端动作一致、无丢包（新增 `raw_capture_packet_loss`、`packet_history_rejected`）、观测完整、PII 白名单、协议已验证，各自独立。`training_eligible` 要求全部为真；协议门槛不会被其他检查替代。`report.json` 记录 `eligible_except_protocol_gate` 等计数。
+- `hands.jsonl`：每手一行，供对手统计使用，只含相对座位的结果、立直、副露/暗杠/舍牌次数和质量标记。`opponent_stats_eligible` 是独立的弱层级（结算已标注、观测到开局、无丢包），**不是训练门槛**，也不要求协议已验证；是否在 C2 中采用见 C1 复核第五节。
+
+插件游戏日志 schema 9 起会实时写 `server-outcome` 与 `server-hand-result` 两种记录（只追加，旧记录不变）；导出目前仍以报文的离线解码为准，两者在 41 场归档上逐条一致。
+
+截至 2026-11-16，44 场 7.58 实机：0 条 `training_eligible`；只剩协议门槛时 41 场、3142/3704 条合格；213/213 手已标注。对手统计初读用 `python tools/opponent_stats.py --hands <导出>/hands.jsonl`（只读，不改评测配置）。
 
 导出保留己方可见状态和必要版本信息，省略原始包、玩家名字、角色网络 ID、路径和自由文本说明。
 这是以后解码验证、补标签、对照评测的中间数据集，尚不是 Mortal 的完整训练牌谱，也不能直接输入现有 `calibrate.py`。

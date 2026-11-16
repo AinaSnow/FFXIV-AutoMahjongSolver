@@ -20,7 +20,7 @@ python -X utf8 tools/audit_live_archives.py --archives "$configDir/match-archive
 
 ## 输出和退出码
 
-- `report.json`：工具、摘要、抓包及解码器哈希，按构建的计数，各文件错误与每手场风/局号/本场/结果边界。
+- `report.json`：工具、摘要、抓包及解码器哈希，按构建的计数，各文件错误与每手场风/局号/本场/结果边界。2026-11-16 起每手还带解码器的结算标签（`result`、和牌者、放铳者、点数增减；读不通时为 `unknown` 并附原因，旧回放文件中为 null），字段含义见 [C1 复核](reviews/20261116-c1-live-data-loop.md)。
 - `report.md`：汇总阅读入口。
 - `replay-NNNN.json`：生产解码器输出，可以继续送入 [真实 Mortal 离线回放](offline-mortal-replay.md)。
 - 退出 0：所选摘要均支持且审计/导出无文件错误。仍须查看每手 `offline_model_eligible`，导出成功并不代表所有手局完整或协议认证。
