@@ -92,6 +92,7 @@ public sealed class AutoPlayLoop : IDisposable
         plugin.EventLogger.CallbackObserved += OnInputCallback;
         plugin.MortalBridge.ServerEventObserved += OnServerEvent;
         plugin.PublicState.HandEnded += OnHandEnded;
+        plugin.PublicState.ServerEventDecoded += OnPublicServerEvent;
     }
 
     public void Dispose()
@@ -104,11 +105,49 @@ public sealed class AutoPlayLoop : IDisposable
         plugin.EventLogger.CallbackObserved -= OnInputCallback;
         plugin.MortalBridge.ServerEventObserved -= OnServerEvent;
         plugin.PublicState.HandEnded -= OnHandEnded;
+        plugin.PublicState.ServerEventDecoded -= OnPublicServerEvent;
         framework.Update -= OnUpdate;
         plugin.Aggregator.Changed -= OnSnapshotChanged;
     }
 
-    internal void CancelForTableExit() => CancelPending();
+    internal void CancelForTableExit()
+    {
+        CancelPending();
+        serverActionOutcome.Reset();
+    }
+
+    /// <summary>
+    /// Observation only: logs the decoder's hand result and server-level outcomes of our own
+    /// discard/riichi/win/pass dispatches. Nothing here feeds back into dispatch or timing.
+    /// Deliberately not reset by <see cref="CancelPending"/>: a hand end or manual input does not
+    /// invalidate server evidence for actions that were already dispatched.
+    /// </summary>
+    private void OnPublicServerEvent(IMjaiEvent evt, ServerHandResult? result)
+    {
+        if (evt is MjaiEndKyoku && result is not null)
+        {
+            plugin.GameLogger.RecordServerHandResult(result);
+            plugin.FindingsLog?.Record("server_hand_result", new Dictionary<string, object?>
+            {
+                ["outcome"] = result.Outcome, ["winners"] = result.Winners, ["discarder"] = result.Discarder,
+                ["deltas"] = result.Deltas, ["unknown_reason"] = result.UnknownReason,
+            });
+        }
+        foreach (var outcome in serverActionOutcome.Observe(evt, result))
+            RecordServerActionOutcome(outcome);
+    }
+
+    private void RecordServerActionOutcome(ServerActionOutcomeTracker.Outcome outcome)
+    {
+        plugin.FindingsLog?.Record("server_action_outcome", new Dictionary<string, object?>
+        {
+            ["action_id"] = outcome.ActionId, ["label"] = outcome.Label, ["status"] = outcome.Status,
+            ["reason"] = outcome.Reason, ["server"] = outcome.Server,
+        });
+        plugin.GameLogger.RecordServerOutcome(outcome.ActionId, outcome.Label, outcome.Status, outcome.Reason, outcome.Server);
+        if (outcome.Status == "server-action-mismatch")
+            log.Warning($"[AutoPlayLoop] Server outcome for {outcome.Label} action={outcome.ActionId}: {outcome.Reason} ({outcome.Server}).");
+    }
 
     private void OnConfigurationChanged(Configuration _) => CancelPending();
     private void OnInputCallback(InputCallbackEvent input)
@@ -447,7 +486,7 @@ public sealed class AutoPlayLoop : IDisposable
     private void EmitDispatchFinding(
         string label, InputDispatcher.DispatchResult result,
         int? option = null, Tile? tile = null, int? slot = null, int? state = null,
-        StateSnapshot? snap = null)
+        StateSnapshot? snap = null, bool? isRed = null)
     {
         plugin.FindingsLog?.Record("dispatch_attempted", new Dictionary<string, object?>
         {
@@ -483,11 +522,14 @@ public sealed class AutoPlayLoop : IDisposable
                 MeldsAtDispatch: before.OurMelds.Count,
                 LastDispatchPath: plugin.Dispatcher.LastDispatchPath);
             serverCallOutcome.Track(plugin.GameLogger.LastActionId, label, plugin.Dispatcher.LastDispatchPath, clock.UtcNow);
+            if (serverActionOutcome.Track(plugin.GameLogger.LastActionId, label, tile, isRed) is { } immediate)
+                RecordServerActionOutcome(immediate);
         }
     }
 
     private PendingDispatchOutcome? pendingOutcome;
     private readonly ServerCallOutcomeTracker serverCallOutcome = new();
+    private readonly ServerActionOutcomeTracker serverActionOutcome = new();
 
     private static readonly TimeSpan FastDispatchOutcomeWindow = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan DelayedDispatchOutcomeWindow = TimeSpan.FromSeconds(5);
@@ -1056,7 +1098,7 @@ public sealed class AutoPlayLoop : IDisposable
             log.Info($"[AutoPlayLoop] riichi-tsumogiri dispatch: {LastActionDescription}");
             plugin.GameLogger.RecordAction(ActionKind.Discard, tile, slot, result.ToString(), "riichi-tsumogiri",
                 isRed);
-            EmitDispatchFinding("riichi-tsumogiri", result, tile: tile, slot: slot, snap: snap);
+            EmitDispatchFinding("riichi-tsumogiri", result, tile: tile, slot: slot, snap: snap, isRed: isRed);
             ClearRetryDebounceIfHookFailed(result);
             // Do not clear the latch here — ObserveWall clears it on the next hand; otherwise policy.Choose would re-approve riichi in the same hand.
         });
@@ -1213,7 +1255,7 @@ public sealed class AutoPlayLoop : IDisposable
         var result = plugin.Dispatcher.DispatchDiscard(slot);
         LastActionDescription = $"auto-discard {tile} slot={slot} → {result}";
         plugin.GameLogger.RecordAction(ActionKind.Discard, tile, slot, result.ToString(), choice.Reasoning, targetIsRed);
-        EmitDispatchFinding("discard", result, tile: tile, slot: slot, snap: snap);
+        EmitDispatchFinding("discard", result, tile: tile, slot: slot, snap: snap, isRed: targetIsRed);
         ClearRetryDebounceIfHookFailed(result);
     }
 

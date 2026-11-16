@@ -15,7 +15,8 @@ namespace Mahjong.Plugin.Dalamud.Logging;
 
 public sealed class GameLogger : IDisposable
 {
-    public const int SchemaVersion = 8;
+    // 9 (2026-11-16): adds server-outcome and server-hand-result records; existing records unchanged.
+    public const int SchemaVersion = 9;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -291,6 +292,37 @@ public sealed class GameLogger : IDisposable
         if (!configService.Current.EnableGameLogging || disposed) return;
         WriteLine(JsonSerializer.Serialize(new { t = Now(), e = "action-outcome", action_id = actionId,
             label, status, path }, JsonOpts));
+    }
+
+    /// <summary>
+    /// Server-level evidence for one dispatched action (schema 9). Kept apart from the UI
+    /// <c>action-outcome</c> record so that UI state changes are never counted as server proof.
+    /// </summary>
+    public void RecordServerOutcome(long actionId, string label, string status, string? reason, string? server)
+    {
+        if (!configService.Current.EnableGameLogging || disposed) return;
+        WriteLine(JsonSerializer.Serialize(new { t = Now(), e = "server-outcome", action_id = actionId,
+            label, status, reason, server }, JsonOpts));
+    }
+
+    /// <summary>
+    /// The decoder's cross-checked hand result (schema 9), seat-relative like <c>hand-end</c>.
+    /// The UI <c>hand-end</c> record is unchanged and stays inferred.
+    /// </summary>
+    public void RecordServerHandResult(Mahjong.Plugin.Game.Mjai.ServerHandResult result)
+    {
+        if (!configService.Current.EnableGameLogging || disposed) return;
+        WriteLine(JsonSerializer.Serialize(new
+        {
+            t = Now(), e = "server-hand-result", outcome = result.Outcome, winners = result.Winners,
+            discarder = result.Discarder, deltas = result.Deltas, scores_after = result.ScoresAfter,
+            tenpai = result.Tenpai, unknown_reason = result.UnknownReason,
+            winner_details = result.WinnerDetails.Select(w => new
+            {
+                seat = w.Seat, han = w.Han, fu = w.Fu, limit = w.Limit, value = w.Value,
+                win_tile = w.WinTile, honba = w.Honba, sticks = w.Sticks,
+            }).ToArray(),
+        }, JsonOpts));
     }
 
     public void RecordDecision(ActionChoice choice, string source)

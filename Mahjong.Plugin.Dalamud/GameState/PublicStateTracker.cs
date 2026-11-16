@@ -18,6 +18,12 @@ public sealed class PublicStateTracker : IDisposable
     private bool wasPresent;
     public bool AwaitingNextHand => capture.ProtocolAdmitted && state.HandEnded;
     public event Action? HandEnded;
+    /// <summary>
+    /// Every accepted server event, after the whole packet decoded cleanly. A result-packet
+    /// end_kyoku carries the decoder's cross-checked hand result (null otherwise). Observers are
+    /// isolated: their failures never reset the public state.
+    /// </summary>
+    public event Action<IMjaiEvent, ServerHandResult?>? ServerEventDecoded;
     public PublicStateTracker(MahjongNetworkCapture capture, IFramework framework, AddonEmjReader reader,
         IPluginLog log, Action<CapturedMahjongPacket>? observer = null)
     {
@@ -44,11 +50,14 @@ public sealed class PublicStateTracker : IDisposable
         while (budget-- > 0 && capture.TryDequeuePublic(out var packet))
         {
             try { observer?.Invoke(packet); } catch (Exception ex) { log.Warning(ex, "[Mahjong] Packet archive rejected write."); }
+            IReadOnlyList<IMjaiEvent> accepted = [];
+            ServerHandResult? handResult = null;
             try
             {
                 if (capture.LimitedTrialActive && DomanMortalTrialGuard.RejectPacket(packet.MessageId, packet.Payload) is { } packetReason)
                     throw new InvalidDataException(packetReason);
-                foreach (var evt in decoder.Process(packet.MessageId, packet.Payload))
+                var events = decoder.Process(packet.MessageId, packet.Payload);
+                foreach (var evt in events)
                 {
                     if (capture.LimitedTrialActive && evt is MjaiStartKyoku start
                         && DomanMortalTrialGuard.RejectStart(start) is { } startReason)
@@ -57,6 +66,8 @@ public sealed class PublicStateTracker : IDisposable
                     state.Apply(evt, knownCounters: false);
                     if (!wasEnded && state.HandEnded) HandEnded?.Invoke();
                 }
+                accepted = events;
+                handResult = decoder.LastHandResult;
             }
             catch (Exception ex)
             {
@@ -64,6 +75,11 @@ public sealed class PublicStateTracker : IDisposable
                 state.Reset();
                 state.Invalidate("public event rejected");
                 log.Warning(ex, "[Mahjong] Public state unavailable until the next verified hand.");
+            }
+            foreach (var evt in accepted)
+            {
+                try { ServerEventDecoded?.Invoke(evt, evt is MjaiEndKyoku ? handResult : null); }
+                catch (Exception ex) { log.Warning(ex, "[Mahjong] Server event observer failed."); }
             }
         }
     }
